@@ -35,10 +35,23 @@ Các nhóm dữ liệu được thu thập:
 
 | Nhóm | Chỉ số | Nguồn (`metadata.source`) |
 |---|---|---|
-| Cảm biến IoT | Nhiệt độ, pH, Oxy hòa tan (DO) | `sensor` |
+| Cảm biến IoT | Nhiệt độ, pH, Oxy hòa tan (DO), **Độ mặn (salinity)**, **ORP** | `sensor` |
 | Thiết bị vận hành | Công suất quạt (pump_power), Trạng thái quạt (pump_status) | `sensor` |
-| Nhập thủ công | Độ kiềm (alkalinity) từ test-kit, 4 lần/ngày | `manual` |
-| Tính toán tự động | CO₂ hòa tan (suy ra từ pH & độ kiềm bằng worker) | `derived` |
+| Nhập thủ công | Độ kiềm (alkalinity), **Tổng amoni (TAN)**, **Nitrite** từ test-kit, 4 lần/ngày | `manual` |
+| Tính toán tự động | CO₂ hòa tan (pH + độ kiềm), **NH₃ độc** (TAN + pH + nhiệt độ), **Biên độ pH 24h** (aggregation `$group` max − min) | `derived` |
+
+### 🆕 Chỉ số bổ sung
+
+| Chỉ số | Đơn vị | Nguồn | Ý nghĩa vận hành | Ngưỡng cảnh báo |
+|---|---|---|---|---|
+| `salinity` | ppt | sensor | Độ mặn sụt sau mưa lớn → tôm sốc, lột xác lỗi | < 10 ppt |
+| `orp` | mV | sensor | Đại diện cho đáy ao: ORP giảm cùng DO khi quạt hỏng → phân hủy kỵ khí, nguy cơ H₂S | < 100 mV |
+| `tan` | mg/L | manual | Tổng amoni từ test-kit, đầu vào để tính NH₃ | — |
+| `nitrite` | mg/L | manual | NO₂⁻ gây thiếu oxy trong máu tôm | > 1 mg/L |
+| `nh3` | mg/L | derived | Phần amoni độc: `TAN × 1/(1+10^(pKa−pH))`, `pKa = 0.09018 + 2729.92/T(K)` (Emerson 1975) | > 0.1 mg/L |
+| `ph_swing` | pH | derived | Biên độ pH trong 24h (pipeline `$match → $group → $project`) | > 0.5 |
+
+Khi quạt hỏng, DO giảm ~0.1 mg/L/phút và ORP giảm theo. `incidents.evidence` của sự cố giờ mang thêm `last_orp_mv`, `nh3_mg_per_l`, `ph_swing_24h`, nên kỹ thuật viên thấy được bối cảnh chất lượng nước ngay trong bước Điều tra. Các chỉ số mới nằm ở nhóm cuối của Dashboard Datadog.
 
 **Điểm nhấn kỹ thuật:**
 - MongoDB **Time Series Collection** với `expireAfterSeconds` (TTL 7 ngày) làm nơi lưu trữ duy nhất cho telemetry.
@@ -195,6 +208,7 @@ Truy cập [http://localhost:8000/docs](http://localhost:8000/docs):
 | `GET /healthz` | Kiểm tra API + kết nối MongoDB |
 | `POST /ingest/batch` | Ghi lô dữ liệu cảm biến |
 | `POST /ingest/manual/alkalinity` | Nhập độ kiềm thủ công |
+| `POST /ingest/manual/{metric}` | Nhập test-kit thủ công: `alkalinity`, `tan`, `nitrite` |
 | `GET /ponds` | Danh sách 6 ao + trạng thái quạt |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Đánh dấu/hồi phục quạt nước |
 | `GET /incidents?state=open` | Truy vấn sự cố theo trạng thái |
@@ -446,7 +460,7 @@ Chụp phần đầu báo cáo (Agent version, Running Checks, `http_check`).
 docker compose exec -T api pytest -v tests/
 ```
 
-Bộ test bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm thủ công, pipeline `$setWindowFields`, công thức suy ra CO₂, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **9/9 PASSED**.
+Bộ test bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **14/14 PASSED**.
 
 > ⚠️ **Lưu ý quan trọng:** fixture `setup_db` gọi `init_collections(force=True)` → **xoá toàn bộ collection** của database đang kết nối. Không chạy lệnh này khi `.env` đang trỏ lên MongoDB Atlas đang chứa dữ liệu báo cáo.
 

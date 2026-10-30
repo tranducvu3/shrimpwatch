@@ -8,6 +8,7 @@ from app.api import app
 from app.config import settings
 from app.db import (
     compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
     events_collection,
     get_client,
     incidents_collection,
@@ -152,6 +153,29 @@ def test_manual_alkalinity_ingest(client: TestClient):
     assert stored["value"] == 168.0
 
 
+def test_manual_tan_and_nitrite_ingest(client: TestClient):
+    for metric, value in (("tan", 0.8), ("nitrite", 0.4)):
+        r = client.post(
+            f"/ingest/manual/{metric}",
+            json={"farm_id": settings.FARM_ID, "pond_id": "pond-02", "value": value},
+        )
+        assert r.status_code == 202, r.text
+        stored = metrics_collection().find_one(
+            {"metadata.pond_id": "pond-02", "metadata.metric": metric, "metadata.source": "manual"},
+            sort=[("timestamp", -1)],
+        )
+        assert stored is not None
+        assert stored["value"] == value
+
+
+def test_manual_ingest_rejects_sensor_metric(client: TestClient):
+    r = client.post(
+        "/ingest/manual/do",
+        json={"farm_id": settings.FARM_ID, "pond_id": "pond-02", "value": 5.0},
+    )
+    assert r.status_code == 422
+
+
 def test_setwindowfields_do_drop_rate_pipeline():
     now = datetime.utcnow()
     start = now - timedelta(minutes=10)
@@ -246,3 +270,36 @@ def test_incident_lifecycle_patch(client: TestClient):
     assert r.status_code == 200
     found = any(x["_id"] == "inc-test-001" for x in r.json())
     assert found, "Expected incident in recovered state"
+
+
+def test_nh3_derivation_formula():
+    from app.worker import derive_nh3_for_pond
+    now = datetime.utcnow()
+    _insert_record("tan", "pond-01", 1.0, ts=now, source="manual", device_type="manual_tester")
+    _insert_record("ph", "pond-01", 8.0, ts=now)
+    _insert_record("temperature", "pond-01", 30.0, ts=now)
+    nh3 = derive_nh3_for_pond("pond-01", now)
+    assert nh3 is not None
+    # pH 8.0, 30 do C: ~7-8% TAN o dang NH3 doc
+    assert 0.06 <= nh3 <= 0.09, f"Expected NH3 ~0.075, got {nh3}"
+
+
+def test_ph_swing_pipeline():
+    now = datetime.utcnow()
+    for i, v in enumerate([7.8, 8.4, 8.1, 7.9]):
+        _insert_record("ph", "pond-06", v, ts=now - timedelta(hours=i * 3))
+    rows = list(metrics_collection().aggregate(compute_ph_swing_pipeline("pond-06")))
+    assert len(rows) == 1
+    assert rows[0]["ph_swing"] == 0.6
+
+
+def test_simulator_do_and_orp_fall_when_pump_fails():
+    from app.simulator import PondSimulator
+    sim = PondSimulator("pond-03")
+    t = datetime.utcnow()
+    first = {r.metric.value: r.value for r in sim.step(t, pump_failed=False)}
+    for i in range(1, 21):
+        last = {r.metric.value: r.value for r in sim.step(t + timedelta(seconds=30 * i), pump_failed=True)}
+    assert last["do"] < first["do"] - 0.7, f"DO should fall without aerator: {first['do']} -> {last['do']}"
+    assert last["orp"] < first["orp"], "ORP should fall with DO"
+    assert "salinity" in last

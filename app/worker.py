@@ -10,6 +10,7 @@ from ddtrace import tracer
 from app.config import settings
 from app.db import (
     compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
     events_collection,
     incidents_collection,
     metrics_collection,
@@ -57,27 +58,55 @@ def derive_co2_for_pond(pond_id: str, timestamp: datetime) -> float | None:
     return round(co2, 3)
 
 
-def write_co2_record(pond_id: str, timestamp: datetime, co2: float):
+def _latest_value(pond_id: str, metric: str, since: datetime) -> float | None:
+    doc = metrics_collection().find_one(
+        {"metadata.pond_id": pond_id, "metadata.metric": metric, "timestamp": {"$gte": since}},
+        sort=[("timestamp", -1)],
+    )
+    return doc["value"] if doc else None
+
+
+def nh3_fraction(ph: float, temp_c: float) -> float:
+    # Emerson et al. (1975): pKa = 0.09018 + 2729.92 / T(K)
+    pka = 0.09018 + 2729.92 / (temp_c + 273.15)
+    return 1.0 / (1.0 + 10 ** (pka - ph))
+
+
+def derive_nh3_for_pond(pond_id: str, timestamp: datetime) -> float | None:
+    tan = _latest_value(pond_id, "tan", timestamp - timedelta(hours=24))
+    ph = _latest_value(pond_id, "ph", timestamp - timedelta(minutes=30))
+    temp = _latest_value(pond_id, "temperature", timestamp - timedelta(minutes=30))
+    if tan is None or ph is None or temp is None:
+        return None
+    return round(tan * nh3_fraction(ph, temp), 4)
+
+
+def compute_ph_swing(pond_id: str) -> float | None:
+    rows = list(metrics_collection().aggregate(compute_ph_swing_pipeline(pond_id)))
+    return rows[0]["ph_swing"] if rows else None
+
+
+def write_derived_record(pond_id: str, timestamp: datetime, metric: str, value: float, unit: str):
     doc = pack_ts_doc(
         {
             "timestamp": timestamp,
             "farm_id": settings.FARM_ID,
             "pond_id": pond_id,
-            "device_id": f"worker-co2-{pond_id}",
+            "device_id": f"worker-{metric}-{pond_id}",
             "device_type": DeviceType.WORKER.value,
-            "metric": "co2",
+            "metric": metric,
             "source": Source.DERIVED.value,
-            "unit": "mg/L",
-            "value": co2,
+            "unit": unit,
+            "value": value,
         }
     )
     metrics_collection().insert_one(doc)
     gauge(
-        "metric.co2",
-        co2,
+        f"metric.{metric}",
+        value,
         tags={"pond": pond_id, "device_type": DeviceType.WORKER.value, "source": Source.DERIVED.value},
     )
-    increment("co2.derived", tags={"pond": pond_id})
+    increment(f"{metric}.derived", tags={"pond": pond_id})
 
 
 def evaluate_pond_do_drop(pond_id: str, window_sec: int = 300):
@@ -169,7 +198,23 @@ def check_pond(pond_id: str):
     if co2 is not None:
         if co2 > settings.CO2_WARN:
             logger.warning("CO2 warning", extra={"pond": pond_id, "co2": co2})
-        write_co2_record(pond_id, now, co2)
+        write_derived_record(pond_id, now, "co2", co2, "mg/L")
+
+    nh3 = derive_nh3_for_pond(pond_id, now)
+    if nh3 is not None:
+        if nh3 > settings.NH3_WARN:
+            logger.warning("NH3 warning", extra={"pond": pond_id, "nh3": nh3})
+        write_derived_record(pond_id, now, "nh3", nh3, "mg/L")
+
+    ph_swing = compute_ph_swing(pond_id)
+    if ph_swing is not None:
+        if ph_swing > settings.PH_SWING_WARN:
+            logger.warning("pH swing warning", extra={"pond": pond_id, "ph_swing": ph_swing})
+        write_derived_record(pond_id, now, "ph_swing", ph_swing, "pH")
+
+    last_orp = _latest_value(pond_id, "orp", now - timedelta(minutes=5))
+    if last_orp is not None and last_orp < settings.ORP_WARN_LOW:
+        logger.warning("ORP low: day ao thieu oxy, nguy co H2S", extra={"pond": pond_id, "orp": last_orp})
 
     avg_pump = avg_pump_power_last_n(pond_id, minutes=5)
     pump_failed = avg_pump is not None and avg_pump < 50.0
@@ -182,6 +227,9 @@ def check_pond(pond_id: str):
         do_drop_rate_mg_per_l_per_min=drop_rate,
         avg_pump_power_watts=avg_pump,
         min_do=min_do,
+        last_orp_mv=last_orp,
+        nh3_mg_per_l=nh3,
+        ph_swing_24h=ph_swing,
         do_window_sec=300,
         notes={"timestamp": now.isoformat()},
     )

@@ -263,6 +263,292 @@
         ]
       },
       "layout": {"x": 0, "y": 10, "width": 8, "height": 6}
+    },
+    {
+      "id": 4,
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Chỉ số mới: Độ mặn, ORP (sensor) · TAN, Nitrite (manual) · NH3, biên độ pH (derived)",
+        "show_title": true,
+        "widgets": [
+          {
+            "id": 401,
+            "definition": {
+              "type": "timeseries",
+              "title": "Độ mặn (ppt) - Warning dưới 10",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "4h"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.salinity{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"
+                    }
+                  ],
+                  "style": {
+                    "palette": "cool"
+                  }
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 10",
+                  "display_type": "warning dashed",
+                  "label": "Độ mặn warning 10 ppt"
+                }
+              ]
+            },
+            "layout": {
+              "x": 0,
+              "y": 0,
+              "width": 4,
+              "height": 2
+            }
+          },
+          {
+            "id": 402,
+            "definition": {
+              "type": "timeseries",
+              "title": "ORP (mV) - dưới 100 = đáy ao thiếu oxy, nguy cơ H2S",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "4h"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.orp{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"
+                    }
+                  ],
+                  "style": {
+                    "palette": "purple"
+                  }
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 100",
+                  "display_type": "warning dashed",
+                  "label": "ORP warning 100 mV"
+                }
+              ]
+            },
+            "layout": {
+              "x": 4,
+              "y": 0,
+              "width": 4,
+              "height": 2
+            }
+          },
+          {
+            "id": 403,
+            "definition": {
+              "type": "timeseries",
+              "title": "NH3 độc (mg/L) - derived từ TAN, pH, nhiệt độ - Warning trên 0.1",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "4h"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.nh3{source:derived,$farm_id,$pond} by {pond}.rollup(avg,60)"
+                    }
+                  ],
+                  "style": {
+                    "palette": "warm"
+                  }
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 0.1",
+                  "display_type": "warning dashed",
+                  "label": "NH3 warning 0.1 mg/L"
+                }
+              ]
+            },
+            "layout": {
+              "x": 0,
+              "y": 2,
+              "width": 4,
+              "height": 2
+            }
+          },
+          {
+            "id": 404,
+            "definition": {
+              "type": "timeseries",
+              "title": "Biên độ pH 24h (max - min) - Warning trên 0.5",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "4h"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.ph_swing{source:derived,$farm_id,$pond} by {pond}.rollup(avg,300)"
+                    }
+                  ],
+                  "style": {
+                    "palette": "orange"
+                  }
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 0.5",
+                  "display_type": "warning dashed",
+                  "label": "Biên độ pH warning 0.5"
+                }
+              ]
+            },
+            "layout": {
+              "x": 4,
+              "y": 2,
+              "width": 4,
+              "height": 2
+            }
+          },
+          {
+            "id": 405,
+            "definition": {
+              "type": "timeseries",
+              "title": "TAN - tổng amoni (mg/L, manual test-kit)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "1d"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.tan{source:manual,$farm_id,$pond} by {pond}"
+                    }
+                  ],
+                  "style": {
+                    "palette": "cool"
+                  }
+                }
+              ]
+            },
+            "layout": {
+              "x": 0,
+              "y": 4,
+              "width": 4,
+              "height": 2
+            }
+          },
+          {
+            "id": 406,
+            "definition": {
+              "type": "timeseries",
+              "title": "Nitrite NO2 (mg/L, manual test-kit) - Warning trên 1",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {
+                "live_span": "1d"
+              },
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "query1"
+                    }
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.nitrite{source:manual,$farm_id,$pond} by {pond}"
+                    }
+                  ],
+                  "style": {
+                    "palette": "grey"
+                  }
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 1",
+                  "display_type": "warning dashed",
+                  "label": "Nitrite warning 1 mg/L"
+                }
+              ]
+            },
+            "layout": {
+              "x": 4,
+              "y": 4,
+              "width": 4,
+              "height": 2
+            }
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 16,
+        "width": 8,
+        "height": 7
+      }
     }
   ]
 }

@@ -22,6 +22,8 @@ from app.models import (
     Incident,
     IncidentEvidence,
     IncidentState,
+    MANUAL_METRIC_UNITS,
+    ManualInput,
     MetricRecord,
     MetricType,
     Severity,
@@ -131,17 +133,24 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
 
 @app.post("/ingest/manual/alkalinity", status_code=202)
 def ingest_alkalinity(body: AlkalinityInput) -> dict:
-    set_span_tags(pond_id=body.pond_id, device_type=DeviceType.MANUAL.value, metric=MetricType.ALKALINITY.value)
+    return ingest_manual(MetricType.ALKALINITY, ManualInput(**body.model_dump()))
+
+
+@app.post("/ingest/manual/{metric}", status_code=202)
+def ingest_manual(metric: MetricType, body: ManualInput) -> dict:
+    if metric not in MANUAL_METRIC_UNITS:
+        raise HTTPException(422, detail=f"metric must be one of {[m.value for m in MANUAL_METRIC_UNITS]}")
+    set_span_tags(pond_id=body.pond_id, device_type=DeviceType.MANUAL.value, metric=metric.value)
     record = MetricRecord(
         timestamp=body.timestamp,
         farm_id=body.farm_id,
         pond_id=body.pond_id,
         device_id=body.tester_id,
         device_type=DeviceType.MANUAL,
-        metric=MetricType.ALKALINITY,
+        metric=metric,
         value=body.value,
         source=Source.MANUAL,
-        unit="mg_CaCO3/L",
+        unit=MANUAL_METRIC_UNITS[metric],
     )
     return ingest_batch(BatchIngestRequest(records=[record]))
 

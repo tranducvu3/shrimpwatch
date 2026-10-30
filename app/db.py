@@ -256,3 +256,37 @@ def compute_do_drop_rate_pipeline(pond_id: str, window_sec: int = 300) -> list[d
         },
     ]
     return pipeline
+
+
+def compute_ph_swing_pipeline(pond_id: str, hours: int = 24) -> list[dict[str, Any]]:
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    return [
+        {
+            "$match": {
+                "timestamp": {"$gte": now - timedelta(hours=hours), "$lte": now},
+                "metadata.pond_id": pond_id,
+                "metadata.metric": "ph",
+                "metadata.source": "sensor",
+            }
+        },
+        {
+            "$group": {
+                "_id": "$metadata.pond_id",
+                "ph_max": {"$max": "$value"},
+                "ph_min": {"$min": "$value"},
+                "samples": {"$sum": 1},
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "pond_id": "$_id",
+                "ph_max": 1,
+                "ph_min": 1,
+                "samples": 1,
+                "ph_swing": {"$round": [{"$subtract": ["$ph_max", "$ph_min"]}, 3]},
+            }
+        },
+    ]

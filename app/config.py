@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     ALK_WARN: float = 120.0
     CO2_WARN: float = 10.0
     DO_DROP_RATE_WARN_MGPERL_PER_MIN: float = 0.05
+    SALINITY_WARN_LOW: float = 10.0
+    ORP_WARN_LOW: float = 100.0
+    NH3_WARN: float = 0.1
+    NITRITE_WARN: float = 1.0
+    PH_SWING_WARN: float = 0.5
 
 
 settings = Settings()
