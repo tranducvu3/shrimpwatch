@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.log import get_logger
 from app.domain.models import MetricRecord
 from app.domain.ponds import pond_ids
+from app.domain.scenarios import active_offsets
 from app.simulator.api_client import ShrimpWatchClient
 from app.simulator.pond_model import PondSimulator
 
@@ -58,10 +59,12 @@ def backfill(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: dat
 
 
 def tick(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: datetime) -> None:
-    pump_states = client.pump_states()
+    states = client.pond_states()
     batch: list[dict] = []
     for pid, sim in sims.items():
-        batch.extend(_dump(sim.step(now, pump_states.get(pid, False))))
+        state = states.get(pid, {})
+        pump_failed = bool(state.get("pump", {}).get("failed", False))
+        batch.extend(_dump(sim.step(now, pump_failed, active_offsets(state.get("scenarios"), now))))
     try:
         resp = client.ingest_batch(batch)
         if resp.status_code >= 400:

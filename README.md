@@ -279,6 +279,11 @@ Truy cập [http://localhost:8000/docs](http://localhost:8000/docs):
 | `POST /ingest/manual/{metric}` | Nhập test-kit thủ công: `alkalinity`, `tan`, `nitrite` |
 | `GET /ponds` | Danh sách 6 ao + trạng thái quạt |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Đánh dấu/hồi phục quạt nước |
+| `GET /ponds/readings` | Giá trị cảm biến mới nhất của từng ao (10 phút gần đây) |
+| `POST /ponds/{pond_id}/scenarios` | Bật kịch bản lệch chỉ số: `{"scenario": "do\|temperature\|ph\|salinity", "offset": -3, "duration_min": 15}` |
+| `DELETE /ponds/{pond_id}/scenarios[/{scenario}]` | Tắt một hoặc tất cả kịch bản của ao |
+| `GET /ponds/scenarios/catalog` | Giới hạn độ lệch của từng kịch bản và ngưỡng cảnh báo |
+| `GET /control` | Bảng điều khiển simulator (xem mục 5.2) |
 | `GET /incidents?state=open` | Truy vấn sự cố theo trạng thái |
 | `PATCH /incidents/{id}?state=...&action=...` | Cập nhật vòng đời sự cố |
 
@@ -287,12 +292,22 @@ curl http://localhost:8000/healthz
 # {"status":"ok","mongo":true,"farm_id":"farm-001","env":"development", ...}
 ```
 
-### 5.2. Xem dữ liệu thô bằng MongoDB Compass
+### 5.2. Bảng điều khiển simulator
+
+Mở [http://localhost:8000/control](http://localhost:8000/control) để tạo hành vi bất thường cho từng ao mà không cần gọi API bằng tay:
+
+- **Nguồn quạt nước**: bật/tắt quạt nước (dùng `POST /ponds/{id}/pump/fail`) → `pump_power` về 0 W, DO và ORP sụt, worker mở sự cố `pump_failure`.
+- **Kịch bản môi trường**: lệch DO, nhiệt độ, pH hoặc độ mặn so với mức bình thường trong 5–120 phút. Có sẵn các nút nhanh: *Giảm oxy*, *Nắng nóng*, *pH tăng vọt*, *Mưa lớn*.
+- Trang tự cập nhật mỗi 5 giây: chỉ số mới nhất (tô màu khi vượt ngưỡng), kịch bản đang chạy, sự cố đang mở.
+
+Simulator áp dụng thay đổi ở lần gửi kế tiếp (30 giây). Kịch bản tự hết hạn; **Khôi phục tất cả ao** bật lại quạt và xoá mọi kịch bản. API không có xác thực, nên không mở cổng 8000 ra Internet.
+
+### 5.3. Xem dữ liệu thô bằng MongoDB Compass
 
 - **Atlas (Cloud):** dán chuỗi `mongodb+srv://...` vào Compass → database `shrimpwatch`.
 - **Docker local:** `mongodb://shrimp_app:shrimp_pass@localhost:27017/shrimpwatch?authSource=shrimpwatch`
 
-### 5.3. Giám sát trên Datadog
+### 5.4. Giám sát trên Datadog
 
 | Màn hình | Đường dẫn |
 |---|---|

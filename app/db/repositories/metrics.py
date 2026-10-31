@@ -6,7 +6,12 @@ from datetime import datetime
 from typing import Any
 
 from app.db.mongo import metrics_collection, metrics_hourly_collection
-from app.db.pipelines import compute_do_drop_rate_pipeline, compute_ph_swing_pipeline, rollup_hourly_pipeline
+from app.db.pipelines import (
+    compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
+    latest_readings_pipeline,
+    rollup_hourly_pipeline,
+)
 from app.domain.models import MetricRecord
 
 _TS_META = ["farm_id", "pond_id", "device_id", "device_type", "metric", "source", "unit"]
@@ -69,6 +74,10 @@ def do_windows(pond_ids: list[str], window_sec: int) -> dict[str, dict]:
     """Ket qua cua so DO 5 phut cho nhieu ao trong 1 lan aggregate, theo pond_id."""
     pipeline = compute_do_drop_rate_pipeline(pond_ids, window_sec=window_sec)
     return {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
+
+
+def latest_readings(pond_ids: list[str], metrics: list[str], since: datetime) -> list[dict]:
+    return list(metrics_collection().aggregate(latest_readings_pipeline(pond_ids, metrics, since)))
 
 
 def ph_swing(pond_id: str) -> float | None:
