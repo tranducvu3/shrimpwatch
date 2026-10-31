@@ -1,4 +1,4 @@
-from app.db import init_collections
+from app.db.schema import init_collections
 from app.core.log import get_logger
 
 logger = get_logger("init_db")

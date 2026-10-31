@@ -1,305 +1,106 @@
+"""Kiem tra 1 ao: thu thap so lieu -> ap quy tac (domain) -> mo/cap nhat/dong su co (service)."""
+
 from __future__ import annotations
 
 import time
-import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from ddtrace import tracer
 
+from app.core.clock import utcnow
 from app.core.config import settings
-from app.db import (
-    compute_do_drop_rate_pipeline,
-    compute_ph_swing_pipeline,
-    events_collection,
-    incidents_collection,
-    metrics_collection,
-    metrics_hourly_collection,
-    pack_ts_doc,
-    run_hourly_rollup,
-)
 from app.core.log import get_logger
-from app.core.telemetry import gauge, increment, set_span_tags, init_metrics
-from app.domain.incident_lifecycle import ACTIVE_STATES
+from app.core.telemetry import init_metrics, set_span_tags
+from app.db.repositories import metrics as metrics_repo
 from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered
-from app.domain.models import (
-    DeviceType,
-    Incident,
-    IncidentEvidence,
-    IncidentState,
-    Severity,
-    Source,
-)
+from app.domain.models import DeviceType, IncidentEvidence
 from app.domain.ponds import pond_ids
-from app.domain.water_chemistry import co2_mg_per_l, nh3_mg_per_l
+from app.services import derivations
+from app.services import incidents as incident_service
 
 logger = get_logger("worker")
 
-
-def derive_co2_for_pond(pond_id: str, timestamp: datetime) -> float | None:
-    last_alk_doc = metrics_collection().find_one(
-        {
-            "metadata.pond_id": pond_id,
-            "metadata.metric": "alkalinity",
-            "metadata.source": {"$in": ["manual"]},
-            "timestamp": {"$gte": timestamp - timedelta(hours=24)},
-        },
-        sort=[("timestamp", -1)],
-    )
-    last_ph_doc = metrics_collection().find_one(
-        {
-            "metadata.pond_id": pond_id,
-            "metadata.metric": "ph",
-            "metadata.source": {"$in": ["sensor"]},
-            "timestamp": {"$gte": timestamp - timedelta(minutes=30)},
-        },
-        sort=[("timestamp", -1)],
-    )
-    if not last_alk_doc or not last_ph_doc:
-        return None
-    return co2_mg_per_l(last_alk_doc["value"], last_ph_doc["value"])
+RECENT = timedelta(minutes=5)
 
 
-def _latest_value(pond_id: str, metric: str, since: datetime) -> float | None:
-    doc = metrics_collection().find_one(
-        {"metadata.pond_id": pond_id, "metadata.metric": metric, "timestamp": {"$gte": since}},
-        sort=[("timestamp", -1)],
-    )
-    return doc["value"] if doc else None
-
-
-def derive_nh3_for_pond(pond_id: str, timestamp: datetime) -> float | None:
-    tan = _latest_value(pond_id, "tan", timestamp - timedelta(hours=24))
-    ph = _latest_value(pond_id, "ph", timestamp - timedelta(minutes=30))
-    temp = _latest_value(pond_id, "temperature", timestamp - timedelta(minutes=30))
-    if tan is None or ph is None or temp is None:
-        return None
-    return nh3_mg_per_l(tan, ph, temp)
-
-
-def compute_ph_swing(pond_id: str) -> float | None:
-    rows = list(metrics_hourly_collection().aggregate(compute_ph_swing_pipeline(pond_id)))
-    return rows[0]["ph_swing"] if rows else None
-
-
-def write_derived_record(pond_id: str, timestamp: datetime, metric: str, value: float, unit: str):
-    doc = pack_ts_doc(
-        {
-            "timestamp": timestamp,
-            "farm_id": settings.FARM_ID,
-            "pond_id": pond_id,
-            "device_id": f"worker-{metric}-{pond_id}",
-            "device_type": DeviceType.WORKER.value,
-            "metric": metric,
-            "source": Source.DERIVED.value,
-            "unit": unit,
-            "value": value,
-        }
-    )
-    metrics_collection().insert_one(doc)
-    gauge(
-        f"metric.{metric}",
-        value,
-        tags={"pond": pond_id, "device_type": DeviceType.WORKER.value, "source": Source.DERIVED.value},
-    )
-    increment(f"{metric}.derived", tags={"pond": pond_id})
-
-
-def evaluate_do_drop(ponds: list[str], window_sec: int | None = None) -> dict[str, dict]:
-    pipeline = compute_do_drop_rate_pipeline(ponds, window_sec=window_sec or settings.DO_WINDOW_SEC)
-    rows = {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
+def load_do_windows(pond_ids: list[str]) -> dict[str, dict]:
+    rows = metrics_repo.do_windows(pond_ids, window_sec=settings.DO_WINDOW_SEC)
     for pond_id, row in rows.items():
         logger.info("DO window computed", extra={"pond": pond_id, "row": row})
     return rows
 
 
-def avg_pump_power_last_n(pond_id: str, minutes: int = 5) -> float | None:
-    docs = list(
-        metrics_collection()
-        .find(
-            {
-                "metadata.pond_id": pond_id,
-                "metadata.metric": "pump_power",
-                "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=minutes)},
-            }
-        )
-        .sort("timestamp", -1)
-        .limit(30)
-    )
-    if not docs:
-        return None
-    return sum(d["value"] for d in docs) / len(docs)
-
-
-def find_open_incident(pond_id: str) -> dict | None:
-    return incidents_collection().find_one({"pond_id": pond_id, "state": {"$in": [s.value for s in ACTIVE_STATES]}})
-
-
-def open_or_update_incident(
-    pond_id: str,
-    severity: Severity,
-    title: str,
-    description: str,
-    evidence: IncidentEvidence,
-    root_cause: str | None = None,
-) -> str:
-    existing = find_open_incident(pond_id)
-    if existing:
-        incidents_collection().update_one(
-            {"_id": existing["_id"]},
-            {
-                "$set": {
-                    "updated_at": datetime.utcnow(),
-                    "severity": severity.value,
-                    "title": title,
-                    "description": description,
-                    "evidence": evidence.model_dump(),
-                    "root_cause": root_cause or existing.get("root_cause"),
-                }
-            },
-        )
-        return existing["_id"]
-
-    incident_id = f"inc-{uuid.uuid4().hex[:10]}"
-    inc = Incident(
-        id=incident_id,
-        farm_id=settings.FARM_ID,
-        pond_id=pond_id,
-        severity=severity,
-        title=title,
-        description=description,
-        evidence=evidence,
-        root_cause=root_cause,
-    )
-    incidents_collection().insert_one(inc.model_dump(by_alias=True))
-    events_collection().insert_one(
-        {
-            "timestamp": datetime.utcnow(),
-            "pond_id": pond_id,
-            "event": "incident_open",
-            "incident_id": incident_id,
-            "details": {"severity": severity.value, "title": title},
-        }
-    )
-    increment(
-        "incident.open",
-        tags={"pond": pond_id, "severity": severity.value, "root_cause": root_cause or "unknown"},
-    )
-    logger.error("incident opened", extra={"incident_id": incident_id, "pond": pond_id, "severity": severity.value})
-    return incident_id
-
-
-def check_pond(pond_id: str, do_row: dict | None = None):
+def check_pond(pond_id: str, do_row: dict | None = None) -> None:
     set_span_tags(pond_id=pond_id, device_type=DeviceType.WORKER.value)
     if do_row is None:
-        do_row = evaluate_do_drop([pond_id]).get(pond_id)
-    now = datetime.utcnow()
+        do_row = load_do_windows([pond_id]).get(pond_id)
+    do_row = do_row or {}
+    now = utcnow()
 
-    co2 = derive_co2_for_pond(pond_id, now)
-    if co2 is not None:
-        if co2 > settings.CO2_WARN:
-            logger.warning("CO2 warning", extra={"pond": pond_id, "co2": co2})
-        write_derived_record(pond_id, now, "co2", co2, "mg/L")
+    derived = derivations.derive_and_record(pond_id, now)
 
-    nh3 = derive_nh3_for_pond(pond_id, now)
-    if nh3 is not None:
-        if nh3 > settings.NH3_WARN:
-            logger.warning("NH3 warning", extra={"pond": pond_id, "nh3": nh3})
-        write_derived_record(pond_id, now, "nh3", nh3, "mg/L")
-
-    ph_swing = compute_ph_swing(pond_id)
-    if ph_swing is not None:
-        if ph_swing > settings.PH_SWING_WARN:
-            logger.warning("pH swing warning", extra={"pond": pond_id, "ph_swing": ph_swing})
-        write_derived_record(pond_id, now, "ph_swing", ph_swing, "pH")
-
-    last_orp = _latest_value(pond_id, "orp", now - timedelta(minutes=5))
+    last_orp = metrics_repo.latest_value(pond_id, "orp", now - RECENT)
     if last_orp is not None and last_orp < settings.ORP_WARN_LOW:
         logger.warning("ORP low: day ao thieu oxy, nguy co H2S", extra={"pond": pond_id, "orp": last_orp})
 
-    avg_pump = avg_pump_power_last_n(pond_id, minutes=5)
-    drop_rate = do_row.get("do_drop_rate_mg_per_l_per_min") if do_row else None
-    min_do = do_row.get("min_do") if do_row else None
-
-    snapshot = PondSnapshot(pond_id=pond_id, avg_pump_watts=avg_pump, do_drop_rate=drop_rate, min_do=min_do)
+    snapshot = PondSnapshot(
+        pond_id=pond_id,
+        avg_pump_watts=metrics_repo.average_value(pond_id, "pump_power", now - RECENT),
+        do_drop_rate=do_row.get("do_drop_rate_mg_per_l_per_min"),
+        min_do=do_row.get("min_do"),
+    )
     thresholds = Thresholds.from_settings()
+
     finding = evaluate(snapshot, thresholds)
     if finding:
         evidence = IncidentEvidence(
-            do_drop_rate_mg_per_l_per_min=drop_rate,
-            avg_pump_power_watts=avg_pump,
-            min_do=min_do,
+            do_drop_rate_mg_per_l_per_min=snapshot.do_drop_rate,
+            avg_pump_power_watts=snapshot.avg_pump_watts,
+            min_do=snapshot.min_do,
             last_orp_mv=last_orp,
-            nh3_mg_per_l=nh3,
-            ph_swing_24h=ph_swing,
+            nh3_mg_per_l=derived.nh3,
+            ph_swing_24h=derived.ph_swing,
             do_window_sec=settings.DO_WINDOW_SEC,
             notes={"timestamp": now.isoformat()},
         )
-        open_or_update_incident(
-            pond_id, finding.severity, finding.title, finding.description, evidence, root_cause=finding.root_cause
-        )
-        return
-
-    existing = find_open_incident(pond_id)
-    if existing and has_recovered(snapshot, thresholds):
-        incidents_collection().update_one(
-            {"_id": existing["_id"]},
-            {
-                "$set": {
-                    "updated_at": datetime.utcnow(),
-                    "state": IncidentState.RECOVERED.value,
-                },
-                "$push": {
-                    "actions": {
-                        "time": datetime.utcnow(),
-                        "state": IncidentState.RECOVERED.value,
-                        "action": "worker_auto_recovered",
-                    }
-                },
-            },
-        )
-        events_collection().insert_one(
-            {
-                "timestamp": datetime.utcnow(),
-                "pond_id": pond_id,
-                "event": "incident_recovered",
-                "incident_id": existing["_id"],
-            }
-        )
-        increment("incident.recovered", tags={"pond": pond_id})
-        logger.info("incident auto-recovered", extra={"pond": pond_id, "incident_id": existing["_id"]})
+        incident_service.open_or_update(pond_id, finding, evidence)
+    elif has_recovered(snapshot, thresholds):
+        incident_service.auto_recover(pond_id)
 
 
-def run_worker():
+def run_worker() -> None:
     init_metrics()
     logger.info("worker starting")
     ponds = pond_ids()
     # Lan dau: backfill toan bo khoang TTL; sau do chi tinh lai gio truoc + gio hien tai.
-    rollup_since = datetime.utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
+    rollup_since = utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
     last_rollup = 0.0
     while True:
         t0 = time.time()
         if t0 - last_rollup >= settings.ROLLUP_INTERVAL_SEC:
             try:
                 with tracer.trace("worker.rollup_hourly"):
-                    run_hourly_rollup(rollup_since)
+                    metrics_repo.run_hourly_rollup(rollup_since)
                 last_rollup = t0
-                rollup_since = datetime.utcnow() - timedelta(hours=1)
+                rollup_since = utcnow() - timedelta(hours=1)
             except Exception as e:
                 logger.error("hourly rollup failed", extra={"err": str(e)})
+
         try:
             with tracer.trace("worker.do_window"):
-                do_rows = evaluate_do_drop(ponds)
+                do_rows = load_do_windows(ponds)
         except Exception as e:
             logger.error("DO window failed", extra={"err": str(e)})
             do_rows = {}
+
         for pid in ponds:
             try:
                 with tracer.trace("worker.check_pond", resource=pid):
                     check_pond(pid, do_rows.get(pid))
             except Exception as e:
                 logger.error("check_pond failed", extra={"pond": pid, "err": str(e)})
-        elapsed = time.time() - t0
-        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - elapsed))
+
+        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - (time.time() - t0)))
 
 
 if __name__ == "__main__":

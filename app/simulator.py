@@ -197,7 +197,7 @@ def post_manual_readings(api_url: str, ponds: list[str], now: datetime):
 
 
 async def run_simulation():
-    from app.db import get_client
+    from app.db.mongo import get_client
     from app.core.telemetry import init_metrics
 
     init_metrics()

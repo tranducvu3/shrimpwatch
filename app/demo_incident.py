@@ -5,7 +5,7 @@ import time
 import httpx
 
 from app.core.config import settings
-from app.db import get_client, incidents_collection
+from app.db.mongo import get_client, incidents_collection
 from app.core.log import get_logger
 
 logger = get_logger("demo_incident")

@@ -4,28 +4,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import app
+from app.api.schemas import BatchIngestRequest, ManualInput
 from app.core.config import settings
-from app.db import (
-    compute_do_drop_rate_pipeline,
-    compute_ph_swing_pipeline,
+from app.db.mongo import (
     events_collection,
     get_client,
     incidents_collection,
-    init_collections,
-    METRICS_POND_METRIC_TS_INDEX,
     metrics_collection,
     metrics_hourly_collection,
-    pack_ts_doc,
     ponds_collection,
-    run_hourly_rollup,
 )
-from app.api.schemas import BatchIngestRequest, ManualInput
-from app.domain.models import (
-    DeviceType,
-    MetricRecord,
-    MetricType,
-    Source,
-)
+from app.db.pipelines import compute_do_drop_rate_pipeline, compute_ph_swing_pipeline
+from app.db.repositories.metrics import pack_ts_doc, run_hourly_rollup
+from app.db.schema import METRICS_POND_METRIC_TS_INDEX, init_collections
+from app.domain.models import DeviceType, MetricRecord, MetricType, Source
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -200,7 +192,7 @@ def test_setwindowfields_do_drop_rate_pipeline():
 
 
 def test_co2_derivation_formula():
-    from app.worker import derive_co2_for_pond
+    from app.services.derivations import derive_co2_for_pond
 
     now = datetime.utcnow()
     _insert_record("alkalinity", "pond-04", 170.0, ts=now, source="manual", device_type="manual_tester")
@@ -285,7 +277,7 @@ def test_incident_lifecycle_patch(client: TestClient):
 
 
 def test_nh3_derivation_formula():
-    from app.worker import derive_nh3_for_pond
+    from app.services.derivations import derive_nh3_for_pond
 
     now = datetime.utcnow()
     _insert_record("tan", "pond-01", 1.0, ts=now, source="manual", device_type="manual_tester")
