@@ -44,13 +44,13 @@ worker:
 	docker compose restart worker
 
 init-mongo:
-	docker compose exec -T api python -m app.init_db
+	docker compose exec -T api python -m app.cli.init_db
 
 demo:
-	docker compose exec -T api python -m app.demo_incident
+	docker compose exec -T api python -m app.cli.demo_incident
 
 push-dashboards:
-	docker compose exec -T api python -m app.datadog_push
+	docker compose exec -T api python -m app.cli.datadog_push
 
 # Test xoa sach collection -> luon chay tren DB test cua MongoDB local, khong dung .env (Atlas)
 test:
@@ -71,5 +71,5 @@ reset:
 	docker compose down -v
 	docker compose up -d mongodb
 	@sleep 5
-	docker compose exec -T api python -m app.init_db
+	docker compose exec -T api python -m app.cli.init_db
 	docker compose up -d
