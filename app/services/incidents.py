@@ -114,11 +114,13 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
         raise IncidentNotFound(incident_id)
     pond_id = incident.get("pond_id")
     set_span_tags(pond_id=pond_id)
-    ensure_transition(incident.get("state"), state)
+    from_state = incident.get("state")
+    ensure_transition(from_state, state)
+    # Moi lan chuyen buoc deu ghi events (ke ca khi khong kem ghi chu) de timeline khong bi hong
+    details = {"from_state": from_state, "state": state.value}
     if action:
-        events_repo.record(
-            "incident_action", pond_id, incident_id=incident_id, details={"state": state.value, "action": action}
-        )
+        details["action"] = action
+    events_repo.record("incident_action", pond_id, incident_id=incident_id, details=details)
     incidents_repo.set_state(incident_id, state, action=action)
     if state == IncidentState.INVESTIGATING:
         _attach_similar(incident)

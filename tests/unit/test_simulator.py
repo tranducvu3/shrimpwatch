@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 
 from app.core.clock import utcnow
+from app.core.config import settings
 from app.domain.models import DeviceType, MetricType
 from app.domain.scenarios import ScenarioType
 from app.simulator.pond_model import PondSimulator
@@ -60,3 +61,18 @@ def test_do_offset_pulls_do_down_while_pump_runs():
     assert last["do"] < base["do"] - 2.8, f"DO should follow lowered baseline: {base['do']} vs {last['do']}"
     assert last["orp"] < base["orp"], "ORP should follow DO"
     assert last["pump_power"] > 1000
+
+
+@pytest.mark.parametrize("pond_id", [f"pond-0{i}" for i in range(1, 7)])
+def test_healthy_pond_ph_swing_stays_below_warning(pond_id):
+    # 24h, 30 giay/lan nhu simulator: ao khoe khong duoc kich hoat canh bao bien do pH
+    sim = PondSimulator(pond_id)
+    start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    ph = [
+        next(
+            r.value for r in sim.step(start + timedelta(seconds=30 * i), pump_failed=False) if r.metric == MetricType.PH
+        )
+        for i in range(2880)
+    ]
+    assert max(ph) - min(ph) < settings.PH_SWING_WARN
+    assert max(ph) < settings.PH_WARN_HIGH

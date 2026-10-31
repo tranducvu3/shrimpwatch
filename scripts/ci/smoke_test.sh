@@ -13,12 +13,15 @@ docker compose config --quiet
 docker compose up -d --build --wait mongodb api
 docker compose up -d simulator worker
 
+# Doc log vao bien truoc khi grep: voi pipefail, `logs | grep -q` co the tra 141 (SIGPIPE) du da tim thay
+worker_logs() { docker compose logs worker 2>&1; }
+
 echo "Waiting for the worker's first DO window..."
 for _ in $(seq 1 60); do
-  docker compose logs worker 2>&1 | grep -q "DO window computed" && break
+  grep -q "DO window computed" <<<"$(worker_logs)" && break
   sleep 3
 done
-docker compose logs worker 2>&1 | grep -q "DO window computed" || { echo "Worker never computed a DO window"; exit 1; }
+grep -q "DO window computed" <<<"$(worker_logs)" || { echo "Worker never computed a DO window"; exit 1; }
 
 curl -fsS "$API/healthz" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mongo"] is True, d; print("healthz ok")'
 curl -fsS "$API/ponds" | python3 -c 'import json,sys; n=len(json.load(sys.stdin)); assert n == 6, n; print("ponds:", n)'
@@ -36,7 +39,7 @@ assert raw > 0 and hourly > 0, "no data flowed into metrics / metrics_hourly"
 assert "pond_metric_ts" in indexes
 EOF
 
-if docker compose logs worker 2>&1 | grep -E "rollup failed|DO window failed|check_pond failed"; then
+if grep -E "rollup failed|DO window failed|check_pond failed" <<<"$(worker_logs)"; then
   echo "Worker reported errors"
   exit 1
 fi

@@ -2,8 +2,9 @@
 
 from app.domain.models import IncidentState, Severity
 
-# Su co "dang mo": worker cap nhat su co nay thay vi mo su co moi.
-ACTIVE_STATES = (IncidentState.OPEN, IncidentState.INVESTIGATING)
+# Su co "dang mo": worker cap nhat su co nay thay vi mo su co moi, va tu dong chuyen sang Recovered khi ao on dinh.
+# Resolving van la dang mo: ky thuat vien da xu ly nhung chi so lieu moi xac nhan duoc hoi phuc.
+ACTIVE_STATES = (IncidentState.OPEN, IncidentState.INVESTIGATING, IncidentState.RESOLVING)
 
 _NEXT: dict[IncidentState, set[IncidentState]] = {
     IncidentState.OPEN: {IncidentState.INVESTIGATING, IncidentState.RESOLVING, IncidentState.RECOVERED},

@@ -29,7 +29,7 @@ class PondSimulator:
         self._rng = random.Random(seed + sum(ord(c) for c in pond_id))
         self._temp_base = 28.5
         self._do_base = 5.8
-        # pH dinh ngay = base + 0.35 = 8.4: con 0.1 duoi nguong PH_WARN_HIGH, khong bao dong gia moi dem
+        # pH dinh ngay = base + 0.30 = 8.35: con 0.15 duoi nguong PH_WARN_HIGH, khong bao dong gia moi dem
         self._ph_base = 8.05
         self._do_last = self._do_base
         self._do_last_ts = utcnow()
@@ -45,7 +45,8 @@ class PondSimulator:
         temp = self._temp_base + temp_amp * 3.0 + offsets.get(ScenarioType.TEMPERATURE, 0.0) + self._rng.gauss(0, 0.15)
 
         ph_amp = diurnal_amplitude(hf, phase_offset_hours=12)
-        ph = self._ph_base + ph_amp * 0.35 + offsets.get(ScenarioType.PH, 0.0) + self._rng.gauss(0, 0.05)
+        # Bien do ngay 0.30 + nhieu cam bien nho: bien do pH 24h cua ao khoe < PH_SWING_WARN (0.5), khong canh bao gia
+        ph = self._ph_base + ph_amp * 0.30 + offsets.get(ScenarioType.PH, 0.0) + self._rng.gauss(0, 0.02)
 
         # Kich ban DO doi baseline: DO bi keo dan ve muc moi (hang so thoi gian ~10 phut), khong nhay tuc thi
         do_amp = diurnal_amplitude(hf, phase_offset_hours=18)
