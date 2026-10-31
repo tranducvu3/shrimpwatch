@@ -1,0 +1,72 @@
+name: Merge stacked PRs
+
+# Khi 1 PR merge vao main, tu dong merge cac PR xep chong len no (PR con -> chau -> ...):
+# doi base sang main roi squash-merge neu da duoc duyet va CI xanh. Dung lai (kem comment) o PR chua san sang.
+# Chi PR co lich su chua head cua PR vua merge moi duoc coi la PR con.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: stack-merge
+  cancel-in-progress: false
+
+jobs:
+  merge-children:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Retarget and merge the next PR in the stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MERGED_REF: ${{ github.event.pull_request.head.ref }}
+          MERGED_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGED_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          parent_ref="$MERGED_REF"; parent_sha="$MERGED_SHA"; parent_num="$MERGED_NUM"
+
+          find_child() {
+            # PR mo co base la main hoac nhanh cha, va co lich su chua head cua PR cha
+            gh pr list --state open --limit 100 --json number,baseRefName,headRefName,headRefOid \
+              --jq ".[] | select(.baseRefName == \"main\" or .baseRefName == \"$parent_ref\") | \"\(.number) \(.baseRefName) \(.headRefName) \(.headRefOid)\"" |
+            while read -r num base head sha; do
+              status=$(gh api "repos/$GH_REPO/compare/$parent_sha...$sha" --jq .status 2>/dev/null || echo none)
+              if [ "$status" = "ahead" ]; then echo "$num $base $head $sha"; break; fi
+            done
+          }
+
+          while :; do
+            child=$(find_child)
+            if [ -z "$child" ]; then echo "No PR stacked on #$parent_num"; break; fi
+            read -r num base head sha <<<"$child"
+            echo "::group::#$num ($head), stacked on #$parent_num"
+
+            if [ "$base" != "main" ]; then gh pr edit "$num" --base main; fi
+
+            state=UNKNOWN
+            for _ in $(seq 1 30); do
+              state=$(gh pr view "$num" --json mergeStateStatus --jq .mergeStateStatus)
+              [ "$state" != "UNKNOWN" ] && break
+              sleep 10
+            done
+            echo "merge state: $state"
+
+            if [ "$state" != "CLEAN" ] && [ "$state" != "HAS_HOOKS" ]; then
+              gh pr comment "$num" --body "Stack auto-merge stopped here: #$parent_num merged and this PR now targets \`main\`, but it is not mergeable yet (\`$state\`: needs approval, green checks or a conflict fix). Merge it manually to continue the chain."
+              echo "::endgroup::"
+              break
+            fi
+
+            gh pr merge "$num" --squash
+            echo "::endgroup::"
+            parent_ref="$head"; parent_sha="$sha"; parent_num="$num"
+          done
