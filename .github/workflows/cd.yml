@@ -1,0 +1,80 @@
+name: CD
+
+# Chi build va day image khi CI tren main xanh: lint, test va smoke test deu da qua cho dung commit nay.
+# Image: ghcr.io/<owner>/shrimpwatch, tag `sha-<7 ky tu>` va `latest`.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Publish image (GHCR)
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build dung commit CI da kiem tra, khong phai dau main hien tai
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # type=sha cua metadata-action doc github.sha (dau main), khong phai commit CI da chay
+      # `latest` chi khi commit nay van la dau main: CI chay lai cho commit cu khong duoc ghi de `latest`
+      - id: rev
+        run: |
+          echo "short=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          echo "is_tip=$([ "$tip" = "$HEAD_SHA" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=sha-${{ steps.rev.outputs.short }}
+            type=raw,value=latest,enable=${{ steps.rev.outputs.is_tip }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo '### Image published'
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

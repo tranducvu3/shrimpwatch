@@ -50,6 +50,10 @@ ruff format --check app tests
 CI (`.github/workflows/ci.yml`) runs lint, tests with a coverage floor of 64% (`.coveragerc`), and a Docker
 Compose smoke test (`scripts/ci/smoke_test.sh`). All three must pass.
 
+CD (`.github/workflows/cd.yml`) runs after CI succeeds on a push to `main`: it builds the `Dockerfile` and pushes
+`ghcr.io/tranducvu3/shrimpwatch:sha-<7>` and `:latest`. The repo is public and the package can be too, so
+`.dockerignore` must keep `.env` out of the image.
+
 ## Conventions
 
 - Code comments are Vietnamese without diacritics (`# Toc do sut DO ...`); identifiers and log messages are English.
