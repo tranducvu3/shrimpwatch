@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.domain.models import DeviceType, MetricType
 from app.domain.scenarios import ScenarioType
 from app.simulator.pond_model import PondSimulator
+from app.simulator.runner import BACKFILL_HOURS, backfill_start, warm_up
 
 
 def test_step_emits_one_record_per_metric():
@@ -76,3 +77,34 @@ def test_healthy_pond_ph_swing_stays_below_warning(pond_id):
     ]
     assert max(ph) - min(ph) < settings.PH_SWING_WARN
     assert max(ph) < settings.PH_WARN_HIGH
+
+
+def test_backfill_start_without_data_covers_full_window():
+    now = utcnow()
+    assert backfill_start(now, None) == now - timedelta(hours=BACKFILL_HOURS)
+
+
+def test_backfill_start_only_fills_gap_after_latest_reading():
+    now = utcnow()
+    latest = now - timedelta(minutes=3)
+    assert backfill_start(now, latest) == latest + timedelta(seconds=settings.SIMULATOR_INTERVAL_SEC)
+
+
+def test_backfill_start_caps_at_window_for_old_data():
+    now = utcnow()
+    assert backfill_start(now, now - timedelta(days=2)) == now - timedelta(hours=BACKFILL_HOURS)
+
+
+def test_warm_up_sends_only_gap_but_warms_model_state():
+    now = utcnow()
+    warmed = {"pond-01": PondSimulator("pond-01", seed=0)}
+    records = warm_up(warmed, now, send_from=now - timedelta(minutes=2))
+    # Chi gui ~2 phut cuoi (5 buoc x so chi so), khong gui lai 6h
+    assert 0 < len(records) <= 5 * len(PondSimulator("pond-01").step(now, pump_failed=False))
+    assert all(datetime.fromisoformat(r["timestamp"]) >= now - timedelta(minutes=2) for r in records)
+
+    # Mo hinh da chay qua 6h nen buoc ke tiep lien mach voi chuoi cu (khong nhay ve muc DO ban dau)
+    cold = PondSimulator("pond-01", seed=0)
+    warm_up({"pond-01": cold}, now, send_from=None)
+    assert cold._do_last == warmed["pond-01"]._do_last
+    assert cold._do_last_ts == now

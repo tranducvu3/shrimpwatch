@@ -208,6 +208,13 @@ def import_history(incidents: list[Incident]) -> int:
     return imported
 
 
+def report_active(pond_ids: list[str]) -> None:
+    """Gauge 0/1 moi ao moi chu ky: dashboard dem su co DANG mo (counter incident.open chi dem lan mo)."""
+    active = incidents_repo.active_pond_ids()
+    for pid in pond_ids:
+        gauge("incident.active", 1 if pid in active else 0, tags={"pond": pid})
+
+
 def list_incidents(state: IncidentState | None = None) -> list[dict]:
     return incidents_repo.list_recent(state)
 

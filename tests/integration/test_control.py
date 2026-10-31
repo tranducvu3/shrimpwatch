@@ -70,6 +70,25 @@ def test_live_readings_return_latest_value(client: TestClient):
     assert r.json()[POND]["do"]["unit"] == "mg/L"
 
 
+def test_live_readings_window(client: TestClient):
+    doc = {
+        "timestamp": utcnow() - timedelta(minutes=30),
+        "farm_id": settings.FARM_ID,
+        "pond_id": "pond-06",
+        "device_id": "node-pond-06",
+        "device_type": "water_node",
+        "metric": "orp",
+        "source": "sensor",
+        "unit": "mV",
+        "value": 123.0,
+    }
+    metrics_collection().insert_one(pack_ts_doc(doc))
+    # Mac dinh 10 phut: ban ghi 30 phut truoc khong hien; simulator hoi 6h thi thay
+    assert "orp" not in client.get("/ponds/readings").json().get("pond-06", {})
+    assert client.get("/ponds/readings", params={"window_min": 60}).json()["pond-06"]["orp"]["value"] == 123.0
+    assert client.get("/ponds/readings", params={"window_min": 100000}).status_code == 422
+
+
 def test_scenario_catalog_and_control_page(client: TestClient):
     catalog = client.get("/ponds/scenarios/catalog").json()
     assert {s["type"] for s in catalog["scenarios"]} == {"do", "temperature", "ph", "salinity"}

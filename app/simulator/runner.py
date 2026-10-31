@@ -41,14 +41,48 @@ def post_manual_readings(client: ShrimpWatchClient, ponds: list[str], now: datet
                 logger.warning("manual ingest failed", extra={"metric": metric, "err": str(e)})
 
 
-def backfill(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: datetime) -> None:
-    """Nap 6h lich su khi khoi dong de dashboard va rollup co du lieu ngay."""
+def backfill_start(now: datetime, latest: datetime | None) -> datetime:
+    """Chi nap khoang trong tu ban ghi moi nhat: khoi dong lai khong ghi de chuoi du lieu da co
+    (du lieu chong lap lam sai bien do pH 24h va tao dot ingest gia)."""
+    start = now - timedelta(hours=BACKFILL_HOURS)
+    if latest is not None:
+        start = max(start, latest + timedelta(seconds=settings.SIMULATOR_INTERVAL_SEC))
+    return start
+
+
+def warm_up(sims: dict[str, PondSimulator], now: datetime, send_from: datetime | None) -> list[dict]:
+    """Chay mo hinh qua ca cua so 6h de trang thai (DO, ORP, do man) lien mach voi chuoi dang co,
+    chi tra ve ban ghi tu `send_from` (None: khong gui gi). Bo buoc nay thi DO khoi dong lai o muc
+    ban dau, lech so voi chuoi cu -> worker mo nham su co do_anomaly_drop."""
     records: list[dict] = []
     t = now - timedelta(hours=BACKFILL_HOURS)
     while t <= now:
-        for pid, sim in sims.items():
-            records.extend(_dump(sim.step(t, pump_failed=False)))
+        for sim in sims.values():
+            step = sim.step(t, pump_failed=False)
+            if send_from is not None and t >= send_from:
+                records.extend(_dump(step))
         t += timedelta(seconds=settings.SIMULATOR_INTERVAL_SEC)
+    return records
+
+
+def backfill(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: datetime) -> None:
+    """Nap lich su con thieu (toi da 6h) khi khoi dong de dashboard va rollup co du lieu ngay."""
+    try:
+        latest = client.latest_reading_time(window_min=BACKFILL_HOURS * 60)
+        send_from: datetime | None = backfill_start(now, latest)
+    except Exception as e:
+        # Khong biet du lieu hien co thi khong gui, tranh ghi chong; van lam nong mo hinh
+        logger.warning("backfill skipped: cannot read latest reading", extra={"err": str(e)})
+        latest, send_from = None, None
+    records = warm_up(sims, now, send_from)
+    logger.info(
+        "backfill window",
+        extra={
+            "send_from": send_from.isoformat() if send_from else None,
+            "latest": latest.isoformat() if latest else None,
+            "records": len(records),
+        },
+    )
     for i in range(0, len(records), MAX_BATCH):
         chunk = records[i : i + MAX_BATCH]
         try:

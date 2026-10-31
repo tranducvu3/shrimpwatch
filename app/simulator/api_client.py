@@ -29,6 +29,13 @@ class ShrimpWatchClient:
             logger.warning("fetch ponds failed", extra={"err": str(e)})
             return {}
 
+    def latest_reading_time(self, window_min: int) -> datetime | None:
+        """Thoi diem ban ghi cam bien moi nhat (moi ao, moi chi so) trong `window_min` phut; None neu chua co."""
+        r = httpx.get(self._url("/ponds/readings"), params={"window_min": window_min}, timeout=30.0)
+        r.raise_for_status()
+        stamps = [m["timestamp"] for metrics in r.json().values() for m in metrics.values()]
+        return datetime.fromisoformat(max(stamps)) if stamps else None
+
     def ingest_batch(self, records: list[dict], timeout: float = 15.0) -> httpx.Response:
         return httpx.post(self._url("/ingest/batch"), json={"records": records}, timeout=timeout)
 

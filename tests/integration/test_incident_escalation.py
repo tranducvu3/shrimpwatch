@@ -1,4 +1,5 @@
 from app.db.mongo import events_collection, incidents_collection
+from app.db.repositories import incidents as incidents_repo
 from app.domain.incident_rules import Finding
 from app.domain.models import IncidentEvidence, IncidentState, Severity
 from app.services import incidents as incident_service
@@ -28,6 +29,15 @@ def test_incident_escalates_and_records_event():
         "from_root_cause": "do_anomaly_drop",
         "to_root_cause": "pump_failure",
     }
+
+
+def test_active_pond_ids_tracks_open_and_recovered():
+    _clear_active()
+    assert POND not in incidents_repo.active_pond_ids()
+    incident_service.open_or_update(POND, WARNING, IncidentEvidence(min_do=5.0))
+    assert POND in incidents_repo.active_pond_ids()
+    incident_service.auto_recover(POND)
+    assert POND not in incidents_repo.active_pond_ids()
 
 
 def test_incident_is_not_downgraded_but_evidence_refreshes():

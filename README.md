@@ -266,7 +266,7 @@ docker compose exec -T api python -m app.cli.init_db
 docker compose exec -T api python -m app.cli.seed_incident_history   # lịch sử sự cố cho Vector Search
 ```
 
-Lệnh này tạo **Time Series Collection + TTL index** và seed 6 ao. Khi container `simulator` khởi động, nó còn tự nạp lại **6 giờ dữ liệu lịch sử** để Dashboard/Monitor có dữ liệu nền phân tích ngay.
+Lệnh này tạo **Time Series Collection + TTL index** và seed 6 ao. Khi container `simulator` khởi động, nó tự nạp phần dữ liệu lịch sử còn thiếu (tối đa **6 giờ**, tính từ bản ghi mới nhất) để Dashboard/Monitor có dữ liệu nền phân tích ngay; khởi động lại không ghi chồng dữ liệu đã có.
 
 ### Bước 4: Trỏ dữ liệu lên MongoDB Atlas (Cloud)
 
@@ -297,7 +297,7 @@ Truy cập [http://localhost:8000/docs](http://localhost:8000/docs):
 | `POST /ingest/manual/{metric}` | Nhập test-kit thủ công: `alkalinity`, `tan`, `nitrite` |
 | `GET /ponds` | Danh sách 6 ao + trạng thái quạt |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Đánh dấu/hồi phục quạt nước |
-| `GET /ponds/readings` | Giá trị cảm biến mới nhất của từng ao (10 phút gần đây) |
+| `GET /ponds/readings?window_min=10` | Giá trị cảm biến mới nhất của từng ao trong `window_min` phút gần đây (mặc định 10, tối đa 360) |
 | `POST /ponds/{pond_id}/scenarios` | Bật kịch bản lệch chỉ số: `{"scenario": "do\|temperature\|ph\|salinity", "offset": -3, "duration_min": 15}` |
 | `DELETE /ponds/{pond_id}/scenarios[/{scenario}]` | Tắt một hoặc tất cả kịch bản của ao |
 | `GET /ponds/scenarios/catalog` | Giới hạn độ lệch của từng kịch bản và ngưỡng cảnh báo |
@@ -344,6 +344,10 @@ Monitor trong [datadog/monitors/](datadog/monitors/) (cùng ngưỡng với `app
 | Nhiệt độ ngoài ngưỡng | ngoài 26–32 °C | `temperature_out_of_range` (warning) |
 | pH ngoài ngưỡng | ngoài 7.5–8.5 | `ph_out_of_range` (warning) |
 | Độ mặn thấp | < 10 ppt | `salinity_low` (warning) |
+
+Monitor xét trung bình **5 phút đầy đủ** và Datadog nhận số liệu chậm vài chục giây, nên khi demo quạt hỏng hãy để quạt tắt **ít nhất 8 phút** thì monitor `pump_power < 50 W` mới chuyển Alert (worker mở sự cố sớm hơn, theo dữ liệu MongoDB).
+
+Widget **Sự cố ĐANG MỞ** đọc gauge `shrimpwatch.incident.active` (0/1 mỗi ao, worker gửi mỗi chu kỳ 30 giây), nên con số giảm ngay khi sự cố hồi phục. Counter `shrimpwatch.incident.open` / `incident.recovered` vẫn dùng để đếm số lần mở / hồi phục.
 
 Một ao chỉ có một sự cố đang mở. Khi có nguyên nhân nghiêm trọng hơn, sự cố được nâng mức và ghi event `incident_escalated`; sự cố không bị hạ mức nên vẫn giữ nguyên nhân nghiêm trọng nhất đến khi hồi phục.
 

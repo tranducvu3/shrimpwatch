@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from datetime import timedelta
+
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.schemas import ScenarioRequest
 from app.domain.scenarios import InvalidScenario, ScenarioType
@@ -13,9 +15,9 @@ def list_ponds():
 
 
 @router.get("/readings")
-def live_readings():
-    """Gia tri cam bien moi nhat moi ao (10 phut gan day)."""
-    return pond_service.live_readings()
+def live_readings(window_min: int = Query(default=10, ge=1, le=pond_service.MAX_READINGS_WINDOW_MIN)):
+    """Gia tri cam bien moi nhat moi ao trong `window_min` phut gan day."""
+    return pond_service.live_readings(timedelta(minutes=window_min))
 
 
 @router.get("/scenarios/catalog")

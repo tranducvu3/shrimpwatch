@@ -161,6 +161,14 @@ def test_manual_ingest_rejects_sensor_metric(client: TestClient):
     assert r.status_code == 422
 
 
+def test_manual_ingest_rejects_negative_value(client: TestClient):
+    r = client.post(
+        "/ingest/manual/tan",
+        json={"farm_id": settings.FARM_ID, "pond_id": "pond-02", "value": -5},
+    )
+    assert r.status_code == 422
+
+
 def test_setwindowfields_do_drop_rate_pipeline():
     now = utcnow()
     start = now - timedelta(minutes=10)

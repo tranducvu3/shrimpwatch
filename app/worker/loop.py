@@ -11,6 +11,7 @@ from app.core.log import get_logger
 from app.core.telemetry import init_metrics
 from app.db.repositories import metrics as metrics_repo
 from app.domain.ponds import pond_ids
+from app.services import incidents as incident_service
 from app.worker.pond_check import check_pond, load_do_windows
 
 logger = get_logger("worker")
@@ -47,5 +48,10 @@ def run_worker() -> None:
                     check_pond(pid, do_rows.get(pid))
             except Exception as e:
                 logger.error("check_pond failed", extra={"pond": pid, "err": str(e)})
+
+        try:
+            incident_service.report_active(ponds)
+        except Exception as e:
+            logger.error("report active incidents failed", extra={"err": str(e)})
 
         time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - (time.time() - t0)))

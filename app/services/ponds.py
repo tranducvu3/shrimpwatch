@@ -24,6 +24,8 @@ LIVE_METRICS = [
     MetricType.NH3,
 ]
 LIVE_WINDOW = timedelta(minutes=10)
+# Simulator hoi lai toi da 6h de biet can backfill tu dau
+MAX_READINGS_WINDOW_MIN = 360
 
 
 class PondNotFound(LookupError):
@@ -96,9 +98,9 @@ def scenario_catalog() -> dict:
     }
 
 
-def live_readings() -> dict[str, dict[str, dict]]:
-    """pond_id -> metric -> {value, unit, timestamp}: gia tri moi nhat trong 10 phut gan day."""
-    rows = metrics_repo.latest_readings(pond_ids(), [m.value for m in LIVE_METRICS], utcnow() - LIVE_WINDOW)
+def live_readings(window: timedelta = LIVE_WINDOW) -> dict[str, dict[str, dict]]:
+    """pond_id -> metric -> {value, unit, timestamp}: gia tri moi nhat trong `window` gan day (mac dinh 10 phut)."""
+    rows = metrics_repo.latest_readings(pond_ids(), [m.value for m in LIVE_METRICS], utcnow() - window)
     result: dict[str, dict[str, dict]] = {}
     for row in rows:
         result.setdefault(row["pond_id"], {})[row["metric"]] = {
