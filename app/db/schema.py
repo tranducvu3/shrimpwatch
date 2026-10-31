@@ -104,7 +104,8 @@ def _init_incident_vector_index(db: Database) -> str:
     try:
         existing = next(iter(incidents.list_search_indexes(INCIDENT_VECTOR_INDEX)), None)
         if existing:
-            if existing.get("latestDefinition") != definition:
+            # Chi so sanh "fields": Atlas co the tra them khoa khac -> tranh rebuild index moi lan init
+            if (existing.get("latestDefinition") or {}).get("fields") != definition["fields"]:
                 incidents.update_search_index(INCIDENT_VECTOR_INDEX, definition)
                 return "updated"
             return "existed"

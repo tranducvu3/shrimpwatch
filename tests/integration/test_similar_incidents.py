@@ -20,8 +20,10 @@ PUMP_EVIDENCE = IncidentEvidence(
 
 @pytest.fixture
 def history():
-    incidents_collection().delete_many({})
-    events_collection().delete_many({})
+    # Chi xoa lich su tong hop (hist-*), khong dung toi du lieu cua test khac
+    hist = {"$regex": "^hist-"}
+    incidents_collection().delete_many({"_id": hist})
+    events_collection().delete_many({"incident_id": hist})
     items = build_history()
     assert incident_service.import_history(items) == len(items)
     # Lan 2 khong nap trung
@@ -74,6 +76,22 @@ def test_investigating_attaches_similar_incidents_and_event(history, client: Tes
     assert doc["similar_incidents"][0]["root_cause"] == "pump_failure"
     event = events_collection().find_one({"incident_id": incident_id, "event": "incident_similar_matched"})
     assert event and len(event["details"]["matches"]) == 3
+
+
+def test_failed_similar_lookup_does_not_block_transition(history, client: TestClient, monkeypatch):
+    incident_id = _open_pump_incident("pond-04")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("search down")
+
+    monkeypatch.setattr(incident_service.incidents_repo, "find_similar", boom)
+    r = client.patch(f"/incidents/{incident_id}", params={"state": "investigating", "action": "check pump"})
+    assert r.status_code == 200
+    doc = incidents_collection().find_one({"_id": incident_id})
+    assert doc["state"] == "investigating"
+    assert "similar_incidents" not in doc
+    assert events_collection().find_one({"incident_id": incident_id, "event": "incident_action"})
+    assert not events_collection().find_one({"incident_id": incident_id, "event": "incident_similar_matched"})
 
 
 def test_similar_unknown_incident_returns_404(client: TestClient):

@@ -65,7 +65,8 @@ def find_similar(vector: list[float], exclude_id: str | None, k: int) -> tuple[l
     """Su co da hoi phuc gan nhat. Uu tien Atlas Vector Search, mongod thuong thi dung aggregation."""
     try:
         rows = list(incidents_collection().aggregate(similar_incidents_pipeline(vector, exclude_id, k)))
-        # Index dang build (hoac chua tao) -> Atlas tra rong thay vi bao loi
+        # Index dang build (hoac chua tao) -> Atlas tra rong thay vi bao loi. Fallback co gioi han
+        # nen chay lai khi rong la chap nhan duoc; neu fallback cung rong thi thuc su chua co lich su.
         if rows:
             return rows, VECTOR_SEARCH
     except OperationFailure as e:
