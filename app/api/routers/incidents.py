@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.domain.incident_lifecycle import InvalidTransition
 from app.domain.models import IncidentState
@@ -16,6 +16,14 @@ def list_incidents(state: IncidentState | None = None):
 def incident_timeline(incident_id: str):
     try:
         return incident_service.timeline(incident_id)
+    except incident_service.IncidentNotFound as e:
+        raise HTTPException(404, "incident not found") from e
+
+
+@router.get("/{incident_id}/similar")
+def similar_incidents(incident_id: str, k: int = Query(3, ge=1, le=10)):
+    try:
+        return incident_service.similar_incidents(incident_id, k)
     except incident_service.IncidentNotFound as e:
         raise HTTPException(404, "incident not found") from e
 

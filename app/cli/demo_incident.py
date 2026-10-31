@@ -35,6 +35,17 @@ def _log_investigation(incident: dict) -> None:
     logger.info("root_cause: " + str(incident.get("root_cause")))
 
 
+def _log_similar(api: ShrimpWatchClient, incident_id: str) -> None:
+    """Vector Search: su co cu giong nhat va cach da xu ly, goi y cho ky thuat vien."""
+    result = api.similar_incidents(incident_id)
+    logger.info(f"=== SỰ CỐ TƯƠNG TỰ ({result.get('mode')}) ===")
+    for m in result.get("matches", []):
+        logger.info(
+            f"{m['_id']} score={m['score']:.3f} root_cause={m.get('root_cause')} "
+            f"recovered in {m.get('recovery_minutes')} min: {' -> '.join(m.get('actions', []))}"
+        )
+
+
 def _transition(api: ShrimpWatchClient, incident_id: str, state: str, action: str) -> None:
     resp = api.transition_incident(incident_id, state, action)
     if resp.status_code >= 400:
@@ -47,6 +58,7 @@ def _resolve(api: ShrimpWatchClient, pond_id: str, incident_id: str) -> None:
     logger.info("=== XỬ LÝ SỰ CỐ ===")
     _transition(api, incident_id, "investigating", "KT điện quạt, báo bảo trì")
     logger.info(f"Incident {incident_id} -> INVESTIGATING (điều tra)")
+    _log_similar(api, incident_id)
 
     time.sleep(3)
     logger.info("Repairing pump -> restore power")

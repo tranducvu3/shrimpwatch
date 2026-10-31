@@ -195,3 +195,96 @@ def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list
         },
         {"$unset": ["incident_events", "pump_events", "timeline._id"]},
     ]
+
+
+INCIDENT_VECTOR_INDEX = "incident_fingerprint"
+SIMILAR_SCAN_LIMIT = 500
+
+
+def _similar_incident_output() -> list[dict[str, Any]]:
+    """Cac truong tra ve cho 1 su co tuong tu, kem thoi gian hoi phuc va hanh dong da lam."""
+    return [
+        {
+            "$project": {
+                "pond_id": 1,
+                "title": 1,
+                "severity": 1,
+                "root_cause": 1,
+                "created_at": 1,
+                "score": 1,
+                "evidence": 1,
+                "actions": "$actions.action",
+                # Recovered la trang thai cuoi -> updated_at la luc hoi phuc
+                "recovery_minutes": {
+                    "$dateDiff": {"startDate": "$created_at", "endDate": "$updated_at", "unit": "minute"}
+                },
+            }
+        },
+    ]
+
+
+def similar_incidents_pipeline(
+    vector: list[float], exclude_id: str | None = None, k: int = 3, num_candidates: int = 100
+) -> list[dict[str, Any]]:
+    """Atlas Vector Search: k su co da hoi phuc co fingerprint gan nhat (euclidean)."""
+    pipeline: list[dict[str, Any]] = [
+        {
+            "$vectorSearch": {
+                "index": INCIDENT_VECTOR_INDEX,
+                "path": "fingerprint",
+                "queryVector": vector,
+                "numCandidates": max(num_candidates, k + 1),
+                # +1 vi co the trung chinh su co dang hoi
+                "limit": k + 1,
+                "filter": {"state": "recovered"},
+            }
+        },
+        {"$set": {"score": {"$meta": "vectorSearchScore"}}},
+    ]
+    if exclude_id:
+        pipeline.append({"$match": {"_id": {"$ne": exclude_id}}})
+    pipeline.append({"$limit": k})
+    return pipeline + _similar_incident_output()
+
+
+def similar_incidents_fallback_pipeline(
+    vector: list[float], exclude_id: str | None = None, k: int = 3, scan_limit: int = SIMILAR_SCAN_LIMIT
+) -> list[dict[str, Any]]:
+    """Khi khong co Atlas Search (mongod thuong, CI): tinh cung diem 1/(1+d^2) bang aggregation.
+
+    Gioi han scan_limit su co gan nhat de truy van luon co bien.
+    """
+    match: dict[str, Any] = {"state": "recovered", "fingerprint": {"$size": len(vector)}}
+    if exclude_id:
+        match["_id"] = {"$ne": exclude_id}
+    squared_distance = {
+        "$reduce": {
+            "input": {"$range": [0, len(vector)]},
+            "initialValue": 0.0,
+            "in": {
+                "$add": [
+                    "$$value",
+                    {
+                        "$pow": [
+                            {
+                                "$subtract": [
+                                    {"$arrayElemAt": ["$fingerprint", "$$this"]},
+                                    {"$arrayElemAt": [vector, "$$this"]},
+                                ]
+                            },
+                            2,
+                        ]
+                    },
+                ]
+            },
+        }
+    }
+    return [
+        {"$match": match},
+        {"$sort": {"created_at": -1}},
+        {"$limit": scan_limit},
+        {"$set": {"score": {"$divide": [1, {"$add": [1, squared_distance]}]}}},
+        {"$sort": {"score": -1}},
+        {"$limit": k},
+        *_similar_incident_output(),
+    ]

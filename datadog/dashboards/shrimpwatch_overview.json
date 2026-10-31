@@ -549,6 +549,71 @@
         "width": 8,
         "height": 7
       }
+    },
+    {
+      "id": 5,
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Vector Search: sự cố tương tự (gợi ý xử lý từ lịch sử)",
+        "show_title": true,
+        "widgets": [
+          {
+            "id": 501,
+            "definition": {
+              "type": "query_value",
+              "title": "Độ tương đồng cao nhất (sự cố gần nhất)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1d"},
+              "autoscale": false,
+              "precision": 3,
+              "requests": [
+                {"formulas": [{"formula": "query1"}], "response_format": "scalar",
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$farm_id,$pond}", "aggregator": "last"}]}
+              ]
+            },
+            "layout": {"x": 0, "y": 0, "width": 2, "height": 2}
+          },
+          {
+            "id": 502,
+            "definition": {
+              "type": "timeseries",
+              "title": "Độ tương đồng theo nguyên nhân gốc của sự cố cũ khớp nhất",
+              "title_size": "16",
+              "title_align": "left",
+              "show_legend": true,
+              "requests": [
+                {"formulas": [{"formula": "query1"}], "response_format": "timeseries",
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$farm_id,$pond} by {pond,root_cause}"}],
+                 "display_type": "line"}
+              ]
+            },
+            "layout": {"x": 2, "y": 0, "width": 4, "height": 2}
+          },
+          {
+            "id": 503,
+            "definition": {
+              "type": "query_table",
+              "title": "Số lần tìm sự cố tương tự theo chế độ",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1d"},
+              "requests": [
+                {"formulas": [{"formula": "query1"}], "response_format": "scalar",
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.incident.similarity_search{$farm_id,$pond} by {mode}.as_count()", "aggregator": "sum"}]}
+              ]
+            },
+            "layout": {"x": 6, "y": 0, "width": 2, "height": 2}
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 23,
+        "width": 8,
+        "height": 3
+      }
     }
   ]
 }

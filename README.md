@@ -124,7 +124,7 @@ app/
   api/         FastAPI: main.py, schemas.py (body request), routers/ theo tài nguyên
   worker/      loop.py (chu kỳ 30s) + pond_check.py (số liệu → quy tắc → service)
   simulator/   pond_model.py (mô hình ao), runner.py, api_client.py (chỉ gọi HTTP API)
-  cli/         init_db, demo_incident, datadog_push  →  python -m app.cli.<tên>
+  cli/         init_db, seed_incident_history, demo_incident, datadog_push  →  python -m app.cli.<tên>
 ```
 
 ```
@@ -147,8 +147,8 @@ Database: **`shrimpwatch`** — 5 collection.
 |---|---|---|
 | `metrics` | **Time Series** | `timeField: timestamp`, `metaField: metadata`, `granularity: seconds`, `expireAfterSeconds: 604800` (7 ngày) |
 | `metrics_hourly` | Document | Rollup theo giờ: `min`/`max`/`avg`/`count` cho từng `(pond_id, metric, hour)`, TTL 1 năm |
-| `incidents` | Document | Sự cố: `severity`, `state`, `evidence`, `actions[]`, `root_cause` |
-| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_action`, `incident_recovered`, `pump_state_change`. Mọi event của sự cố đều có `incident_id` ở cấp cao nhất |
+| `incidents` | Document | Sự cố: `severity`, `state`, `evidence`, `actions[]`, `root_cause`, `fingerprint` (vector 6 chiều, Atlas Vector Search index `incident_fingerprint`), `similar_incidents[]` |
+| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_action`, `incident_recovered`, `incident_similar_matched`, `incident_imported`, `pump_state_change`. Mọi event của sự cố đều có `incident_id` ở cấp cao nhất |
 | `ponds` | Document | Danh mục 6 ao và trạng thái quạt nước |
 
 **Cấu trúc một bản ghi telemetry (dạng Time Series):**
@@ -183,6 +183,29 @@ Hệ thống **ghi ít, đọc nhiều**: mỗi 30 giây chỉ có 1 lần `inse
 | **Timeline sự cố** `GET /incidents/{id}/timeline` | 1 aggregate: `$lookup` event của sự cố + sự kiện quạt của ao trước/trong sự cố, sắp xếp bằng `$sortArray` — phục vụ bước *Điều tra*. |
 
 Chạy [scripts/step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) trong mongosh để xem index được dùng, số bucket đã đọc và số bản ghi trung bình mỗi bucket.
+
+### 🔎 Vector Search: tìm sự cố tương tự trong lịch sử
+
+Khi kỹ thuật viên chuyển sự cố sang **Điều tra**, hệ thống tìm những sự cố **đã hồi phục** có diễn biến nước giống nhất và cho biết lần trước đã xử lý thế nào, mất bao lâu.
+
+- **Fingerprint không cần mô hình AI:** mỗi sự cố có vector 6 chiều chuẩn hoá về `[0, 1]` từ `evidence`: tốc độ sụt DO, công suất quạt, DO thấp nhất, ORP, NH₃, biên độ pH 24h ([incident_fingerprint.py](app/domain/incident_fingerprint.py)). Không cần API key, không thêm thư viện.
+- **Atlas Vector Search index** `incident_fingerprint`: `similarity: euclidean`, `filter` theo `state` → `$vectorSearch` chỉ tìm trong sự cố `recovered`. Điểm = `1 / (1 + d²)`.
+- **Fallback:** mongod thường (CI, Docker Compose cục bộ) không có `$vectorSearch` → cùng công thức điểm tính bằng `$reduce` trong aggregation, giới hạn 500 sự cố gần nhất. Kết quả trả về ghi rõ `mode: vector_search | aggregation_fallback`.
+- **Ghi lại:** top 3 gợi ý lưu vào `incidents.similar_incidents` và event `incident_similar_matched` (xuất hiện trong timeline).
+- **Datadog:** metric `shrimpwatch.incident.similarity_score` (tag `pond`, `mode`, `root_cause`), `shrimpwatch.incident.similarity_search`, tag span `similarity_mode` / `similarity_top_score`; nhóm widget cuối trong dashboard.
+
+| Sự cố đang mở: quạt hỏng pond-05 | Điểm cao nhất theo nhóm lịch sử |
+|---|---|
+| Quạt hỏng (`pump_failure`) | **0.998** |
+| Mất điện ban đêm (`pump_failure`) | 0.972 |
+| Tảo tàn / dư NH₃ / mưa lớn | 0.45 – 0.49 |
+
+```bash
+python -m app.cli.seed_incident_history          # nạp 15 sự cố lịch sử tổng hợp (idempotent)
+curl "localhost:8000/incidents/<id>/similar?k=3"   # top 3 sự cố tương tự
+```
+
+> Index chỉ tạo được trên MongoDB Atlas (M0 trở lên) hoặc image `mongodb/mongodb-atlas-local`; `init_db` tự bỏ qua trên mongod thường. Index mới cần khoảng 1 phút để sẵn sàng, trong lúc đó API dùng fallback.
 
 ---
 
@@ -222,6 +245,7 @@ docker compose ps
 
 ```powershell
 docker compose exec -T api python -m app.cli.init_db
+docker compose exec -T api python -m app.cli.seed_incident_history   # lịch sử sự cố cho Vector Search
 ```
 
 Lệnh này tạo **Time Series Collection + TTL index** và seed 6 ao. Khi container `simulator` khởi động, nó còn tự nạp lại **6 giờ dữ liệu lịch sử** để Dashboard/Monitor có dữ liệu nền phân tích ngay.
@@ -286,7 +310,7 @@ Tính năng cốt lõi thể hiện sự phối hợp giữa MongoDB và Datadog
 | Bước | Trạng thái | Hành động |
 |---|---|---|
 | 1. **Phát hiện** | `open` | Worker phát hiện quạt hỏng (`pump_power` 5 phút < 50W) → mở sự cố **CRITICAL**, `root_cause = pump_failure` |
-| 2. **Điều tra** | `investigating` | Kỹ thuật viên kiểm tra điện quạt, ghi chú hành động |
+| 2. **Điều tra** | `investigating` | Kỹ thuật viên kiểm tra điện quạt, ghi chú hành động. **Vector Search** gợi ý 3 sự cố cũ giống nhất kèm cách xử lý và thời gian hồi phục |
 | 3. **Xử lý** | `resolving` | Thay phụ tùng, khôi phục công suất quạt |
 | 4. **Hồi phục** | `recovered` | DO ổn định trở lại (> 5 mg/L) → đóng sự cố (worker có thể tự động chuyển trạng thái) |
 
@@ -380,6 +404,7 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 | Yêu cầu BTC | ShrimpWatch đáp ứng | Bằng chứng |
 |---|---|---|
 | Xử lý hướng sự kiện | Mọi thay đổi trạng thái sự cố ghi vào collection `events` (khoá theo `incident_id`), dựng lại thành timeline qua `GET /incidents/{id}/timeline` | [05_mongodb_event_log.png](assets_proof/05_mongodb_event_log.png) |
+| **Atlas Vector Search** | `$vectorSearch` trên fingerprint chất lượng nước của sự cố → gợi ý cách xử lý từ sự cố cũ ở bước Điều tra (có fallback aggregation) | [incident_fingerprint.py](app/domain/incident_fingerprint.py) · [pipelines.py](app/db/pipelines.py) (`similar_incidents_pipeline`) |
 | Change Streams / mở rộng | Cấu trúc dữ liệu sẵn sàng tích hợp Change Streams cho thông báo thời gian thực | [app/db/](app/db) |
 
 ### 6.2. Datadog — Quan sát & Cảnh báo

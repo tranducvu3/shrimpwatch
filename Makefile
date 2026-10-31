@@ -1,4 +1,4 @@
-.PHONY: up down build logs api simulator worker reset demo test lint fmt init-mongo push-dashboards help
+.PHONY: up down build logs api simulator worker reset demo test lint fmt init-mongo seed-history push-dashboards help
 
 SHELL := /bin/bash
 
@@ -12,6 +12,7 @@ help:
 	@echo "  simulator     - Restart simulator service"
 	@echo "  worker        - Restart worker service"
 	@echo "  init-mongo    - Initialize MongoDB collections (Time Series + TTL)"
+	@echo "  seed-history  - Load synthetic recovered incidents for similar-incident search"
 	@echo "  demo          - Run demo incident (pump failure -> oxygen drop)"
 	@echo "  push-dashboards - Upload Datadog dashboard & monitor"
 	@echo "  test          - Run pytest"
@@ -45,6 +46,9 @@ worker:
 
 init-mongo:
 	docker compose exec -T api python -m app.cli.init_db
+
+seed-history:
+	docker compose exec -T api python -m app.cli.seed_incident_history
 
 demo:
 	docker compose exec -T api python -m app.cli.demo_incident
