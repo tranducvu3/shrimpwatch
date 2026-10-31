@@ -73,7 +73,7 @@ jobs:
           [ -f .coverage ] || exit 0
           { echo '### Coverage'; echo '```'; coverage report; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
