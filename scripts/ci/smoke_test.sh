@@ -3,6 +3,7 @@
 set -euo pipefail
 
 API=http://localhost:8000
+export COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml
 
 cp .env.example .env
 # Khong co Datadog Agent tren CI

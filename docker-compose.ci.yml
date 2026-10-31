@@ -1,0 +1,13 @@
+# Chi dung tren CI (scripts/ci/smoke_test.sh): khong chay Datadog Agent.
+# Neu de DD_AGENT_HOST=datadog-agent, moi lan gui metric DogStatsD phai tra DNS that bai
+# (~10ms tren runner GitHub) -> 1 batch 1000 ban ghi mat ~10s, backfill 6h mat ~5 phut.
+services:
+  api:
+    environment:
+      DD_AGENT_HOST: localhost
+  simulator:
+    environment:
+      DD_AGENT_HOST: localhost
+  worker:
+    environment:
+      DD_AGENT_HOST: localhost
