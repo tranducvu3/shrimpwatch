@@ -40,8 +40,12 @@ jobs:
           password: ${{ github.token }}
 
       # type=sha cua metadata-action doc github.sha (dau main), khong phai commit CI da chay
+      # `latest` chi khi commit nay van la dau main: CI chay lai cho commit cu khong duoc ghi de `latest`
       - id: rev
-        run: echo "short=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "short=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          echo "is_tip=$([ "$tip" = "$HEAD_SHA" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
 
@@ -51,7 +55,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=sha-${{ steps.rev.outputs.short }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ steps.rev.outputs.is_tip }}
           labels: |
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
@@ -65,10 +69,12 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           {
             echo '### Image published'
             echo '```'
-            echo "${{ steps.meta.outputs.tags }}"
+            echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

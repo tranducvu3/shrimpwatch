@@ -291,6 +291,8 @@ Không cần cài gì trên máy: repo có sẵn [.devcontainer/](.devcontainer/
 2. **Code → Codespaces → Create codespace on main**. Lần đầu mất vài phút (build image).
 3. Tab **Ports** → cổng `8000` → mở `/docs` hoặc `/control`. Để chia sẻ link: chuột phải → *Port Visibility → Public* (API chưa có xác thực, chỉ bật Public trong lúc demo).
 
+> Monitor Datadog lọc theo `pond` chứ không theo `env`: nếu đặt `DD_API_KEY`, đừng chạy cùng lúc stack ở máy và Codespace, nếu không số liệu của hai simulator sẽ bị trộn trên dashboard và monitor.
+
 > Codespace tự dừng sau tối đa 4 giờ không thao tác trong editor/terminal; mở lại thì stack tự khởi động lại. Tài khoản cá nhân được miễn phí 120 core-hours/tháng (~60 giờ với máy 2 core). Nhớ **Stop** codespace sau khi demo.
 
 ---

@@ -3,8 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# .env bi git-ignore: tao tu .env.example, ghi de bang Codespaces secret neu co
-[ -f .env ] || cp .env.example .env
+# .env bi git-ignore: tao lai tu .env.example moi lan khoi dong, roi ghi de bang Codespaces secret hien tai,
+# de secret bi xoa hoac doi key khong de lai gia tri cu trong .env
+cp .env.example .env
 set_env() {
   local key=$1 value=$2
   [ -n "$value" ] || return 0
