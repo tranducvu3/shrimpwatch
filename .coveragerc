@@ -1,0 +1,7 @@
+[run]
+source = app
+
+[report]
+# San hien tai ~65%: PR lam giam coverage xuong duoi muc nay se fail.
+fail_under = 64
+skip_empty = true

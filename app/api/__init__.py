@@ -1,30 +1,30 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import models
 from app.config import settings
 from app.db import (
     events_collection,
+    incident_timeline_pipeline,
     incidents_collection,
     metrics_collection,
     pack_ts_doc,
     ponds_collection,
+    run_hourly_rollup,
 )
 from app.logging_setup import get_logger
 from app.metrics import gauge, increment, set_span_tags
 from app.models import (
     AlkalinityInput,
     BatchIngestRequest,
-    Incident,
-    IncidentEvidence,
     IncidentState,
+    MANUAL_METRIC_UNITS,
+    ManualInput,
     MetricRecord,
     MetricType,
-    Severity,
     Source,
     DeviceType,
 )
@@ -81,6 +81,10 @@ def healthz():
     }
 
 
+def _naive_utc(ts: datetime) -> datetime:
+    return ts.astimezone(timezone.utc).replace(tzinfo=None) if ts.tzinfo else ts
+
+
 @app.post("/ingest/batch", status_code=202)
 def ingest_batch(body: BatchIngestRequest) -> dict:
     increment("ingest.batches", tags={"batch_size": len(body.records)})
@@ -117,6 +121,11 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
         logger.error("ingest insert_many failed", extra={"err": str(e)})
         raise HTTPException(500, detail=f"mongo insert failed: {e}")
 
+    # Du lieu tre/backfill nam ngoai cua so rollup 1 gio cua worker -> tu rollup cac gio no cham toi.
+    timestamps = [_naive_utc(r.timestamp) for r in body.records]
+    if min(timestamps) < datetime.utcnow() - timedelta(hours=1):
+        run_hourly_rollup(min(timestamps), max(timestamps))
+
     increment("ingest.records", value=len(docs))
     logger.info(
         "ingested batch",
@@ -131,17 +140,24 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
 
 @app.post("/ingest/manual/alkalinity", status_code=202)
 def ingest_alkalinity(body: AlkalinityInput) -> dict:
-    set_span_tags(pond_id=body.pond_id, device_type=DeviceType.MANUAL.value, metric=MetricType.ALKALINITY.value)
+    return ingest_manual(MetricType.ALKALINITY, ManualInput(**body.model_dump()))
+
+
+@app.post("/ingest/manual/{metric}", status_code=202)
+def ingest_manual(metric: MetricType, body: ManualInput) -> dict:
+    if metric not in MANUAL_METRIC_UNITS:
+        raise HTTPException(422, detail=f"metric must be one of {[m.value for m in MANUAL_METRIC_UNITS]}")
+    set_span_tags(pond_id=body.pond_id, device_type=DeviceType.MANUAL.value, metric=metric.value)
     record = MetricRecord(
         timestamp=body.timestamp,
         farm_id=body.farm_id,
         pond_id=body.pond_id,
         device_id=body.tester_id,
         device_type=DeviceType.MANUAL,
-        metric=MetricType.ALKALINITY,
+        metric=metric,
         value=body.value,
         source=Source.MANUAL,
-        unit="mg_CaCO3/L",
+        unit=MANUAL_METRIC_UNITS[metric],
     )
     return ingest_batch(BatchIngestRequest(records=[record]))
 
@@ -180,6 +196,15 @@ def list_incidents(state: IncidentState | None = None):
     return list(incidents_collection().find(q).sort("created_at", -1).limit(50))
 
 
+@app.get("/incidents/{incident_id}/timeline")
+def incident_timeline(incident_id: str):
+    rows = list(incidents_collection().aggregate(incident_timeline_pipeline(incident_id)))
+    if not rows:
+        raise HTTPException(404, "incident not found")
+    set_span_tags(pond_id=rows[0].get("pond_id"))
+    return rows[0]
+
+
 @app.patch("/incidents/{incident_id}")
 def patch_incident(incident_id: str, state: IncidentState, action: str | None = None):
     set_fields: dict = {"updated_at": datetime.utcnow(), "state": state.value}
@@ -195,11 +220,10 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
                 "timestamp": datetime.utcnow(),
                 "pond_id": pond_id,
                 "event": "incident_action",
-                "details": {"incident_id": incident_id, "state": state.value, "action": action},
+                "incident_id": incident_id,
+                "details": {"state": state.value, "action": action},
             }
         )
-        update_doc["$push"] = {
-            "actions": {"time": datetime.utcnow(), "state": state.value, "action": action}
-        }
+        update_doc["$push"] = {"actions": {"time": datetime.utcnow(), "state": state.value, "action": action}}
     incidents_collection().update_one({"_id": incident_id}, update_doc)
     return {"ok": True, "incident_id": incident_id, "state": state.value}

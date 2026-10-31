@@ -1,4 +1,4 @@
-.PHONY: up down build logs api simulator worker reset demo test init-mongo push-dashboards help
+.PHONY: up down build logs api simulator worker reset demo test lint fmt init-mongo push-dashboards help
 
 SHELL := /bin/bash
 
@@ -15,6 +15,8 @@ help:
 	@echo "  demo          - Run demo incident (pump failure -> oxygen drop)"
 	@echo "  push-dashboards - Upload Datadog dashboard & monitor"
 	@echo "  test          - Run pytest"
+	@echo "  lint          - Ruff lint + format check (same as CI)"
+	@echo "  fmt           - Ruff auto-fix + format"
 	@echo "  reset         - Wipe MongoDB data and re-init"
 
 up:
@@ -50,8 +52,20 @@ demo:
 push-dashboards:
 	docker compose exec -T api python -m app.datadog_push
 
+# Test xoa sach collection -> luon chay tren DB test cua MongoDB local, khong dung .env (Atlas)
 test:
-	docker compose exec -T api pytest -v tests/
+	docker compose exec -T -e MONGODB_URI='mongodb://admin:admin_pass@mongodb:27017/?authSource=admin' \
+		-e MONGODB_DB=shrimpwatch_test -e DD_TRACE_ENABLED=false api pytest -v tests/
+
+RUFF := docker run --rm -u $(shell id -u):$(shell id -g) -v $(CURDIR):/src -w /src ghcr.io/astral-sh/ruff:0.7.4
+
+lint:
+	$(RUFF) check --no-cache app tests
+	$(RUFF) format --no-cache --check app tests
+
+fmt:
+	$(RUFF) check --no-cache --fix app tests
+	$(RUFF) format --no-cache app tests
 
 reset:
 	docker compose down -v

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     API_URL: str = "http://localhost:8000"
 
     TS_TTL_SECONDS: int = 7 * 24 * 3600
+    ROLLUP_TTL_SECONDS: int = 365 * 24 * 3600
+    ROLLUP_INTERVAL_SEC: int = 300
 
     TEMP_WARN_LOW: float = 26.0
     TEMP_WARN_HIGH: float = 32.0
@@ -35,6 +37,11 @@ class Settings(BaseSettings):
     ALK_WARN: float = 120.0
     CO2_WARN: float = 10.0
     DO_DROP_RATE_WARN_MGPERL_PER_MIN: float = 0.05
+    SALINITY_WARN_LOW: float = 10.0
+    ORP_WARN_LOW: float = 100.0
+    NH3_WARN: float = 0.1
+    NITRITE_WARN: float = 1.0
+    PH_SWING_WARN: float = 0.5
 
 
 settings = Settings()

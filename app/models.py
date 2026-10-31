@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -28,6 +27,19 @@ class MetricType(str, Enum):
     CO2 = "co2"
     PUMP_POWER = "pump_power"
     PUMP_STATUS = "pump_status"
+    SALINITY = "salinity"
+    ORP = "orp"
+    TAN = "tan"
+    NITRITE = "nitrite"
+    NH3 = "nh3"
+    PH_SWING = "ph_swing"
+
+
+MANUAL_METRIC_UNITS: dict[MetricType, str] = {
+    MetricType.ALKALINITY: "mg_CaCO3/L",
+    MetricType.TAN: "mg/L",
+    MetricType.NITRITE: "mg/L",
+}
 
 
 class Severity(str, Enum):
@@ -77,10 +89,21 @@ class AlkalinityInput(BaseModel):
     tester_id: str = "tech-001"
 
 
+class ManualInput(BaseModel):
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    farm_id: str
+    pond_id: str
+    value: float
+    tester_id: str = "tech-001"
+
+
 class IncidentEvidence(BaseModel):
     do_drop_rate_mg_per_l_per_min: float | None = None
     avg_pump_power_watts: float | None = None
     min_do: float | None = None
+    last_orp_mv: float | None = None
+    nh3_mg_per_l: float | None = None
+    ph_swing_24h: float | None = None
     do_window_sec: int = 300
     notes: dict | None = None
 

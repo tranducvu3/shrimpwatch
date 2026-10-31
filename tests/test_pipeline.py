@@ -3,18 +3,21 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app import models
 from app.api import app
 from app.config import settings
 from app.db import (
     compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
     events_collection,
     get_client,
     incidents_collection,
     init_collections,
+    METRICS_POND_METRIC_TS_INDEX,
     metrics_collection,
+    metrics_hourly_collection,
     pack_ts_doc,
     ponds_collection,
+    run_hourly_rollup,
 )
 from app.models import (
     AlkalinityInput,
@@ -40,8 +43,14 @@ def client():
     return TestClient(app)
 
 
-def _insert_record(metric: str, pond: str, value: float, ts: datetime | None = None, source: str = "sensor",
-                   device_type: str = "water_node"):
+def _insert_record(
+    metric: str,
+    pond: str,
+    value: float,
+    ts: datetime | None = None,
+    source: str = "sensor",
+    device_type: str = "water_node",
+):
     doc = pack_ts_doc(
         {
             "timestamp": ts or datetime.utcnow(),
@@ -83,8 +92,7 @@ def test_timeseries_collection_metadata():
             (
                 i
                 for i in infos
-                if i.get("name") == "metrics"
-                and (i.get("db") == settings.MONGODB_DB or i.get("md", {}).get("options"))
+                if i.get("name") == "metrics" and (i.get("db") == settings.MONGODB_DB or i.get("md", {}).get("options"))
             ),
             None,
         )
@@ -152,24 +160,49 @@ def test_manual_alkalinity_ingest(client: TestClient):
     assert stored["value"] == 168.0
 
 
+def test_manual_tan_and_nitrite_ingest(client: TestClient):
+    for metric, value in (("tan", 0.8), ("nitrite", 0.4)):
+        r = client.post(
+            f"/ingest/manual/{metric}",
+            json={"farm_id": settings.FARM_ID, "pond_id": "pond-02", "value": value},
+        )
+        assert r.status_code == 202, r.text
+        stored = metrics_collection().find_one(
+            {"metadata.pond_id": "pond-02", "metadata.metric": metric, "metadata.source": "manual"},
+            sort=[("timestamp", -1)],
+        )
+        assert stored is not None
+        assert stored["value"] == value
+
+
+def test_manual_ingest_rejects_sensor_metric(client: TestClient):
+    r = client.post(
+        "/ingest/manual/do",
+        json={"farm_id": settings.FARM_ID, "pond_id": "pond-02", "value": 5.0},
+    )
+    assert r.status_code == 422
+
+
 def test_setwindowfields_do_drop_rate_pipeline():
     now = datetime.utcnow()
     start = now - timedelta(minutes=10)
     for i, t in enumerate([start + timedelta(seconds=30 * j) for j in range(20)]):
         _insert_record("do", "pond-03", max(1.5, 7.0 - i * 0.15), ts=t)
-    pipeline = compute_do_drop_rate_pipeline("pond-03", window_sec=300)
+    pipeline = compute_do_drop_rate_pipeline(["pond-03"], window_sec=300)
     rows = list(metrics_collection().aggregate(pipeline))
-    assert len(rows) >= 1, "expected at least one aggregated row"
+    assert len(rows) == 1, "expected exactly one row per pond"
     row = rows[0]
-    assert "do_drop_rate_mg_per_l_per_min" in row
+    assert row["pond_id"] == "pond-03"
     assert row["do_drop_mg_per_l"] > 0, "DO is dropping so drop_mg_per_l should be > 0"
-    assert row["do_drop_rate_mg_per_l_per_min"] > 0
+    # 0.15 mg/L moi 30s = 0.3 mg/L/phut
+    assert row["do_drop_rate_mg_per_l_per_min"] == pytest.approx(0.3, abs=0.01)
     # This result is used as Yêu cầu #2 evidence stored in incidents.evidence
     assert "min_do" in row
 
 
 def test_co2_derivation_formula():
     from app.worker import derive_co2_for_pond
+
     now = datetime.utcnow()
     _insert_record("alkalinity", "pond-04", 170.0, ts=now, source="manual", device_type="manual_tester")
     _insert_record("ph", "pond-04", 7.9, ts=now)
@@ -181,16 +214,20 @@ def test_co2_derivation_formula():
 
 def test_pump_fail_event_and_incident_opening(client: TestClient):
     from app.worker import check_pond
+
     now = datetime.utcnow()
     for i in range(10):
         _insert_record(
-            "pump_power", "pond-05", 10.0 if i >= 5 else 1500.0,
+            "pump_power",
+            "pond-05",
+            10.0 if i >= 5 else 1500.0,
             ts=now - timedelta(seconds=30 * (10 - i)),
             device_type="pump",
         )
     for i in range(15):
         _insert_record(
-            "do", "pond-05",
+            "do",
+            "pond-05",
             max(2.0, 6.0 - i * 0.15),
             ts=now - timedelta(seconds=30 * (15 - i)),
         )
@@ -246,3 +283,140 @@ def test_incident_lifecycle_patch(client: TestClient):
     assert r.status_code == 200
     found = any(x["_id"] == "inc-test-001" for x in r.json())
     assert found, "Expected incident in recovered state"
+
+
+def test_nh3_derivation_formula():
+    from app.worker import derive_nh3_for_pond
+
+    now = datetime.utcnow()
+    _insert_record("tan", "pond-01", 1.0, ts=now, source="manual", device_type="manual_tester")
+    _insert_record("ph", "pond-01", 8.0, ts=now)
+    _insert_record("temperature", "pond-01", 30.0, ts=now)
+    nh3 = derive_nh3_for_pond("pond-01", now)
+    assert nh3 is not None
+    # pH 8.0, 30 do C: ~7-8% TAN o dang NH3 doc
+    assert 0.06 <= nh3 <= 0.09, f"Expected NH3 ~0.075, got {nh3}"
+
+
+def test_ph_swing_pipeline():
+    now = datetime.utcnow()
+    for i, v in enumerate([7.8, 8.4, 8.1, 7.9]):
+        _insert_record("ph", "pond-06", v, ts=now - timedelta(hours=i * 3))
+    run_hourly_rollup(now - timedelta(hours=24))
+    rows = list(metrics_hourly_collection().aggregate(compute_ph_swing_pipeline("pond-06")))
+    assert len(rows) == 1
+    assert rows[0]["ph_swing"] == 0.6
+
+
+def test_simulator_do_and_orp_fall_when_pump_fails():
+    from app.simulator import PondSimulator
+
+    sim = PondSimulator("pond-03")
+    t = datetime.utcnow()
+    first = {r.metric.value: r.value for r in sim.step(t, pump_failed=False)}
+    for i in range(1, 21):
+        last = {r.metric.value: r.value for r in sim.step(t + timedelta(seconds=30 * i), pump_failed=True)}
+    assert last["do"] < first["do"] - 0.7, f"DO should fall without aerator: {first['do']} -> {last['do']}"
+    assert last["orp"] < first["orp"], "ORP should fall with DO"
+    assert "salinity" in last
+
+
+def test_do_drop_rate_survives_sensor_dropout():
+    # Cam bien rot goi: chi con 3 diem trong 5 phut. Cua so theo thoi gian van cho dung toc do.
+    now = datetime.utcnow()
+    for minutes_ago, value in ((4, 6.0), (2, 5.4), (0, 4.8)):
+        _insert_record("do", "pond-02", value, ts=now - timedelta(minutes=minutes_ago))
+    rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(["pond-02"], window_sec=300)))
+    assert rows[0]["do_drop_rate_mg_per_l_per_min"] == pytest.approx(0.3, abs=0.01)
+    assert rows[0]["min_do"] == 4.8
+
+
+def test_do_drop_rate_all_ponds_in_one_query():
+    ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
+    now = datetime.utcnow()
+    for pond in ponds:
+        _insert_record("do", pond, 6.0, ts=now - timedelta(seconds=1))
+    rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(ponds, window_sec=300)))
+    assert sorted(r["pond_id"] for r in rows) == ponds
+
+
+def test_hourly_rollup_is_idempotent():
+    hour = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    for i, v in enumerate([20.0, 30.0, 25.0]):
+        _insert_record("salinity", "pond-04", v, ts=hour + timedelta(minutes=10 * i))
+    run_hourly_rollup(hour)
+    run_hourly_rollup(hour)
+    rows = list(metrics_hourly_collection().find({"pond_id": "pond-04", "metric": "salinity", "hour": hour}))
+    assert len(rows) == 1
+    assert (rows[0]["min"], rows[0]["max"], rows[0]["avg"], rows[0]["count"]) == (20.0, 30.0, 25.0, 3)
+
+
+def test_worker_queries_use_compound_index():
+    plan = (
+        metrics_collection()
+        .find(
+            {
+                "metadata.pond_id": "pond-01",
+                "metadata.metric": "do",
+                "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=5)},
+            }
+        )
+        .sort("timestamp", -1)
+        .explain()
+    )
+    assert f"'indexName': '{METRICS_POND_METRIC_TS_INDEX}'" in str(plan)
+
+
+def test_incident_timeline_joins_events(client: TestClient):
+    incidents_collection().insert_one(
+        {
+            "_id": "inc-timeline-001",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-03",
+            "severity": "critical",
+            "state": "open",
+            "title": "timeline test",
+            "description": "test",
+            "evidence": {},
+            "actions": [],
+        }
+    )
+    assert client.post("/ponds/pond-03/pump/fail", params={"failed": "true"}).status_code == 200
+    client.patch("/incidents/inc-timeline-001", params={"state": "investigating", "action": "Kiem tra quat"})
+
+    action = events_collection().find_one({"event": "incident_action", "incident_id": "inc-timeline-001"})
+    assert action is not None, "incident_id must be top-level on every event"
+
+    r = client.get("/incidents/inc-timeline-001/timeline")
+    assert r.status_code == 200, r.text
+    events = [e["event"] for e in r.json()["timeline"]]
+    assert events == ["pump_state_change", "incident_action"]
+    assert client.get("/incidents/inc-missing/timeline").status_code == 404
+
+
+def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
+    # Simulator nap 6h lich su khi khoi dong; worker chi tinh lai gio gan nhat -> API phai tu rollup.
+    old = datetime.utcnow() - timedelta(hours=3)
+    hour = old.replace(minute=0, second=0, microsecond=0)
+    records = [
+        {
+            "timestamp": ts,
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-06",
+            "device_id": "node-pond-06",
+            "device_type": "water_node",
+            "metric": "orp",
+            "value": value,
+            "source": "sensor",
+            "unit": "mV",
+        }
+        for ts, value in ((old.isoformat(), 250.0), (old.isoformat() + "Z", 150.0))
+    ]
+    r = client.post("/ingest/batch", json={"records": records})
+    assert r.status_code == 202, r.text
+
+    row = metrics_hourly_collection().find_one({"pond_id": "pond-06", "metric": "orp", "hour": hour})
+    assert row is not None, "backfilled hour must be rolled up on ingest"
+    assert (row["min"], row["max"], row["count"]) == (150.0, 250.0, 2)

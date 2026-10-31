@@ -29,20 +29,34 @@
 
 ## 🌟 Giới thiệu dự án
 
-ShrimpWatch mô phỏng một trang trại gồm **6 ao nuôi**, dữ liệu môi trường được cập nhật **mỗi 30 giây** (30 bản ghi / chu kỳ, tương đương ~1 bản ghi/giây).
+ShrimpWatch mô phỏng một trang trại gồm **6 ao nuôi**, dữ liệu môi trường được cập nhật **mỗi 30 giây** (42 bản ghi cảm biến / chu kỳ, tương đương ~1,4 bản ghi/giây).
 
 Các nhóm dữ liệu được thu thập:
 
 | Nhóm | Chỉ số | Nguồn (`metadata.source`) |
 |---|---|---|
-| Cảm biến IoT | Nhiệt độ, pH, Oxy hòa tan (DO) | `sensor` |
+| Cảm biến IoT | Nhiệt độ, pH, Oxy hòa tan (DO), **Độ mặn (salinity)**, **ORP** | `sensor` |
 | Thiết bị vận hành | Công suất quạt (pump_power), Trạng thái quạt (pump_status) | `sensor` |
-| Nhập thủ công | Độ kiềm (alkalinity) từ test-kit, 4 lần/ngày | `manual` |
-| Tính toán tự động | CO₂ hòa tan (suy ra từ pH & độ kiềm bằng worker) | `derived` |
+| Nhập thủ công | Độ kiềm (alkalinity), **Tổng amoni (TAN)**, **Nitrite** từ test-kit, 4 lần/ngày | `manual` |
+| Tính toán tự động | CO₂ hòa tan (pH + độ kiềm), **NH₃ độc** (TAN + pH + nhiệt độ), **Biên độ pH 24h** (aggregation `$group` max − min) | `derived` |
+
+### 🆕 Chỉ số bổ sung
+
+| Chỉ số | Đơn vị | Nguồn | Ý nghĩa vận hành | Ngưỡng cảnh báo |
+|---|---|---|---|---|
+| `salinity` | ppt | sensor | Độ mặn sụt sau mưa lớn → tôm sốc, lột xác lỗi | < 10 ppt |
+| `orp` | mV | sensor | Đại diện cho đáy ao: ORP giảm cùng DO khi quạt hỏng → phân hủy kỵ khí, nguy cơ H₂S | < 100 mV |
+| `tan` | mg/L | manual | Tổng amoni từ test-kit, đầu vào để tính NH₃ | — |
+| `nitrite` | mg/L | manual | NO₂⁻ gây thiếu oxy trong máu tôm | > 1 mg/L |
+| `nh3` | mg/L | derived | Phần amoni độc: `TAN × 1/(1+10^(pKa−pH))`, `pKa = 0.09018 + 2729.92/T(K)` (Emerson 1975) | > 0.1 mg/L |
+| `ph_swing` | pH | derived | Biên độ pH trong 24h (pipeline `$match → $group → $project`) | > 0.5 |
+
+Khi quạt hỏng, DO giảm ~0.1 mg/L/phút và ORP giảm theo. `incidents.evidence` của sự cố giờ mang thêm `last_orp_mv`, `nh3_mg_per_l`, `ph_swing_24h`, nên kỹ thuật viên thấy được bối cảnh chất lượng nước ngay trong bước Điều tra. Các chỉ số mới nằm ở nhóm cuối của Dashboard Datadog.
 
 **Điểm nhấn kỹ thuật:**
 - MongoDB **Time Series Collection** với `expireAfterSeconds` (TTL 7 ngày) làm nơi lưu trữ duy nhất cho telemetry.
-- Pipeline **`$setWindowFields`** tính tốc độ sụt giảm oxy (DO drop rate) theo cửa sổ trượt 5 phút → kết quả được lưu vào `incidents.evidence`.
+- Pipeline **`$setWindowFields` + `$derivative`** tính tốc độ sụt giảm oxy (DO drop rate) theo cửa sổ **thời gian** 5 phút cho cả 6 ao trong **một** lần aggregate → kết quả được lưu vào `incidents.evidence`.
+- **Vòng đời dữ liệu 2 tầng:** dữ liệu thô giữ 7 ngày, rollup theo giờ (`$group` + `$merge`) giữ 1 năm.
 - **Vòng đời sự cố 4 bước** (Open → Investigating → Resolving → Recovered) lưu trạng thái trong MongoDB, mọi thay đổi đều ghi vào collection `events`.
 - **Log ↔ Trace ↔ Metric correlation** trên Datadog nhờ `ddtrace` + `python-json-logger` (mọi dòng log đều mang `dd.trace_id`).
 
@@ -66,17 +80,19 @@ flowchart LR
         M2[("incidents")]
         M3[("events")]
         M4[("ponds")]
+        M5[("metrics_hourly<br/>rollup + TTL 1 năm")]
     end
     DDA["Datadog Agent<br/>DogStatsD :8125 · APM :8126 · Logs"]
     DD["Datadog Cloud<br/>Dashboard · Monitor · Logs · Traces"]
 
-    S -->|batch 30 bản ghi| A
+    S -->|batch 42 bản ghi| A
     A --> M1
     A --> M2
     A --> M4
     K -->|aggregate| M1
     K --> M2
     K --> M3
+    K -->|$merge mỗi 5 phút| M5
     A -.-> DDA
     K -.-> DDA
     S -.-> DDA
@@ -97,13 +113,14 @@ flowchart LR
 
 ## 🗄 Mô hình dữ liệu MongoDB
 
-Database: **`shrimpwatch`** — 4 collection chính.
+Database: **`shrimpwatch`** — 5 collection.
 
 | Collection | Loại | Nội dung |
 |---|---|---|
 | `metrics` | **Time Series** | `timeField: timestamp`, `metaField: metadata`, `granularity: seconds`, `expireAfterSeconds: 604800` (7 ngày) |
+| `metrics_hourly` | Document | Rollup theo giờ: `min`/`max`/`avg`/`count` cho từng `(pond_id, metric, hour)`, TTL 1 năm |
 | `incidents` | Document | Sự cố: `severity`, `state`, `evidence`, `actions[]`, `root_cause` |
-| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_action`, `incident_recovered`, `pump_state_change` |
+| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_action`, `incident_recovered`, `pump_state_change`. Mọi event của sự cố đều có `incident_id` ở cấp cao nhất |
 | `ponds` | Document | Danh mục 6 ao và trạng thái quạt nước |
 
 **Cấu trúc một bản ghi telemetry (dạng Time Series):**
@@ -124,7 +141,20 @@ Database: **`shrimpwatch`** — 4 collection chính.
 }
 ```
 
-**Index đã tạo trên `metrics`:** `(metadata.pond_id, timestamp)`, `(metadata.metric, timestamp)`, `(metadata.device_type, timestamp)` — phục vụ truy vấn theo ao/chỉ số/thời gian.
+### Mẫu truy cập & quyết định thiết kế
+
+Hệ thống **ghi ít, đọc nhiều**: mỗi 30 giây chỉ có 1 lần `insert_many` (42 bản ghi), nhưng worker chạy ~60 truy vấn phân tích. Vì vậy ghi được giữ ở dạng append-only theo batch, còn tối ưu tập trung vào đường đọc:
+
+| Quyết định | Lý do |
+|---|---|
+| **Không tự cài bucket pattern** | Time Series Collection *chính là* bucket pattern do MongoDB quản lý (`system.buckets.metrics`, nén theo cột). Tự gom bucket bằng tay sẽ trùng lặp và mất tối ưu của engine. |
+| **1 index ghép `pond_metric_ts`** = `(metadata.pond_id, metadata.metric, timestamp)` | Theo quy tắc ESR: mọi truy vấn của worker là pond (=) + metric (=) + khoảng thời gian. Thay 3 index đơn lẻ cũ (planner chỉ dùng được 1). |
+| **Cửa sổ theo thời gian** (`range` + `unit`) thay vì theo số bản ghi | Khi cảm biến rớt gói, cửa sổ vẫn đúng 5 phút, `$derivative` vẫn cho tốc độ đúng. |
+| **1 aggregate cho cả 6 ao** (`partitionBy: pond_id`) | 1 round-trip thay vì 6. |
+| **Rollup theo giờ** (`$group` → `$merge`, idempotent) | Biên độ pH 24h đọc ~24 dòng rollup thay vì ~2.880 điểm thô mỗi ao mỗi 30 giây; lịch sử dài hạn sống sót sau TTL 7 ngày. |
+| **Timeline sự cố** `GET /incidents/{id}/timeline` | 1 aggregate: `$lookup` event của sự cố + sự kiện quạt của ao trước/trong sự cố, sắp xếp bằng `$sortArray` — phục vụ bước *Điều tra*. |
+
+Chạy [scripts/step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) trong mongosh để xem index được dùng, số bucket đã đọc và số bản ghi trung bình mỗi bucket.
 
 ---
 
@@ -195,6 +225,7 @@ Truy cập [http://localhost:8000/docs](http://localhost:8000/docs):
 | `GET /healthz` | Kiểm tra API + kết nối MongoDB |
 | `POST /ingest/batch` | Ghi lô dữ liệu cảm biến |
 | `POST /ingest/manual/alkalinity` | Nhập độ kiềm thủ công |
+| `POST /ingest/manual/{metric}` | Nhập test-kit thủ công: `alkalinity`, `tan`, `nitrite` |
 | `GET /ponds` | Danh sách 6 ao + trạng thái quạt |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Đánh dấu/hồi phục quạt nước |
 | `GET /incidents?state=open` | Truy vấn sự cố theo trạng thái |
@@ -312,16 +343,16 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 |---|---|---|---|
 | 1 | **Nền tảng CHÍNH** | Toàn bộ dữ liệu sensor, sự cố, lịch sử vận hành lưu trên **MongoDB Atlas (Cloud)** | [13_mongodb_atlas_cluster.png](assets_proof/13_mongodb_atlas_cluster.png) · [14_mongodb_atlas_data.png](assets_proof/14_mongodb_atlas_data.png) |
 | 2 | **Time Series Collections** | Telemetry (DO, pH, nhiệt độ, quạt) lưu trong Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [db.py](app/db.py#L58-L82) |
-| 3 | **Aggregation & Window Functions** | Pipeline `$setWindowFields` phân tích xu hướng DO trong cửa sổ trượt 5 phút | [db.py](app/db.py#L170-L257) · [worker.py](app/worker.py#L83-L90) |
-| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry cũ sau 7 ngày (`604800` giây) | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [db.py](app/db.py#L69) |
-| 5 | **Mô hình & Truy cập hiệu quả** | Document model tối ưu (Time Series bucket), index theo `pond_id`/`metric`/`device_type` + `timestamp`; Pydantic model `populate_by_name` cho `_id` | [models.py](app/models.py) · [db.py](app/db.py#L78-L82) |
+| 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` tính tốc độ sụt DO theo cửa sổ thời gian 5 phút; `$group` + `$merge` rollup theo giờ; `$lookup` + `$sortArray` dựng timeline sự cố | [db.py](app/db.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
+| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry thô sau 7 ngày (`604800` giây); rollup `metrics_hourly` giữ 1 năm | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [db.py](app/db.py) (`init_collections`) |
+| 5 | **Mô hình & Truy cập hiệu quả** | Time Series (bucket do engine quản lý), index ghép ESR `pond_metric_ts`, 1 aggregate cho cả 6 ao, rollup thay cho quét dữ liệu thô — xem [Mẫu truy cập & quyết định thiết kế](#mẫu-truy-cập--quyết-định-thiết-kế) | [db.py](app/db.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
 | 6 | **Gắn chặt với vận hành** | MongoDB điều khiển toàn bộ state machine của sự cố (`open → investigating → resolving → recovered`) | [04_swagger_ui_incidents.png](assets_proof/04_swagger_ui_incidents.png) · [06_mongodb_document_incident.png](assets_proof/06_mongodb_document_incident.png) |
 
 #### 🟡 Tùy chọn
 
 | Yêu cầu BTC | ShrimpWatch đáp ứng | Bằng chứng |
 |---|---|---|
-| Xử lý hướng sự kiện | Mọi thay đổi trạng thái sự cố ghi vào collection `events` để hậu kiểm | [05_mongodb_event_log.png](assets_proof/05_mongodb_event_log.png) |
+| Xử lý hướng sự kiện | Mọi thay đổi trạng thái sự cố ghi vào collection `events` (khoá theo `incident_id`), dựng lại thành timeline qua `GET /incidents/{id}/timeline` | [05_mongodb_event_log.png](assets_proof/05_mongodb_event_log.png) |
 | Change Streams / mở rộng | Cấu trúc dữ liệu sẵn sàng tích hợp Change Streams cho thông báo thời gian thực | [db.py](app/db.py) |
 
 ### 6.2. Datadog — Quan sát & Cảnh báo
@@ -373,9 +404,11 @@ Tất cả ảnh được lưu trong thư mục **`assets_proof/`** với đúng
 3. Chụp phần kết quả in ra: `timeseries.timeField`, `metaField`, `granularity` và `expireAfterSeconds TTL : 604800 (~ 7 ngày)`.
 
 **2. `02_pytest_9_xanh.png` — Kiểm thử**
-1. Chạy: `docker compose exec -T api pytest -v tests/`
+1. Chạy: `make test` (chạy trên database `shrimpwatch_test` của container MongoDB local, không đụng tới Atlas)
 2. Chụp dòng `9 passed`.
-> ⚠️ **Cảnh báo:** bộ test gọi `init_collections(force=True)` nên sẽ **xoá sạch collection** trong database đang kết nối. Chỉ chạy khi `MONGODB_URI` trỏ về MongoDB **local**; nếu đang trỏ lên Atlas thì tạm đổi về local trước rồi chạy lại, sau đó đổi lại như cũ.
+> ⚠️ **Cảnh báo:** bộ test gọi `init_collections(force=True)` nên sẽ **xoá sạch collection** trong database đang kết nối. `make test` đã ghi đè `MONGODB_URI`/`MONGODB_DB` về MongoDB local; đừng chạy `pytest` trực tiếp khi `.env` trỏ lên Atlas.
+
+> 🔁 **CI (GitHub Actions):** mỗi PR và mỗi lần push lên `main` chạy 3 job — `Lint (ruff)` (= `make lint`), `Tests (MongoDB 7)` với coverage tối thiểu 64% ([.coveragerc](.coveragerc)), và `Compose smoke test` (dựng stack thật, kiểm tra dữ liệu chảy vào `metrics` / `metrics_hourly`). Xem [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 **3. `03_agent_status.png` — Datadog Agent**
 ```powershell
@@ -446,7 +479,7 @@ Chụp phần đầu báo cáo (Agent version, Running Checks, `http_check`).
 docker compose exec -T api pytest -v tests/
 ```
 
-Bộ test bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm thủ công, pipeline `$setWindowFields`, công thức suy ra CO₂, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **9/9 PASSED**.
+Bộ test bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **14/14 PASSED**.
 
 > ⚠️ **Lưu ý quan trọng:** fixture `setup_db` gọi `init_collections(force=True)` → **xoá toàn bộ collection** của database đang kết nối. Không chạy lệnh này khi `.env` đang trỏ lên MongoDB Atlas đang chứa dữ liệu báo cáo.
 

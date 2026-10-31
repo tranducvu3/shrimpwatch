@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -10,11 +9,13 @@ from ddtrace import tracer
 from app.config import settings
 from app.db import (
     compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
     events_collection,
     incidents_collection,
     metrics_collection,
+    metrics_hourly_collection,
     pack_ts_doc,
-    ponds_collection,
+    run_hourly_rollup,
 )
 from app.logging_setup import get_logger
 from app.metrics import gauge, increment, set_span_tags, init_metrics
@@ -57,37 +58,63 @@ def derive_co2_for_pond(pond_id: str, timestamp: datetime) -> float | None:
     return round(co2, 3)
 
 
-def write_co2_record(pond_id: str, timestamp: datetime, co2: float):
+def _latest_value(pond_id: str, metric: str, since: datetime) -> float | None:
+    doc = metrics_collection().find_one(
+        {"metadata.pond_id": pond_id, "metadata.metric": metric, "timestamp": {"$gte": since}},
+        sort=[("timestamp", -1)],
+    )
+    return doc["value"] if doc else None
+
+
+def nh3_fraction(ph: float, temp_c: float) -> float:
+    # Emerson et al. (1975): pKa = 0.09018 + 2729.92 / T(K)
+    pka = 0.09018 + 2729.92 / (temp_c + 273.15)
+    return 1.0 / (1.0 + 10 ** (pka - ph))
+
+
+def derive_nh3_for_pond(pond_id: str, timestamp: datetime) -> float | None:
+    tan = _latest_value(pond_id, "tan", timestamp - timedelta(hours=24))
+    ph = _latest_value(pond_id, "ph", timestamp - timedelta(minutes=30))
+    temp = _latest_value(pond_id, "temperature", timestamp - timedelta(minutes=30))
+    if tan is None or ph is None or temp is None:
+        return None
+    return round(tan * nh3_fraction(ph, temp), 4)
+
+
+def compute_ph_swing(pond_id: str) -> float | None:
+    rows = list(metrics_hourly_collection().aggregate(compute_ph_swing_pipeline(pond_id)))
+    return rows[0]["ph_swing"] if rows else None
+
+
+def write_derived_record(pond_id: str, timestamp: datetime, metric: str, value: float, unit: str):
     doc = pack_ts_doc(
         {
             "timestamp": timestamp,
             "farm_id": settings.FARM_ID,
             "pond_id": pond_id,
-            "device_id": f"worker-co2-{pond_id}",
+            "device_id": f"worker-{metric}-{pond_id}",
             "device_type": DeviceType.WORKER.value,
-            "metric": "co2",
+            "metric": metric,
             "source": Source.DERIVED.value,
-            "unit": "mg/L",
-            "value": co2,
+            "unit": unit,
+            "value": value,
         }
     )
     metrics_collection().insert_one(doc)
     gauge(
-        "metric.co2",
-        co2,
+        f"metric.{metric}",
+        value,
         tags={"pond": pond_id, "device_type": DeviceType.WORKER.value, "source": Source.DERIVED.value},
     )
-    increment("co2.derived", tags={"pond": pond_id})
+    increment(f"{metric}.derived", tags={"pond": pond_id})
 
 
-def evaluate_pond_do_drop(pond_id: str, window_sec: int = 300):
-    pipeline = compute_do_drop_rate_pipeline(pond_id, window_sec=window_sec)
-    result = list(metrics_collection().aggregate(pipeline))
-    if not result:
-        return None
-    row = result[0]
-    logger.info("DO window computed", extra={"pond": pond_id, "row": row})
-    return row
+def evaluate_do_drop(pond_ids: list[str], window_sec: int = 300) -> dict[str, dict]:
+    pipeline = compute_do_drop_rate_pipeline(pond_ids, window_sec=window_sec)
+    rows = {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
+    for pond_id, row in rows.items():
+        logger.info("DO window computed", extra={"pond": pond_id, "row": row})
+    return rows
 
 
 def avg_pump_power_last_n(pond_id: str, minutes: int = 5) -> float | None:
@@ -114,7 +141,14 @@ def find_open_incident(pond_id: str) -> dict | None:
     )
 
 
-def open_or_update_incident(pond_id: str, severity: Severity, title: str, description: str, evidence: IncidentEvidence, root_cause: str | None = None) -> str:
+def open_or_update_incident(
+    pond_id: str,
+    severity: Severity,
+    title: str,
+    description: str,
+    evidence: IncidentEvidence,
+    root_cause: str | None = None,
+) -> str:
     existing = find_open_incident(pond_id)
     if existing:
         incidents_collection().update_one(
@@ -161,27 +195,47 @@ def open_or_update_incident(pond_id: str, severity: Severity, title: str, descri
     return incident_id
 
 
-def check_pond(pond_id: str):
+def check_pond(pond_id: str, do_row: dict | None = None):
     set_span_tags(pond_id=pond_id, device_type=DeviceType.WORKER.value)
+    if do_row is None:
+        do_row = evaluate_do_drop([pond_id]).get(pond_id)
     now = datetime.utcnow()
 
     co2 = derive_co2_for_pond(pond_id, now)
     if co2 is not None:
         if co2 > settings.CO2_WARN:
             logger.warning("CO2 warning", extra={"pond": pond_id, "co2": co2})
-        write_co2_record(pond_id, now, co2)
+        write_derived_record(pond_id, now, "co2", co2, "mg/L")
+
+    nh3 = derive_nh3_for_pond(pond_id, now)
+    if nh3 is not None:
+        if nh3 > settings.NH3_WARN:
+            logger.warning("NH3 warning", extra={"pond": pond_id, "nh3": nh3})
+        write_derived_record(pond_id, now, "nh3", nh3, "mg/L")
+
+    ph_swing = compute_ph_swing(pond_id)
+    if ph_swing is not None:
+        if ph_swing > settings.PH_SWING_WARN:
+            logger.warning("pH swing warning", extra={"pond": pond_id, "ph_swing": ph_swing})
+        write_derived_record(pond_id, now, "ph_swing", ph_swing, "pH")
+
+    last_orp = _latest_value(pond_id, "orp", now - timedelta(minutes=5))
+    if last_orp is not None and last_orp < settings.ORP_WARN_LOW:
+        logger.warning("ORP low: day ao thieu oxy, nguy co H2S", extra={"pond": pond_id, "orp": last_orp})
 
     avg_pump = avg_pump_power_last_n(pond_id, minutes=5)
     pump_failed = avg_pump is not None and avg_pump < 50.0
 
-    row = evaluate_pond_do_drop(pond_id, window_sec=300)
-    drop_rate = row.get("do_drop_rate_mg_per_l_per_min") if row else None
-    min_do = row.get("min_do") if row else None
+    drop_rate = do_row.get("do_drop_rate_mg_per_l_per_min") if do_row else None
+    min_do = do_row.get("min_do") if do_row else None
 
     evidence = IncidentEvidence(
         do_drop_rate_mg_per_l_per_min=drop_rate,
         avg_pump_power_watts=avg_pump,
         min_do=min_do,
+        last_orp_mv=last_orp,
+        nh3_mg_per_l=nh3,
+        ph_swing_24h=ph_swing,
         do_window_sec=300,
         notes={"timestamp": now.isoformat()},
     )
@@ -255,12 +309,29 @@ def run_worker():
     init_metrics()
     logger.info("worker starting")
     ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
+    # Lan dau: backfill toan bo khoang TTL; sau do chi tinh lai gio truoc + gio hien tai.
+    rollup_since = datetime.utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
+    last_rollup = 0.0
     while True:
         t0 = time.time()
+        if t0 - last_rollup >= settings.ROLLUP_INTERVAL_SEC:
+            try:
+                with tracer.trace("worker.rollup_hourly"):
+                    run_hourly_rollup(rollup_since)
+                last_rollup = t0
+                rollup_since = datetime.utcnow() - timedelta(hours=1)
+            except Exception as e:
+                logger.error("hourly rollup failed", extra={"err": str(e)})
+        try:
+            with tracer.trace("worker.do_window"):
+                do_rows = evaluate_do_drop(ponds)
+        except Exception as e:
+            logger.error("DO window failed", extra={"err": str(e)})
+            do_rows = {}
         for pid in ponds:
             try:
                 with tracer.trace("worker.check_pond", resource=pid):
-                    check_pond(pid)
+                    check_pond(pid, do_rows.get(pid))
             except Exception as e:
                 logger.error("check_pond failed", extra={"pond": pid, "err": str(e)})
         elapsed = time.time() - t0
