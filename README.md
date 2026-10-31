@@ -67,13 +67,13 @@ Khi quạt hỏng, DO giảm ~0.1 mg/L/phút và ORP giảm theo. `incidents.evi
 ```mermaid
 flowchart LR
     subgraph SIM["Simulator (6 ao)"]
-        S["app/simulator.py<br/>sinh chỉ số mỗi 30s"]
+        S["app/simulator/<br/>sinh chỉ số mỗi 30s"]
     end
     subgraph API["FastAPI"]
-        A["POST /ingest/batch<br/>POST /ingest/manual/alkalinity<br/>GET /incidents · PATCH /incidents/{id}"]
+        A["POST /ingest/batch<br/>POST /ingest/manual/{metric}<br/>GET /incidents · PATCH /incidents/{id}"]
     end
     subgraph W["Worker"]
-        K["app/worker.py<br/>$setWindowFields → DO drop rate<br/>mở/đóng sự cố, tính CO2"]
+        K["app/worker/<br/>$setWindowFields → DO drop rate<br/>mở/đóng sự cố, tính CO2"]
     end
     subgraph MONGO["MongoDB Atlas M0"]
         M1[("metrics<br/>Time Series + TTL 7d")]
@@ -108,6 +108,33 @@ flowchart LR
 | `shrimpwatch-worker` | Phân tích dữ liệu, phát hiện & mở/đóng sự cố |
 | `shrimpwatch-mongodb` | MongoDB local dự phòng (chỉ dùng khi `.env` không trỏ lên Atlas) |
 | `shrimpwatch-datadog` | Datadog Agent — thu metrics, logs, traces |
+
+### Cấu trúc mã nguồn
+
+Mã được chia theo tầng; mỗi tầng chỉ gọi tầng bên dưới:
+
+```
+app/
+  core/        cấu hình, log JSON, Datadog (DogStatsD + span tag), đồng hồ UTC
+  domain/      nghiệp vụ thuần, không đụng DB/HTTP: model, công thức CO₂/NH₃,
+               quy tắc phát hiện sự cố, vòng đời sự cố (chuyển trạng thái hợp lệ)
+  db/          mongo.py (kết nối + collection), schema.py (collection/index/migrate),
+               pipelines.py (aggregation), repositories/ (truy vấn theo collection)
+  services/    nơi duy nhất ghi dữ liệu: ingest, derivations, incidents, ponds
+  api/         FastAPI: main.py, schemas.py (body request), routers/ theo tài nguyên
+  worker/      loop.py (chu kỳ 30s) + pond_check.py (số liệu → quy tắc → service)
+  simulator/   pond_model.py (mô hình ao), runner.py, api_client.py (chỉ gọi HTTP API)
+  cli/         init_db, demo_incident, datadog_push  →  python -m app.cli.<tên>
+```
+
+```
+api, worker ──► services ──► db.repositories ──► db.mongo
+                    └──────► domain (thuần)
+simulator, cli.demo_incident ──HTTP──► api
+```
+
+- Thêm chỉ số mới: khai báo ở `domain/models.py`, công thức ở `domain/`, ghi ở `services/derivations.py`.
+- Thêm quy tắc cảnh báo: sửa `domain/incident_rules.py` và thêm test ở `tests/unit/test_incident_rules.py` (không cần MongoDB).
 
 ---
 
@@ -193,7 +220,7 @@ docker compose ps
 ### Bước 3: Khởi tạo dữ liệu
 
 ```powershell
-docker compose exec -T api python -m app.init_db
+docker compose exec -T api python -m app.cli.init_db
 ```
 
 Lệnh này tạo **Time Series Collection + TTL index** và seed 6 ao. Khi container `simulator` khởi động, nó còn tự nạp lại **6 giờ dữ liệu lịch sử** để Dashboard/Monitor có dữ liệu nền phân tích ngay.
@@ -224,7 +251,6 @@ Truy cập [http://localhost:8000/docs](http://localhost:8000/docs):
 |---|---|
 | `GET /healthz` | Kiểm tra API + kết nối MongoDB |
 | `POST /ingest/batch` | Ghi lô dữ liệu cảm biến |
-| `POST /ingest/manual/alkalinity` | Nhập độ kiềm thủ công |
 | `POST /ingest/manual/{metric}` | Nhập test-kit thủ công: `alkalinity`, `tan`, `nitrite` |
 | `GET /ponds` | Danh sách 6 ao + trạng thái quạt |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Đánh dấu/hồi phục quạt nước |
@@ -266,7 +292,7 @@ Tính năng cốt lõi thể hiện sự phối hợp giữa MongoDB và Datadog
 Chạy demo tự động (thao tác trên ao số 3):
 
 ```powershell
-docker compose exec -T api python -m app.demo_incident
+docker compose exec -T api python -m app.cli.demo_incident
 ```
 
 Kết quả thực tế đã kiểm chứng (sự cố `inc-477e03104c`):
@@ -342,10 +368,10 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 | # | Yêu cầu BTC | ShrimpWatch đáp ứng | Bằng chứng (mã nguồn / ảnh) |
 |---|---|---|---|
 | 1 | **Nền tảng CHÍNH** | Toàn bộ dữ liệu sensor, sự cố, lịch sử vận hành lưu trên **MongoDB Atlas (Cloud)** | [13_mongodb_atlas_cluster.png](assets_proof/13_mongodb_atlas_cluster.png) · [14_mongodb_atlas_data.png](assets_proof/14_mongodb_atlas_data.png) |
-| 2 | **Time Series Collections** | Telemetry (DO, pH, nhiệt độ, quạt) lưu trong Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [db.py](app/db.py#L58-L82) |
-| 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` tính tốc độ sụt DO theo cửa sổ thời gian 5 phút; `$group` + `$merge` rollup theo giờ; `$lookup` + `$sortArray` dựng timeline sự cố | [db.py](app/db.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
-| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry thô sau 7 ngày (`604800` giây); rollup `metrics_hourly` giữ 1 năm | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [db.py](app/db.py) (`init_collections`) |
-| 5 | **Mô hình & Truy cập hiệu quả** | Time Series (bucket do engine quản lý), index ghép ESR `pond_metric_ts`, 1 aggregate cho cả 6 ao, rollup thay cho quét dữ liệu thô — xem [Mẫu truy cập & quyết định thiết kế](#mẫu-truy-cập--quyết-định-thiết-kế) | [db.py](app/db.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
+| 2 | **Time Series Collections** | Telemetry (DO, pH, nhiệt độ, quạt) lưu trong Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [schema.py](app/db/schema.py#L38-L68) |
+| 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` tính tốc độ sụt DO theo cửa sổ thời gian 5 phút; `$group` + `$merge` rollup theo giờ; `$lookup` + `$sortArray` dựng timeline sự cố | [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
+| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry thô sau 7 ngày (`604800` giây); rollup `metrics_hourly` giữ 1 năm | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [schema.py](app/db/schema.py) (`init_collections`) |
+| 5 | **Mô hình & Truy cập hiệu quả** | Time Series (bucket do engine quản lý), index ghép ESR `pond_metric_ts`, 1 aggregate cho cả 6 ao, rollup thay cho quét dữ liệu thô — xem [Mẫu truy cập & quyết định thiết kế](#mẫu-truy-cập--quyết-định-thiết-kế) | [schema.py](app/db/schema.py) · [pipelines.py](app/db/pipelines.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
 | 6 | **Gắn chặt với vận hành** | MongoDB điều khiển toàn bộ state machine của sự cố (`open → investigating → resolving → recovered`) | [04_swagger_ui_incidents.png](assets_proof/04_swagger_ui_incidents.png) · [06_mongodb_document_incident.png](assets_proof/06_mongodb_document_incident.png) |
 
 #### 🟡 Tùy chọn
@@ -353,7 +379,7 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 | Yêu cầu BTC | ShrimpWatch đáp ứng | Bằng chứng |
 |---|---|---|
 | Xử lý hướng sự kiện | Mọi thay đổi trạng thái sự cố ghi vào collection `events` (khoá theo `incident_id`), dựng lại thành timeline qua `GET /incidents/{id}/timeline` | [05_mongodb_event_log.png](assets_proof/05_mongodb_event_log.png) |
-| Change Streams / mở rộng | Cấu trúc dữ liệu sẵn sàng tích hợp Change Streams cho thông báo thời gian thực | [db.py](app/db.py) |
+| Change Streams / mở rộng | Cấu trúc dữ liệu sẵn sàng tích hợp Change Streams cho thông báo thời gian thực | [app/db/](app/db) |
 
 ### 6.2. Datadog — Quan sát & Cảnh báo
 
@@ -364,7 +390,7 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 | 1 | **Ít nhất 1 Dashboard** | Dashboard tổng quan sức khỏe 6 ao: KPI sự cố, nhiệt độ, DO, pH, độ kiềm, CO₂, công suất quạt, heatmap | [07_datadog_dashboard.png](assets_proof/07_datadog_dashboard.png)   [07_datadog_dashboard_2.png](assets_proof/07_datadog_dashboard_2.png)   [07_datadog_dashboard_3.png](assets_proof/07_datadog_dashboard_3.png)   · [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
 | 2 | **Ít nhất 1 Monitor/Alert** | Monitor **CRITICAL** khi quạt hỏng (`pump_power < 50W`) và **WARNING** khi oxy sụt bất thường | [08_datadog_monitor_alert.png](assets_proof/08_datadog_monitor_alert.png) · [pump_failure_critical.json](datadog/monitors/pump_failure_critical.json) |
 | 3 | **Năng lực bổ sung** | Tích hợp đồng thời Metrics (DogStatsD), Log Management, APM và Distributed Tracing | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) |
-| 4 | **Kết nối Metrics/Logs/Traces** | Mỗi log mang `dd.trace_id`; span được gắn tag `pond`, `device_type` → điều tra từ cảnh báo tới dòng code | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) · [logging_setup.py](app/logging_setup.py) |
+| 4 | **Kết nối Metrics/Logs/Traces** | Mỗi log mang `dd.trace_id`; span được gắn tag `pond`, `device_type` → điều tra từ cảnh báo tới dòng code | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) · [log.py](app/core/log.py) |
 
 #### 🟡 Tùy chọn nâng cao
 
@@ -430,7 +456,7 @@ Chụp phần đầu báo cáo (Agent version, Running Checks, `http_check`).
 1. Atlas → `shrimpwatch` → `incidents`.
 2. Lọc `_id` = `inc-477e03104c` (hoặc sự cố mới nhất có `severity: critical`).
 3. Mở rộng trường `evidence` (chứa `do_drop_rate_mg_per_l_per_min`) và mảng `actions` (4 bước) rồi chụp.
-> Cần chạy `docker compose exec -T api python -m app.demo_incident` trước để có đủ 4 bước trong `actions`.
+> Cần chạy `docker compose exec -T api python -m app.cli.demo_incident` trước để có đủ 4 bước trong `actions`.
 
 **7–9. `07_datadog_dashboard*.png` — Dashboard**
 1. Datadog → **Dashboards** → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng**.
@@ -460,7 +486,7 @@ Chụp phần đầu báo cáo (Agent version, Running Checks, `http_check`).
 
 **12. `ShrimpWatch_Lifecycle.mp4` — Video**
 1. Bật quay màn hình.
-2. Chạy `docker compose exec -T api python -m app.demo_incident` (log hiện đủ 4 bước).
+2. Chạy `docker compose exec -T api python -m app.cli.demo_incident` (log hiện đủ 4 bước).
 3. Mở song song tab Datadog Monitor và Atlas → `incidents` để thấy trạng thái đổi theo thời gian thực.
 
 **13. `13_mongodb_atlas_cluster.png` — Cluster Atlas**
@@ -475,11 +501,15 @@ Chụp phần đầu báo cáo (Agent version, Running Checks, `http_check`).
 
 ## 🧪 Kiểm thử tự động
 
-```powershell
-docker compose exec -T api pytest -v tests/
+```bash
+make test                      # toàn bộ (unit + integration) trên DB test của MongoDB local
+pytest tests/unit              # chỉ unit test, không cần MongoDB
 ```
 
-Bộ test bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **14/14 PASSED**.
+- `tests/unit/`: công thức hoá học nước, quy tắc phát hiện sự cố, vòng đời sự cố, mô hình simulator, cấu trúc pipeline.
+- `tests/integration/`: chạy với MongoDB thật qua API và worker.
+
+Bộ test integration bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **14/14 PASSED**.
 
 > ⚠️ **Lưu ý quan trọng:** fixture `setup_db` gọi `init_collections(force=True)` → **xoá toàn bộ collection** của database đang kết nối. Không chạy lệnh này khi `.env` đang trỏ lên MongoDB Atlas đang chứa dữ liệu báo cáo.
 

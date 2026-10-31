@@ -1,5 +1,5 @@
-from app.db.schema import init_collections
 from app.core.log import get_logger
+from app.db.schema import init_collections
 
 logger = get_logger("init_db")
 
