@@ -1,10 +1,10 @@
 {
   "title": "ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng",
-  "description": "Dashboard tổng hợp cho 6 ao: nhiệt độ, DO, pH, độ kiềm, CO2, công suất quạt, sự cố. Tương ứng yêu cầu #3 (ít nhất 1 dashboard Datadog).",
+  "description": "Bảng giám sát tổng hợp cho 6 ao: nhiệt độ, DO, pH, độ kiềm, CO2, công suất quạt, độ mặn, ORP, NH3 và sự cố. Đáp ứng yêu cầu #3 (ít nhất 1 bảng giám sát Datadog).",
   "template_variables": [
-    {"name": "farm_id", "prefix": "farm_id", "default": "farm-001"},
-    {"name": "pond", "prefix": "pond", "default": "*", "available_values": ["*", "pond-01", "pond-02", "pond-03", "pond-04", "pond-05", "pond-06"]},
-    {"name": "device_type", "prefix": "device_type", "default": "*", "available_values": ["*", "water_node", "pump", "worker", "manual_tester"]}
+    {"name": "trang_trai", "prefix": "farm_id", "default": "farm-001"},
+    {"name": "ao", "prefix": "pond", "default": "*", "available_values": ["*", "pond-01", "pond-02", "pond-03", "pond-04", "pond-05", "pond-06"]},
+    {"name": "loai_thiet_bi", "prefix": "device_type", "default": "*", "available_values": ["*", "water_node", "pump", "worker", "manual_tester"]}
   ],
   "layout_type": "ordered",
   "reflow_type": "fixed",
@@ -30,7 +30,7 @@
               "precision": 0,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "sum:shrimpwatch.incident.active{$farm_id,$pond}"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "sum:shrimpwatch.incident.active{$trang_trai,$ao}"}],
                  "conditional_formats": [
                    {"comparator": ">", "value": 0, "palette": "white_on_red"},
                    {"comparator": "<=", "value": 0, "palette": "white_on_green"}
@@ -51,7 +51,7 @@
               "precision": 0,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.incident.recovered{$farm_id,$pond}.as_count().rollup(sum, 86400)"}]}
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.incident.recovered{$trang_trai,$ao}.as_count().rollup(sum, 86400)"}]}
               ]
             },
             "layout": {"x": 2, "y": 0, "width": 2, "height": 2}
@@ -68,7 +68,7 @@
               "precision": 0,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.pump.failure{state:fail,$farm_id,$pond}.as_count().rollup(sum, 86400)"}]}
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.pump.failure{state:fail,$trang_trai,$ao}.as_count().rollup(sum, 86400)"}]}
               ]
             },
             "layout": {"x": 4, "y": 0, "width": 2, "height": 2}
@@ -77,7 +77,7 @@
             "id": 104,
             "definition": {
               "type": "query_value",
-              "title": "Records ingested / phút",
+              "title": "Bản ghi tiếp nhận / phút",
               "title_size": "16",
               "title_align": "left",
               "time": {"live_span": "5m"},
@@ -86,7 +86,7 @@
               "custom_unit": "/phút",
               "requests": [
                 {"formulas": [{"formula": "query1 * 60"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "avg", "query": "sum:shrimpwatch.ingest.records{$farm_id}.as_rate()"}]}
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "avg", "query": "sum:shrimpwatch.ingest.records{$trang_trai}.as_rate()"}]}
               ]
             },
             "layout": {"x": 6, "y": 0, "width": 2, "height": 2}
@@ -100,7 +100,7 @@
       "definition": {
         "type": "group",
         "layout_type": "ordered",
-        "title": "Chỉ số theo dõi theo Ao (tag pond, device_type)",
+        "title": "Chỉ số theo dõi từng ao (lọc theo ao, loại thiết bị)",
         "show_title": true,
         "widgets": [
           {
@@ -115,7 +115,7 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.temperature{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.temperature{$trang_trai,$ao,$loai_thiet_bi} by {pond}.rollup(avg,30)"}],
                  "style": {"palette": "warm"}
                 }
               ],
@@ -130,7 +130,7 @@
             "id": 202,
             "definition": {
               "type": "timeseries",
-              "title": "DO (mg/L) - Warning dưới 4, Critical dưới 3",
+              "title": "DO (mg/L) - cảnh báo dưới 4, nguy hiểm dưới 3",
               "title_size": "16",
               "title_align": "left",
               "time": {"live_span": "4h"},
@@ -138,13 +138,13 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.do{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.do{$trang_trai,$ao,$loai_thiet_bi} by {pond}.rollup(avg,30)"}],
                  "style": {"palette": "cool"}
                 }
               ],
               "markers": [
-                {"value": "y = 3", "display_type": "error solid", "label": "DO critical 3 mg/L"},
-                {"value": "y = 4", "display_type": "warning dashed", "label": "DO warning 4 mg/L"}
+                {"value": "y = 3", "display_type": "error solid", "label": "DO nguy hiểm 3 mg/L"},
+                {"value": "y = 4", "display_type": "warning dashed", "label": "DO cảnh báo 4 mg/L"}
               ]
             },
             "layout": {"x": 0, "y": 2, "width": 8, "height": 2}
@@ -161,7 +161,7 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.ph{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.ph{$trang_trai,$ao,$loai_thiet_bi} by {pond}.rollup(avg,30)"}],
                  "style": {"palette": "classroom"}
                 }
               ],
@@ -181,14 +181,14 @@
       "definition": {
         "type": "group",
         "layout_type": "ordered",
-        "title": "Độ kiềm (manual) & CO2 (derived) + Quạt nước",
+        "title": "Độ kiềm (nhập tay), CO2 (tính toán) và quạt nước",
         "show_title": true,
         "widgets": [
           {
             "id": 301,
             "definition": {
               "type": "timeseries",
-              "title": "Độ kiềm (mg CaCO3/L) - Warning dưới 120",
+              "title": "Độ kiềm (mg CaCO3/L) - cảnh báo dưới 120",
               "title_size": "16",
               "title_align": "left",
               "time": {"live_span": "1d"},
@@ -196,12 +196,12 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.alkalinity{source:manual,$farm_id,$pond} by {pond}"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.alkalinity{source:manual,$trang_trai,$ao} by {pond}"}],
                  "style": {"palette": "cool"}
                 }
               ],
               "markers": [
-                {"value": "y = 120", "display_type": "warning dashed", "label": "Độ kiềm warning 120"}
+                {"value": "y = 120", "display_type": "warning dashed", "label": "Độ kiềm cảnh báo 120"}
               ]
             },
             "layout": {"x": 0, "y": 0, "width": 4, "height": 2}
@@ -210,7 +210,7 @@
             "id": 302,
             "definition": {
               "type": "timeseries",
-              "title": "CO2 (mg/L) - derived từ pH & độ kiềm, Warning trên 10",
+              "title": "CO2 (mg/L) - tính từ pH và độ kiềm, cảnh báo trên 10",
               "title_size": "16",
               "title_align": "left",
               "time": {"live_span": "4h"},
@@ -218,12 +218,12 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.co2{source:derived,$farm_id,$pond} by {pond}.rollup(avg,60)"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.co2{source:derived,$trang_trai,$ao} by {pond}.rollup(avg,60)"}],
                  "style": {"palette": "orange"}
                 }
               ],
               "markers": [
-                {"value": "y = 10", "display_type": "warning dashed", "label": "CO2 warning 10 mg/L"}
+                {"value": "y = 10", "display_type": "warning dashed", "label": "CO2 cảnh báo 10 mg/L"}
               ]
             },
             "layout": {"x": 4, "y": 0, "width": 4, "height": 2}
@@ -240,7 +240,7 @@
               "requests": [
                 {"formulas": [{"formula": "query1"}],
                  "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.pump_power{device_type:pump,$farm_id,$pond} by {pond}.rollup(avg,30)"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "avg:shrimpwatch.metric.pump_power{device_type:pump,$trang_trai,$ao} by {pond}.rollup(avg,30)"}],
                  "style": {"palette": "vivid"}
                 }
               ]
@@ -257,7 +257,7 @@
               "time": {"live_span": "5m"},
               "requests": [
                 {"formulas": [{"formula": "query1", "limit": {"count": 6, "order": "asc"}}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "avg:shrimpwatch.metric.do{$farm_id,$pond} by {pond}"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "avg:shrimpwatch.metric.do{$trang_trai,$ao} by {pond}"}],
                  "conditional_formats": [
                    {"comparator": "<", "value": 3, "palette": "white_on_red"},
                    {"comparator": "<", "value": 4, "palette": "white_on_yellow"},
@@ -276,14 +276,14 @@
       "definition": {
         "type": "group",
         "layout_type": "ordered",
-        "title": "Chỉ số mới: Độ mặn, ORP (sensor) · TAN, Nitrite (manual) · NH3, biên độ pH (derived)",
+        "title": "Chỉ số bổ sung: độ mặn, ORP (cảm biến) · TAN, nitrite (nhập tay) · NH3, biên độ pH (tính toán)",
         "show_title": true,
         "widgets": [
           {
             "id": 401,
             "definition": {
               "type": "timeseries",
-              "title": "Độ mặn (ppt) - Warning dưới 10",
+              "title": "Độ mặn (ppt) - cảnh báo dưới 10",
               "title_size": "16",
               "title_align": "left",
               "time": {
@@ -302,7 +302,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.salinity{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"
+                      "query": "avg:shrimpwatch.metric.salinity{$trang_trai,$ao,$loai_thiet_bi} by {pond}.rollup(avg,30)"
                     }
                   ],
                   "style": {
@@ -314,7 +314,7 @@
                 {
                   "value": "y = 10",
                   "display_type": "warning dashed",
-                  "label": "Độ mặn warning 10 ppt"
+                  "label": "Độ mặn cảnh báo 10 ppt"
                 }
               ]
             },
@@ -348,7 +348,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.orp{$farm_id,$pond,$device_type} by {pond}.rollup(avg,30)"
+                      "query": "avg:shrimpwatch.metric.orp{$trang_trai,$ao,$loai_thiet_bi} by {pond}.rollup(avg,30)"
                     }
                   ],
                   "style": {
@@ -360,7 +360,7 @@
                 {
                   "value": "y = 100",
                   "display_type": "warning dashed",
-                  "label": "ORP warning 100 mV"
+                  "label": "ORP cảnh báo 100 mV"
                 }
               ]
             },
@@ -375,7 +375,7 @@
             "id": 403,
             "definition": {
               "type": "timeseries",
-              "title": "NH3 độc (mg/L) - derived từ TAN, pH, nhiệt độ - Warning trên 0.1",
+              "title": "NH3 độc (mg/L) - tính từ TAN, pH, nhiệt độ - cảnh báo trên 0.1",
               "title_size": "16",
               "title_align": "left",
               "time": {
@@ -394,7 +394,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.nh3{source:derived,$farm_id,$pond} by {pond}.rollup(avg,60)"
+                      "query": "avg:shrimpwatch.metric.nh3{source:derived,$trang_trai,$ao} by {pond}.rollup(avg,60)"
                     }
                   ],
                   "style": {
@@ -406,7 +406,7 @@
                 {
                   "value": "y = 0.1",
                   "display_type": "warning dashed",
-                  "label": "NH3 warning 0.1 mg/L"
+                  "label": "NH3 cảnh báo 0.1 mg/L"
                 }
               ]
             },
@@ -421,7 +421,7 @@
             "id": 404,
             "definition": {
               "type": "timeseries",
-              "title": "Biên độ pH 24h (max - min) - Warning trên 0.5",
+              "title": "Biên độ pH 24 giờ (cao nhất - thấp nhất) - cảnh báo trên 0.5",
               "title_size": "16",
               "title_align": "left",
               "time": {
@@ -440,7 +440,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.ph_swing{source:derived,$farm_id,$pond} by {pond}.rollup(avg,300)"
+                      "query": "avg:shrimpwatch.metric.ph_swing{source:derived,$trang_trai,$ao} by {pond}.rollup(avg,300)"
                     }
                   ],
                   "style": {
@@ -452,7 +452,7 @@
                 {
                   "value": "y = 0.5",
                   "display_type": "warning dashed",
-                  "label": "Biên độ pH warning 0.5"
+                  "label": "Biên độ pH cảnh báo 0.5"
                 }
               ]
             },
@@ -467,7 +467,7 @@
             "id": 405,
             "definition": {
               "type": "timeseries",
-              "title": "TAN - tổng amoni (mg/L, manual test-kit)",
+              "title": "TAN - tổng amoni (mg/L, bộ thử nhập tay)",
               "title_size": "16",
               "title_align": "left",
               "time": {
@@ -486,7 +486,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.tan{source:manual,$farm_id,$pond} by {pond}"
+                      "query": "avg:shrimpwatch.metric.tan{source:manual,$trang_trai,$ao} by {pond}"
                     }
                   ],
                   "style": {
@@ -506,7 +506,7 @@
             "id": 406,
             "definition": {
               "type": "timeseries",
-              "title": "Nitrite NO2 (mg/L, manual test-kit) - Warning trên 1",
+              "title": "Nitrite NO2 (mg/L, bộ thử nhập tay) - cảnh báo trên 1",
               "title_size": "16",
               "title_align": "left",
               "time": {
@@ -525,7 +525,7 @@
                     {
                       "name": "query1",
                       "data_source": "metrics",
-                      "query": "avg:shrimpwatch.metric.nitrite{source:manual,$farm_id,$pond} by {pond}"
+                      "query": "avg:shrimpwatch.metric.nitrite{source:manual,$trang_trai,$ao} by {pond}"
                     }
                   ],
                   "style": {
@@ -537,7 +537,7 @@
                 {
                   "value": "y = 1",
                   "display_type": "warning dashed",
-                  "label": "Nitrite warning 1 mg/L"
+                  "label": "Nitrite cảnh báo 1 mg/L"
                 }
               ]
             },
@@ -562,7 +562,7 @@
       "definition": {
         "type": "group",
         "layout_type": "ordered",
-        "title": "Vector Search: sự cố tương tự (gợi ý xử lý từ lịch sử)",
+        "title": "Tìm kiếm vector: sự cố tương tự (gợi ý cách xử lý từ lịch sử)",
         "show_title": true,
         "widgets": [
           {
@@ -577,7 +577,7 @@
               "precision": 3,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$farm_id,$pond}", "aggregator": "last"}]}
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$trang_trai,$ao}", "aggregator": "last"}]}
               ]
             },
             "layout": {"x": 0, "y": 0, "width": 2, "height": 2}
@@ -592,7 +592,7 @@
               "show_legend": true,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "timeseries",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$farm_id,$pond} by {pond,root_cause}"}],
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "max:shrimpwatch.incident.similarity_score{$trang_trai,$ao} by {pond,root_cause}"}],
                  "display_type": "line"}
               ]
             },
@@ -602,13 +602,13 @@
             "id": 503,
             "definition": {
               "type": "query_table",
-              "title": "Số lần tìm sự cố tương tự theo chế độ",
+              "title": "Số lần tìm sự cố tương tự theo chế độ tìm",
               "title_size": "16",
               "title_align": "left",
               "time": {"live_span": "1d"},
               "requests": [
-                {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.incident.similarity_search{$farm_id,$pond} by {mode}.as_count()", "aggregator": "sum"}]}
+                {"formulas": [{"formula": "query1", "alias": "Số lần tìm"}], "response_format": "scalar",
+                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.incident.similarity_search{$trang_trai,$ao} by {mode}.as_count()", "aggregator": "sum"}]}
               ]
             },
             "layout": {"x": 6, "y": 0, "width": 2, "height": 2}
