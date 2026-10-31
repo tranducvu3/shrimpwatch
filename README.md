@@ -283,6 +283,16 @@ docker compose up -d --build
 
 > **Ghi chú:** chuỗi `mongodb+srv://` cần thư viện `dnspython` — đã có sẵn trong [requirements.txt](requirements.txt).
 
+### Chạy trên GitHub Codespaces (miễn phí, để demo)
+
+Không cần cài gì trên máy: repo có sẵn [.devcontainer/](.devcontainer/), Codespace tự build và chạy cả stack.
+
+1. *(Tuỳ chọn)* **Settings → Secrets and variables → Codespaces** của repo: thêm `MONGODB_URI` (Atlas), `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE`. Không thêm → dùng MongoDB trong container, không chạy Datadog Agent.
+2. **Code → Codespaces → Create codespace on main**. Lần đầu mất vài phút (build image).
+3. Tab **Ports** → cổng `8000` → mở `/docs` hoặc `/control`. Để chia sẻ link: chuột phải → *Port Visibility → Public* (API chưa có xác thực, chỉ bật Public trong lúc demo).
+
+> Codespace tự dừng sau tối đa 4 giờ không thao tác trong editor/terminal; mở lại thì stack tự khởi động lại. Tài khoản cá nhân được miễn phí 120 core-hours/tháng (~60 giờ với máy 2 core). Nhớ **Stop** codespace sau khi demo.
+
 ---
 
 ## 🎮 Hướng dẫn sử dụng & Vận hành
