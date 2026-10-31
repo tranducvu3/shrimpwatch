@@ -1,0 +1,21 @@
+# Image duoc day len GHCR (public): khong bao gio dua .env (Atlas URI, Datadog key) vao image
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.playwright-mcp
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+**/__pycache__
+**/*.py[cod]
+
+# Khong can khi chay: test (compose mount ./tests khi can), anh minh chung, docs
+tests
+assets_proof
+screenshots_pytest.txt
+*.md
