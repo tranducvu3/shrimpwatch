@@ -2,19 +2,21 @@
   "name": "[ShrimpWatch] CRITICAL: Quạt nước hỏng (Pump failure) - OXY có nguy cơ sụt",
   "type": "metric alert",
   "query": "avg(last_5m):avg:shrimpwatch.metric.pump_power{device_type:pump} by {pond} < 50",
-  "message": "## ⚠️ SỰ CỐ: Quạt nước {{pod.name}} hỏng\n\nTrung bình công suất 5 phút gần nhất = {{value}} W (< 50W) - xác định quạt đã ngừng hoạt động.\n\n### Hậu quả:\n- DO (oxy hòa tan) sẽ sụt nhanh, tôm có nguy cơ thiếu oxy trầm trọng\n- Worker sẽ tính toán tốc độ giảm DO qua pipeline `$setWindowFields` (MongoDB Time Series) và tạo incident `Severity.CRITICAL` với root_cause = `pump_failure`\n\n### Hành động đề xuất (Luồng sự cố trọn vẹn - Yêu cầu #7):\n1. **Phát hiện**: Monitor này gửi Alert, incident với state=OPEN đã được ghi vào `incidents` collection\n2. **Điều tra (INVESTIGATING)**: Check log `/incidents?state=open` và trace có tag `pond={{pod.name}},device_type=pump`. Kiểm tra nguồn điện, tụ điện, cuộn dây quạt\n3. **Xử lý (RESOLVING)**: Thay phụ tùng, khởi động lại quạt. Gọi API `PATCH /incidents/{id}?state=resolving`\n4. **Hồi phục (RECOVERED)**: Khi DO trở lại > 5 mg/L (khoảng 15-30 phút sau khi quạt chạy). Worker có thể tự chuyển state sang RECOVERED\n\n---\nTags để liên kết metrics, logs, traces (Yêu cầu #6):\n- `pond:{{pod.name}}`\n- `device_type:pump`\n- Từ log có thể nhảy sang trace bằng `trace_id` được gắn bởi `ddtrace` + `python-json-logger`",
-  "tags": ["shrimpwatch", "pond:pump_failure", "team:hackathon", "sev:critical"],
-  "thresholds": {
-    "critical": 50.0,
-    "warning": 200.0
-  },
-  "threshold_windows": {
-    "trigger_window": "last_5m",
-    "recovery_window": "last_15m"
-  },
-  "notify_no_data": false,
-  "renotify_interval": 10,
-  "evaluation_delay": 90,
-  "include_tags": true,
-  "restricted_roles": null
+  "message": "## ⚠️ SỰ CỐ: Quạt nước {{pond.name}} hỏng\n\nTrung bình công suất 5 phút gần nhất = {{value}} W (< 50W) - xác định quạt đã ngừng hoạt động.\n\n### Hậu quả:\n- DO (oxy hòa tan) sẽ sụt nhanh, tôm có nguy cơ thiếu oxy trầm trọng\n- Worker sẽ tính toán tốc độ giảm DO qua pipeline `$setWindowFields` (MongoDB Time Series) và tạo incident `Severity.CRITICAL` với root_cause = `pump_failure`\n\n### Hành động đề xuất (Luồng sự cố trọn vẹn - Yêu cầu #7):\n1. **Phát hiện**: Monitor này gửi Alert, incident với state=OPEN đã được ghi vào `incidents` collection\n2. **Điều tra (INVESTIGATING)**: Check log `/incidents?state=open` và trace có tag `pond={{pond.name}},device_type=pump`. Kiểm tra nguồn điện, tụ điện, cuộn dây quạt\n3. **Xử lý (RESOLVING)**: Thay phụ tùng, khởi động lại quạt. Gọi API `PATCH /incidents/{id}?state=resolving`\n4. **Hồi phục (RECOVERED)**: Khi DO trở lại > 5 mg/L (khoảng 15-30 phút sau khi quạt chạy). Worker có thể tự chuyển state sang RECOVERED\n\n---\nTags để liên kết metrics, logs, traces (Yêu cầu #6):\n- `pond:{{pond.name}}`\n- `device_type:pump`\n- Từ log có thể nhảy sang trace bằng `trace_id` được gắn bởi `ddtrace` + `python-json-logger`",
+  "tags": [
+    "shrimpwatch",
+    "pond:pump_failure",
+    "team:hackathon",
+    "sev:critical"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 50.0,
+      "critical_recovery": 500.0
+    },
+    "notify_no_data": false,
+    "renotify_interval": 10,
+    "evaluation_delay": 90,
+    "include_tags": true
+  }
 }

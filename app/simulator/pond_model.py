@@ -29,7 +29,8 @@ class PondSimulator:
         self._rng = random.Random(seed + sum(ord(c) for c in pond_id))
         self._temp_base = 28.5
         self._do_base = 5.8
-        self._ph_base = 8.15
+        # pH dinh ngay = base + 0.35 = 8.4: con 0.1 duoi nguong PH_WARN_HIGH, khong bao dong gia moi dem
+        self._ph_base = 8.05
         self._do_last = self._do_base
         self._do_last_ts = utcnow()
         self._orp_last = 280.0

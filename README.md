@@ -148,8 +148,8 @@ Database: **`shrimpwatch`** — 5 collection.
 | `metrics` | **Time Series** | `timeField: timestamp`, `metaField: metadata`, `granularity: seconds`, `expireAfterSeconds: 604800` (7 ngày) |
 | `metrics_hourly` | Document | Rollup theo giờ: `min`/`max`/`avg`/`count` cho từng `(pond_id, metric, hour)`, TTL 1 năm |
 | `incidents` | Document | Sự cố: `severity`, `state`, `evidence`, `actions[]`, `root_cause`, `fingerprint` (vector 6 chiều, Atlas Vector Search index `incident_fingerprint`), `similar_incidents[]` |
-| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_action`, `incident_recovered`, `incident_similar_matched`, `incident_imported`, `pump_state_change`. Mọi event của sự cố đều có `incident_id` ở cấp cao nhất |
-| `ponds` | Document | Danh mục 6 ao và trạng thái quạt nước |
+| `events` | Document | Nhật ký sự kiện: `incident_open`, `incident_escalated`, `incident_action`, `incident_recovered`, `incident_similar_matched`, `incident_imported`, `pump_state_change`, `scenario_start`, `scenario_clear`. Mọi event của sự cố đều có `incident_id` ở cấp cao nhất |
+| `ponds` | Document | Danh mục 6 ao, trạng thái quạt nước và kịch bản mô phỏng đang chạy (`scenarios`) |
 
 **Cấu trúc một bản ghi telemetry (dạng Time Series):**
 
@@ -315,6 +315,21 @@ Simulator áp dụng thay đổi ở lần gửi kế tiếp (30 giây). Kịch 
 | Monitor | Datadog → *Monitors* → *Manage Monitors* → lọc tag `shrimpwatch` |
 | Logs | Datadog → *Logs* → query `service:shrimpwatch` |
 | Traces | Datadog → *APM* → *Traces* → service `shrimpwatch` |
+
+Monitor trong [datadog/monitors/](datadog/monitors/) (cùng ngưỡng với `app/core/config.py` và quy tắc sự cố của worker):
+
+| Monitor | Điều kiện (trung bình 5 phút, theo `pond`) | Sự cố worker tương ứng |
+|---|---|---|
+| Quạt nước hỏng | `pump_power` < 50 W | `pump_failure` (critical) |
+| DO giảm nhanh | DO giảm > 0.25 mg/L so với 5 phút trước | `do_anomaly_drop` (warning) |
+| DO thấp | DO < 4 (warning), < 3 (critical) | `do_low`, `do_critical` |
+| Nhiệt độ ngoài ngưỡng | ngoài 26–32 °C | `temperature_out_of_range` (warning) |
+| pH ngoài ngưỡng | ngoài 7.5–8.5 | `ph_out_of_range` (warning) |
+| Độ mặn thấp | < 10 ppt | `salinity_low` (warning) |
+
+Một ao chỉ có một sự cố đang mở. Khi có nguyên nhân nghiêm trọng hơn, sự cố được nâng mức và ghi event `incident_escalated`; sự cố không bị hạ mức nên vẫn giữ nguyên nhân nghiêm trọng nhất đến khi hồi phục.
+
+`python -m app.cli.datadog_push` cập nhật monitor/dashboard trùng tên, chưa có thì tạo mới.
 
 ---
 

@@ -1,0 +1,21 @@
+{
+  "name": "[ShrimpWatch] WARNING: pH ngoài ngưỡng 7.5-8.5",
+  "type": "metric alert",
+  "query": "avg(last_5m):abs(avg:shrimpwatch.metric.ph{*} by {pond} - 8) > 0.5",
+  "message": "## 🧪 pH ao {{pond.name}} ngoài ngưỡng\n\nĐộ lệch so với pH 8.0 (giữa ngưỡng 7.5-8.5) = {{value}}. pH cao làm tăng NH3 độc; pH thấp làm tăng CO2.\n\nĐối chiếu sự cố `ph_out_of_range` của worker: `GET /incidents?state=open`.",
+  "tags": [
+    "shrimpwatch",
+    "metric:ph",
+    "sev:warning"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 0.5,
+      "critical_recovery": 0.4
+    },
+    "renotify_interval": 60,
+    "notify_no_data": false,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}
