@@ -8,14 +8,15 @@ from datetime import datetime, timedelta
 
 import httpx
 
-from app.config import settings
-from app.logging_setup import get_logger
-from app.models import (
+from app.core.config import settings
+from app.core.log import get_logger
+from app.domain.models import (
     DeviceType,
     MetricRecord,
     MetricType,
     Source,
 )
+from app.domain.ponds import pond_ids
 
 logger = get_logger("simulator")
 
@@ -197,7 +198,7 @@ def post_manual_readings(api_url: str, ponds: list[str], now: datetime):
 
 async def run_simulation():
     from app.db import get_client
-    from app.metrics import init_metrics
+    from app.core.telemetry import init_metrics
 
     init_metrics()
     try:
@@ -205,7 +206,7 @@ async def run_simulation():
     except Exception:
         logger.warning("mongo not ready yet; skipping init")
 
-    ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
+    ponds = pond_ids()
     sims = {pid: PondSimulator(pid, seed=i) for i, pid in enumerate(ponds)}
 
     logger.info("simulator starting", extra={"ponds": ponds, "interval_sec": settings.SIMULATOR_INTERVAL_SEC})

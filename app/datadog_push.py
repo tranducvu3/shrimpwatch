@@ -5,8 +5,8 @@ from pathlib import Path
 
 import httpx
 
-from app.config import settings
-from app.logging_setup import get_logger
+from app.core.config import settings
+from app.core.log import get_logger
 
 logger = get_logger("datadog_push")
 

@@ -8,8 +8,9 @@ from pymongo.database import Database
 from pymongo.collection import Collection
 from pymongo.errors import OperationFailure
 
-from app.config import settings
-from app.logging_setup import get_logger
+from app.core.config import settings
+from app.core.log import get_logger
+from app.domain.ponds import pond_ids
 
 logger = get_logger("db")
 
@@ -125,8 +126,7 @@ def init_collections(force: bool = False) -> dict[str, Any]:
             db["ponds"].drop()
         db.create_collection("ponds")
     ponds = ponds_collection()
-    for i in range(1, settings.NUM_PONDS + 1):
-        pond_id = f"pond-{i:02d}"
+    for i, pond_id in enumerate(pond_ids(), start=1):
         ponds.update_one(
             {"_id": pond_id},
             {
