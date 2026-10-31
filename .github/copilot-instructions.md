@@ -12,7 +12,7 @@ comment on formatting. Code comments are Vietnamese without diacritics on purpos
 Flag as important:
 
 - **Destructive DB operations outside the test DB**: `init_collections(force=True)`, `drop`, `delete_many`,
-  or changes to the MongoDB guard in `tests/conftest.py`. Tests must use `MONGODB_DB=shrimpwatch_test`.
+  or changes to the MongoDB guard in `tests/integration/conftest.py`. Tests must use `MONGODB_DB=shrimpwatch_test`.
 - **Secrets**: `DD_API_KEY`, `DD_APP_KEY`, or a Mongo URI with a real password in code, compose files,
   Datadog JSON, tests, docs or log/response output.
 - **NoSQL injection**: request data reaching a Mongo query or update without a Pydantic model or enum;
@@ -23,14 +23,17 @@ Flag as important:
 - **Irreversible schema changes**: time series options, TTLs (`TS_TTL_SECONDS`, `ROLLUP_TTL_SECONDS`), or the
   unique index used by the `$merge` in `rollup_hourly_pipeline`.
 - **Incident lifecycle**: more than one open incident per pond, skipped or stuck states, state changes that
-  do not also write to `events`.
+  do not also write to `events`, incident writes outside `app/services/incidents.py`, or transitions that
+  skip `app/domain/incident_lifecycle.py`.
 - **Derived metrics**: wrong units or formulas for CO2, NH3, DO drop rate or pH swing; threshold changes in
-  `app/config.py` without a reason.
-- **Datadog drift**: metric or tag names changed in `app/metrics.py` / `app/worker.py` but not in
+  `app/core/config.py` without a reason.
+- **Datadog drift**: metric or tag names changed in `app/core/telemetry.py` / `app/services/` but not in
   `datadog/dashboards` and `datadog/monitors`, or the reverse.
-- **Datetimes**: timezone-aware values mixed with the naive UTC used everywhere (`datetime.utcnow()`).
-- **New metric checklist**: `MetricType` in `app/models.py`, threshold in `app/config.py`, worker logic,
-  Datadog JSON, a test in `tests/test_pipeline.py`, and the README metrics table.
+- **Datetimes**: timezone-aware values mixed with the naive UTC used everywhere (`app.core.clock.utcnow()`).
+- **New metric checklist**: `MetricType` in `app/domain/models.py`, threshold in `app/core/config.py`, formula
+  in `app/domain/` + `app/services/derivations.py`, Datadog JSON, tests in `tests/unit/` and
+  `tests/integration/`, and the README metrics table.
+- **Layering**: `app/domain/` importing `app.db`, `app.services` or FastAPI; routers querying Mongo directly.
 - **CI and dependencies**: unpinned or downgraded packages in `requirements*.txt`; wider workflow
   `permissions`, `pull_request_target`, or untrusted input in `run:` steps.
 
