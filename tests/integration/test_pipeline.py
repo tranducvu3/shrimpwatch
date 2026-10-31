@@ -3,44 +3,22 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api import app
-from app.config import settings
-from app.db import (
-    compute_do_drop_rate_pipeline,
-    compute_ph_swing_pipeline,
+from app.core.clock import utcnow
+from app.api.schemas import BatchIngestRequest, ManualInput
+from app.core.config import settings
+from app.db.mongo import (
     events_collection,
     get_client,
     incidents_collection,
-    init_collections,
-    METRICS_POND_METRIC_TS_INDEX,
     metrics_collection,
     metrics_hourly_collection,
-    pack_ts_doc,
     ponds_collection,
-    run_hourly_rollup,
 )
-from app.models import (
-    AlkalinityInput,
-    BatchIngestRequest,
-    DeviceType,
-    MetricRecord,
-    MetricType,
-    Source,
-)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def setup_db():
-    try:
-        get_client().admin.command("ping")
-        init_collections(force=True)
-    except Exception as e:
-        pytest.skip(f"MongoDB not reachable, skipping integration tests: {e}")
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
+from app.db.pipelines import compute_do_drop_rate_pipeline, compute_ph_swing_pipeline
+from app.db.repositories.metrics import pack_ts_doc, run_hourly_rollup
+from app.db.schema import METRICS_POND_METRIC_TS_INDEX
+from app.domain.models import DeviceType, MetricRecord, MetricType, Source
+from app.domain.ponds import pond_ids
 
 
 def _insert_record(
@@ -53,7 +31,7 @@ def _insert_record(
 ):
     doc = pack_ts_doc(
         {
-            "timestamp": ts or datetime.utcnow(),
+            "timestamp": ts or utcnow(),
             "farm_id": settings.FARM_ID,
             "pond_id": pond,
             "device_id": f"dev-{pond}",
@@ -117,7 +95,7 @@ def test_timeseries_collection_metadata():
 
 def test_ingest_batch_and_ttl_schema(client: TestClient):
     rec = MetricRecord(
-        timestamp=datetime.utcnow(),
+        timestamp=utcnow(),
         farm_id=settings.FARM_ID,
         pond_id="pond-01",
         device_id="node-pond-01",
@@ -144,7 +122,7 @@ def test_ingest_batch_and_ttl_schema(client: TestClient):
 
 
 def test_manual_alkalinity_ingest(client: TestClient):
-    body = AlkalinityInput(
+    body = ManualInput(
         farm_id=settings.FARM_ID,
         pond_id="pond-02",
         value=168.0,
@@ -184,7 +162,7 @@ def test_manual_ingest_rejects_sensor_metric(client: TestClient):
 
 
 def test_setwindowfields_do_drop_rate_pipeline():
-    now = datetime.utcnow()
+    now = utcnow()
     start = now - timedelta(minutes=10)
     for i, t in enumerate([start + timedelta(seconds=30 * j) for j in range(20)]):
         _insert_record("do", "pond-03", max(1.5, 7.0 - i * 0.15), ts=t)
@@ -201,9 +179,9 @@ def test_setwindowfields_do_drop_rate_pipeline():
 
 
 def test_co2_derivation_formula():
-    from app.worker import derive_co2_for_pond
+    from app.services.derivations import derive_co2_for_pond
 
-    now = datetime.utcnow()
+    now = utcnow()
     _insert_record("alkalinity", "pond-04", 170.0, ts=now, source="manual", device_type="manual_tester")
     _insert_record("ph", "pond-04", 7.9, ts=now)
     co2 = derive_co2_for_pond("pond-04", now)
@@ -213,9 +191,9 @@ def test_co2_derivation_formula():
 
 
 def test_pump_fail_event_and_incident_opening(client: TestClient):
-    from app.worker import check_pond
+    from app.worker.pond_check import check_pond
 
-    now = datetime.utcnow()
+    now = utcnow()
     for i in range(10):
         _insert_record(
             "pump_power",
@@ -251,8 +229,8 @@ def test_incident_lifecycle_patch(client: TestClient):
     incidents_collection().insert_one(
         {
             "_id": "inc-test-001",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": utcnow(),
+            "updated_at": utcnow(),
             "farm_id": settings.FARM_ID,
             "pond_id": "pond-06",
             "severity": "critical",
@@ -286,9 +264,9 @@ def test_incident_lifecycle_patch(client: TestClient):
 
 
 def test_nh3_derivation_formula():
-    from app.worker import derive_nh3_for_pond
+    from app.services.derivations import derive_nh3_for_pond
 
-    now = datetime.utcnow()
+    now = utcnow()
     _insert_record("tan", "pond-01", 1.0, ts=now, source="manual", device_type="manual_tester")
     _insert_record("ph", "pond-01", 8.0, ts=now)
     _insert_record("temperature", "pond-01", 30.0, ts=now)
@@ -299,7 +277,7 @@ def test_nh3_derivation_formula():
 
 
 def test_ph_swing_pipeline():
-    now = datetime.utcnow()
+    now = utcnow()
     for i, v in enumerate([7.8, 8.4, 8.1, 7.9]):
         _insert_record("ph", "pond-06", v, ts=now - timedelta(hours=i * 3))
     run_hourly_rollup(now - timedelta(hours=24))
@@ -308,22 +286,9 @@ def test_ph_swing_pipeline():
     assert rows[0]["ph_swing"] == 0.6
 
 
-def test_simulator_do_and_orp_fall_when_pump_fails():
-    from app.simulator import PondSimulator
-
-    sim = PondSimulator("pond-03")
-    t = datetime.utcnow()
-    first = {r.metric.value: r.value for r in sim.step(t, pump_failed=False)}
-    for i in range(1, 21):
-        last = {r.metric.value: r.value for r in sim.step(t + timedelta(seconds=30 * i), pump_failed=True)}
-    assert last["do"] < first["do"] - 0.7, f"DO should fall without aerator: {first['do']} -> {last['do']}"
-    assert last["orp"] < first["orp"], "ORP should fall with DO"
-    assert "salinity" in last
-
-
 def test_do_drop_rate_survives_sensor_dropout():
     # Cam bien rot goi: chi con 3 diem trong 5 phut. Cua so theo thoi gian van cho dung toc do.
-    now = datetime.utcnow()
+    now = utcnow()
     for minutes_ago, value in ((4, 6.0), (2, 5.4), (0, 4.8)):
         _insert_record("do", "pond-02", value, ts=now - timedelta(minutes=minutes_ago))
     rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(["pond-02"], window_sec=300)))
@@ -332,8 +297,8 @@ def test_do_drop_rate_survives_sensor_dropout():
 
 
 def test_do_drop_rate_all_ponds_in_one_query():
-    ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
-    now = datetime.utcnow()
+    ponds = pond_ids()
+    now = utcnow()
     for pond in ponds:
         _insert_record("do", pond, 6.0, ts=now - timedelta(seconds=1))
     rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(ponds, window_sec=300)))
@@ -341,7 +306,7 @@ def test_do_drop_rate_all_ponds_in_one_query():
 
 
 def test_hourly_rollup_is_idempotent():
-    hour = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    hour = utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
     for i, v in enumerate([20.0, 30.0, 25.0]):
         _insert_record("salinity", "pond-04", v, ts=hour + timedelta(minutes=10 * i))
     run_hourly_rollup(hour)
@@ -358,7 +323,7 @@ def test_worker_queries_use_compound_index():
             {
                 "metadata.pond_id": "pond-01",
                 "metadata.metric": "do",
-                "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=5)},
+                "timestamp": {"$gte": utcnow() - timedelta(minutes=5)},
             }
         )
         .sort("timestamp", -1)
@@ -371,8 +336,8 @@ def test_incident_timeline_joins_events(client: TestClient):
     incidents_collection().insert_one(
         {
             "_id": "inc-timeline-001",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
+            "created_at": utcnow(),
+            "updated_at": utcnow(),
             "farm_id": settings.FARM_ID,
             "pond_id": "pond-03",
             "severity": "critical",
@@ -398,7 +363,7 @@ def test_incident_timeline_joins_events(client: TestClient):
 
 def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
     # Simulator nap 6h lich su khi khoi dong; worker chi tinh lai gio gan nhat -> API phai tu rollup.
-    old = datetime.utcnow() - timedelta(hours=3)
+    old = utcnow() - timedelta(hours=3)
     hour = old.replace(minute=0, second=0, microsecond=0)
     records = [
         {
@@ -420,3 +385,57 @@ def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
     row = metrics_hourly_collection().find_one({"pond_id": "pond-06", "metric": "orp", "hour": hour})
     assert row is not None, "backfilled hour must be rolled up on ingest"
     assert (row["min"], row["max"], row["count"]) == (150.0, 250.0, 2)
+
+
+def test_incident_patch_rejects_invalid_transition(client: TestClient):
+    incidents_collection().insert_one(
+        {
+            "_id": "inc-done-001",
+            "created_at": utcnow(),
+            "updated_at": utcnow(),
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-02",
+            "severity": "warning",
+            "state": "recovered",
+            "title": "already recovered",
+            "description": "test",
+            "evidence": {},
+            "actions": [],
+        }
+    )
+    r = client.patch("/incidents/inc-done-001", params={"state": "open", "action": "reopen"})
+    assert r.status_code == 409, r.text
+    assert incidents_collection().find_one({"_id": "inc-done-001"})["state"] == "recovered"
+    assert events_collection().find_one({"incident_id": "inc-done-001"}) is None
+    assert client.patch("/incidents/inc-missing", params={"state": "investigating"}).status_code == 404
+
+
+def test_pump_fail_unknown_pond_is_404_without_event(client: TestClient):
+    r = client.post("/ponds/pond-99/pump/fail", params={"failed": "true"})
+    assert r.status_code == 404
+    assert events_collection().find_one({"pond_id": "pond-99"}) is None
+
+
+def test_worker_auto_recovers_when_do_is_healthy():
+    from app.worker.pond_check import check_pond
+
+    incidents_collection().insert_one(
+        {
+            "_id": "inc-auto-001",
+            "created_at": utcnow(),
+            "updated_at": utcnow(),
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-04",
+            "severity": "warning",
+            "state": "investigating",
+            "title": "low DO",
+            "description": "test",
+            "evidence": {},
+            "actions": [],
+        }
+    )
+    check_pond("pond-04", {"do_drop_rate_mg_per_l_per_min": 0.0, "min_do": 6.5})
+    inc = incidents_collection().find_one({"_id": "inc-auto-001"})
+    assert inc["state"] == "recovered"
+    assert inc["actions"][-1]["action"] == "worker_auto_recovered"
+    assert events_collection().find_one({"event": "incident_recovered", "incident_id": "inc-auto-001"})

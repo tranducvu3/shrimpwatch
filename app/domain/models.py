@@ -1,9 +1,13 @@
+"""Mo hinh nghiep vu dung chung cho API, worker va simulator."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.clock import utcnow
 
 
 class Source(str, Enum):
@@ -52,12 +56,11 @@ class IncidentState(str, Enum):
     OPEN = "open"
     INVESTIGATING = "investigating"
     RESOLVING = "resolving"
-    RESOLVED = "resolved"
     RECOVERED = "recovered"
 
 
 class MetricRecord(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     farm_id: str
     pond_id: str
     device_id: str
@@ -66,35 +69,6 @@ class MetricRecord(BaseModel):
     value: float
     source: Source
     unit: str | None = None
-
-
-class BatchIngestRequest(BaseModel):
-    records: list[MetricRecord]
-
-    @field_validator("records")
-    @classmethod
-    def not_empty(cls, v: list[MetricRecord]) -> list[MetricRecord]:
-        if not v:
-            raise ValueError("records cannot be empty")
-        if len(v) > 1000:
-            raise ValueError("too many records (max 1000)")
-        return v
-
-
-class AlkalinityInput(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    farm_id: str
-    pond_id: str
-    value: float
-    tester_id: str = "tech-001"
-
-
-class ManualInput(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    farm_id: str
-    pond_id: str
-    value: float
-    tester_id: str = "tech-001"
 
 
 class IncidentEvidence(BaseModel):
@@ -112,8 +86,8 @@ class Incident(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str | None = Field(default=None, alias="_id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     farm_id: str
     pond_id: str
     severity: Severity
@@ -123,8 +97,3 @@ class Incident(BaseModel):
     root_cause: str | None = None
     evidence: IncidentEvidence = IncidentEvidence()
     actions: list[dict] = []
-
-
-class CO2DeriveRequest(BaseModel):
-    pond_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)

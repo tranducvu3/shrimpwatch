@@ -26,7 +26,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$API/incidents/inc-missing/timeli
 [ "$code" = "404" ] || { echo "timeline for unknown incident returned $code"; exit 1; }
 
 docker compose exec -T api python - <<'EOF'
-from app.db import metrics_collection, metrics_hourly_collection
+from app.db.mongo import metrics_collection, metrics_hourly_collection
 
 raw = metrics_collection().count_documents({})
 hourly = metrics_hourly_collection().count_documents({})
