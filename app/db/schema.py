@@ -6,12 +6,15 @@ from typing import Any
 
 from pymongo.database import Database
 from pymongo.errors import OperationFailure
+from pymongo.operations import SearchIndexModel
 
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
 from app.db.mongo import get_db
 from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS
+from app.db.pipelines import INCIDENT_VECTOR_INDEX
+from app.domain.incident_fingerprint import DIMENSIONS
 from app.domain.ponds import pond_ids
 
 logger = get_logger("db.schema")
@@ -85,6 +88,35 @@ def _init_incidents(db: Database, force: bool) -> None:
     incidents.create_index([("created_at", -1)])
 
 
+def incident_vector_index_definition() -> dict[str, Any]:
+    return {
+        "fields": [
+            {"type": "vector", "path": "fingerprint", "numDimensions": DIMENSIONS, "similarity": "euclidean"},
+            {"type": "filter", "path": "state"},
+        ]
+    }
+
+
+def _init_incident_vector_index(db: Database) -> str:
+    """Atlas Vector Search index cho incidents.fingerprint. mongod thuong khong ho tro -> bo qua."""
+    incidents = db[INCIDENTS]
+    definition = incident_vector_index_definition()
+    try:
+        existing = next(iter(incidents.list_search_indexes(INCIDENT_VECTOR_INDEX)), None)
+        if existing:
+            if existing.get("latestDefinition") != definition:
+                incidents.update_search_index(INCIDENT_VECTOR_INDEX, definition)
+                return "updated"
+            return "existed"
+        incidents.create_search_index(
+            SearchIndexModel(definition=definition, name=INCIDENT_VECTOR_INDEX, type="vectorSearch")
+        )
+        return "created"
+    except OperationFailure as e:
+        logger.warning("Vector search index unavailable, using aggregation fallback", extra={"err": str(e)})
+        return "unsupported"
+
+
 def _init_ponds(db: Database, force: bool) -> list[dict]:
     _ensure_collection(db, PONDS, force)
     ponds = db[PONDS]
@@ -152,6 +184,7 @@ def init_collections(force: bool = False) -> dict[str, Any]:
     result["metrics_hourly"] = "ready"
     _init_incidents(db, force)
     result["incidents"] = "ready"
+    result["incident_vector_index"] = _init_incident_vector_index(db)
     result["ponds"] = _init_ponds(db, force)
     _init_events(db, force)
     result["events"] = "ready"

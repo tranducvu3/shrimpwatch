@@ -59,3 +59,6 @@ class ShrimpWatchClient:
 
     def transition_incident(self, incident_id: str, state: str, action: str) -> httpx.Response:
         return httpx.patch(self._url(f"/incidents/{incident_id}"), params={"state": state, "action": action})
+
+    def similar_incidents(self, incident_id: str, k: int = 3) -> dict:
+        return httpx.get(self._url(f"/incidents/{incident_id}/similar"), params={"k": k}, timeout=10.0).json()
