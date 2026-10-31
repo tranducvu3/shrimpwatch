@@ -12,8 +12,25 @@
 
 ---
 
+## 📦 Thông tin nộp bài
+
+| Hạng mục | Nội dung |
+|---|---|
+| Tên dự án | **ShrimpWatch** — giám sát chất lượng nước ao nuôi tôm thẻ chân trắng |
+| Bài toán | Quạt nước hỏng ban đêm hoặc mưa lớn làm oxy hòa tan (DO) / độ mặn sụt trong vài chục phút; phát hiện muộn có thể làm chết cả ao. ShrimpWatch phát hiện sớm, hỗ trợ điều tra bằng dữ liệu, ghi lại cách xử lý và chứng minh ao đã hồi phục |
+| Đội | Trần Đức Vũ ([tranducvu3](https://github.com/tranducvu3)) · Hồ Ngọc Dũng ([HoNgocDung1503](https://github.com/HoNgocDung1503)) · Quang Anh |
+| Đầu mối liên hệ | Trần Đức Vũ — vu.tran@techcoop.vn |
+| Repository | https://github.com/tranducvu3/shrimpwatch (public) |
+| Video demo | ⏳ _Cập nhật link trước 23:59 31/10/2026_ |
+| Slide thuyết trình | ⏳ _Cập nhật link trước 23:59 31/10/2026_ |
+| Sự cố được trình diễn | Quạt nước ao 1 hỏng → DO sụt → mở sự cố **CRITICAL `pump_failure`** → Điều tra (Vector Search gợi ý sự cố cũ) → Xử lý → worker tự đóng khi số liệu ổn định. Kịch bản phụ: mưa lớn làm độ mặn ao 3 < 10 ppt. Chi tiết: [Kịch bản Demo](#-kịch-bản-demo-sự-cố-incident-lifecycle), [kiểm chứng 31/10](#0-kiểm-chứng-end-to-end-ngày-31102026) |
+| Khai báo tái sử dụng & AI | [Mục 11](#-khai-báo-thành-phần-tái-sử-dụng-dataset--công-cụ-ai) |
+
+---
+
 ## 📖 Mục lục
 
+0. [Thông tin nộp bài](#-thông-tin-nộp-bài)
 1. [Giới thiệu dự án](#-giới-thiệu-dự-án)
 2. [Kiến trúc hệ thống](#-kiến-trúc-hệ-thống)
 3. [Mô hình dữ liệu MongoDB](#-mô-hình-dữ-liệu-mongodb)
@@ -23,7 +40,8 @@
 7. [Kết quả kiểm chứng (số liệu thật)](#-kết-quả-kiểm-chứng-số-liệu-thật)
 8. [Đối chiếu yêu cầu kỹ thuật của BTC](#-đối-chiếu-yêu-cầu-kỹ-thuật-của-btc)
 9. [Danh mục bằng chứng & Hướng dẫn lấy ảnh](#-danh-mục-bằng-chứng--hướng-dẫn-lấy-ảnh)
-11. [Xử lý sự cố thường gặp](#-xử-lý-sự-cố-thường-gặp)
+10. [Kiểm thử tự động](#-kiểm-thử-tự-động)
+11. [Khai báo thành phần tái sử dụng, dataset & công cụ AI](#-khai-báo-thành-phần-tái-sử-dụng-dataset--công-cụ-ai)
 
 ---
 
@@ -341,8 +359,8 @@ Tính năng cốt lõi thể hiện sự phối hợp giữa MongoDB và Datadog
 |---|---|---|
 | 1. **Phát hiện** | `open` | Worker phát hiện quạt hỏng (`pump_power` 5 phút < 50W) → mở sự cố **CRITICAL**, `root_cause = pump_failure` |
 | 2. **Điều tra** | `investigating` | Kỹ thuật viên kiểm tra điện quạt, ghi chú hành động. **Vector Search** gợi ý 3 sự cố cũ giống nhất kèm cách xử lý và thời gian hồi phục |
-| 3. **Xử lý** | `resolving` | Thay phụ tùng, khôi phục công suất quạt |
-| 4. **Hồi phục** | `recovered` | DO ổn định trở lại (> 5 mg/L) → đóng sự cố (worker có thể tự động chuyển trạng thái) |
+| 3. **Xử lý** | `resolving` | Thay phụ tùng, khôi phục công suất quạt. Sự cố vẫn được worker theo dõi: nếu lỗi còn, worker cập nhật chính sự cố này (không mở sự cố trùng) |
+| 4. **Hồi phục** | `recovered` | Quạt chạy lại và DO ổn định (5 phút) → **worker tự đóng** sự cố đang ở `open`/`investigating`/`resolving`. Mọi bước chuyển đều ghi một event vào `events` |
 
 Chạy demo tự động (thao tác trên ao số 3):
 
@@ -364,6 +382,27 @@ Kết quả thực tế đã kiểm chứng (sự cố `inc-477e03104c`):
 ---
 
 ## ✅ Kết quả kiểm chứng (số liệu thật)
+
+### 0. Kiểm chứng end-to-end ngày 31/10/2026
+
+> Kiểm tra lại toàn bộ luồng trên hệ thống thật (MongoDB Atlas + Datadog) lúc **11:59–12:12 UTC** (18:59–19:12 giờ Việt Nam): thao tác trên [bảng điều khiển](#52-bảng-điều-khiển-simulator) bằng Playwright, đối chiếu Datadog qua API.
+
+| Giờ (UTC) | Sự kiện | Nguồn |
+|---|---|---|
+| 11:59:08 | Tắt quạt ao 1, bật kịch bản **Mưa lớn** ở ao 3 (độ mặn −7 ppt) | Bảng điều khiển |
+| 12:01:27 | Mở sự cố `warning / do_anomaly_drop` ao 1 (DO giảm 0,07 mg/L/phút) | Worker → `incidents`, `events` |
+| 12:02:27 | Mở sự cố `warning / salinity_low` ao 3 (độ mặn TB 5 phút 7,78 ppt) | Worker |
+| 12:03:24 | Monitor **Độ mặn thấp** chuyển *Triggered* trên `pond:pond-03` | Datadog |
+| 12:03:56 | **Cùng sự cố** ao 1 được nâng lên `critical / pump_failure` (công suất TB 5 phút 0 W), có event `incident_escalated` — không mở sự cố trùng | Worker |
+| 12:04:59 | Monitor **DO giảm nhanh** chuyển *Triggered* trên `pond:pond-01` | Datadog |
+| 12:05:10 | Chuyển sang `investigating` → Atlas Vector Search gợi ý sự cố cũ `hist-pump-01` (score 0,70) kèm cách xử lý "Thay tụ quạt, khởi động lại quạt" và thời gian hồi phục 30 phút | API + `$vectorSearch` |
+| 12:05:44 | Bấm **Khôi phục tất cả ao** (quạt chạy lại, xoá kịch bản) | Bảng điều khiển |
+| 12:07:27 | Worker tự đóng sự cố ao 3 (`recovered`, event `incident_recovered`) | Worker |
+| 12:09:24 · 12:10:59 | Hai monitor chuyển *Recovered* | Datadog |
+
+Kiểm tra API: chuyển trạng thái sai (`recovered → open`, `investigating → open`) trả **409**; `state`/`scenario`/`metric` ngoài enum, toán tử Mongo trong body (`{"$where": ...}`, `{"$ne": null}`) bị Pydantic chặn với **422**; ao/sự cố không tồn tại trả **404**.
+
+Lần kiểm chứng này phát hiện và sửa 2 lỗi vòng đời: sự cố ở `resolving` không được worker theo dõi (mở sự cố trùng, không bao giờ tự đóng) và chuyển trạng thái không kèm ghi chú không ghi `events`. Cả hai đã có test.
 
 > Thời điểm kiểm chứng: **2026-10-20 06:00–06:09 UTC** (13:00–13:09 giờ Việt Nam), hệ thống đang chạy trực tiếp trên **MongoDB Atlas Cloud**.
 
@@ -396,21 +435,25 @@ Trích log thật của worker (cửa sổ 5 phút, `do_drop_rate_mg_per_l_per_m
 
 Kết quả này được ghi trực tiếp vào `incidents.evidence.do_drop_rate_mg_per_l_per_min`.
 
-### 3. Trạng thái Datadog (kiểm chứng qua API)
+### 3. Trạng thái Datadog (kiểm chứng qua API, 31/10/2026)
 
-| Loại | ID | Tên | Trạng thái |
+Dashboard và monitor được đẩy từ JSON trong repo bằng `python -m app.cli.datadog_push` (cập nhật theo tên, không tạo trùng).
+
+| Loại | ID | Tên | Kết quả 31/10 |
 |---|---|---|---|
-| Dashboard | `sid-7q3-hug` | ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng | Đang hoạt động |
-| Monitor | `334608203` | [ShrimpWatch] CRITICAL: Quạt nước hỏng (Pump failure) | **Alert** — đã kích hoạt thật lúc 06:03 UTC, tự hồi phục về `OK` sau khi quạt được khôi phục (đúng cơ chế recovery) |
-| Monitor | `334608560` | [ShrimpWatch] WARNING: DO giảm nhanh bất thường | No Data (thuật toán `anomalies` cần thêm dữ liệu nền) |
-| Monitor | `334609031` | Watchdog Anomaly for `service` | OK |
-| Monitor | `334609512` | High Error Rate on `service.name` (APM) | OK |
+| Dashboard | `896-5wb-wzs` | ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng | Mọi metric trong dashboard đều có dữ liệu |
+| Monitor | `339119277` | [ShrimpWatch] CRITICAL: Quạt nước hỏng (Pump failure) | `pump_power < 50 W` trung bình 5 phút theo `pond` |
+| Monitor | `339209639` | [ShrimpWatch] WARNING: DO giảm nhanh (> 0.25 mg/L trong 5 phút) | **Triggered** 12:04:59 trên `pond:pond-01`, **Recovered** 12:10:59 |
+| Monitor | `339209647` | [ShrimpWatch] DO thấp (Warning dưới 4, Critical dưới 3 mg/L) | OK |
+| Monitor | `339209657` | [ShrimpWatch] WARNING: pH ngoài ngưỡng 7.5-8.5 | OK |
+| Monitor | `339209664` | [ShrimpWatch] WARNING: Độ mặn thấp (dưới 10 ppt) | **Triggered** 12:03:24 trên `pond:pond-03`, **Recovered** 12:09:24 |
+| Monitor | `339209670` | [ShrimpWatch] WARNING: Nhiệt độ nước ngoài ngưỡng 26-32 °C | OK |
 
 Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) trả về bản ghi có `dd.trace_id` — xác nhận **Log Management + Log↔Trace correlation** hoạt động.
 
 ### 4. Kiểm thử tự động
 
-**9/9 test PASSED** (chi tiết tại [screenshots_pytest.txt](screenshots_pytest.txt)).
+**106 test PASSED** (unit + integration trên MongoDB 7 local), coverage **78,8%** (ngưỡng CI 64%), `ruff` sạch — 31/10/2026. Bản ghi lần chạy đầu tiên (9 test, 07/10) vẫn giữ tại [screenshots_pytest.txt](screenshots_pytest.txt).
 
 ---
 
@@ -423,9 +466,9 @@ Log đã về Datadog: truy vấn `service:shrimpwatch` (30 phút gần nhất) 
 | # | Yêu cầu BTC | ShrimpWatch đáp ứng | Bằng chứng (mã nguồn / ảnh) |
 |---|---|---|---|
 | 1 | **Nền tảng CHÍNH** | Toàn bộ dữ liệu sensor, sự cố, lịch sử vận hành lưu trên **MongoDB Atlas (Cloud)** | [13_mongodb_atlas_cluster.png](assets_proof/13_mongodb_atlas_cluster.png) · [14_mongodb_atlas_data.png](assets_proof/14_mongodb_atlas_data.png) |
-| 2 | **Time Series Collections** | Telemetry (DO, pH, nhiệt độ, quạt) lưu trong Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [schema.py](app/db/schema.py#L38-L68) |
+| 2 | **Time Series Collections** | Telemetry (DO, pH, nhiệt độ, quạt) lưu trong Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.txt](assets_proof/01_mongo_timeseries_ttl.txt) · [schema.py](app/db/schema.py#L38-L68) |
 | 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` tính tốc độ sụt DO theo cửa sổ thời gian 5 phút; `$group` + `$merge` rollup theo giờ; `$lookup` + `$sortArray` dựng timeline sự cố | [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
-| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry thô sau 7 ngày (`604800` giây); rollup `metrics_hourly` giữ 1 năm | [01_mongo_timeseries_ttl.png](assets_proof/01_mongo_timeseries_ttl.png) · [schema.py](app/db/schema.py) (`init_collections`) |
+| 4 | **expireAfterSeconds (TTL)** | TTL tự động xoá telemetry thô sau 7 ngày (`604800` giây); rollup `metrics_hourly` giữ 1 năm | [01_mongo_timeseries_ttl.txt](assets_proof/01_mongo_timeseries_ttl.txt) · [schema.py](app/db/schema.py) (`init_collections`) |
 | 5 | **Mô hình & Truy cập hiệu quả** | Time Series (bucket do engine quản lý), index ghép ESR `pond_metric_ts`, 1 aggregate cho cả 6 ao, rollup thay cho quét dữ liệu thô — xem [Mẫu truy cập & quyết định thiết kế](#mẫu-truy-cập--quyết-định-thiết-kế) | [schema.py](app/db/schema.py) · [pipelines.py](app/db/pipelines.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
 | 6 | **Gắn chặt với vận hành** | MongoDB điều khiển toàn bộ state machine của sự cố (`open → investigating → resolving → recovered`) | [04_swagger_ui_incidents.png](assets_proof/04_swagger_ui_incidents.png) · [06_mongodb_document_incident.png](assets_proof/06_mongodb_document_incident.png) |
 
@@ -463,8 +506,8 @@ Tất cả ảnh được lưu trong thư mục **`assets_proof/`** với đúng
 
 | # | Tên tệp | Nội dung minh chứng |
 |---|---|---|
-| 1 | `01_mongo_timeseries_ttl.png` | Cấu hình Time Series + TTL trong MongoDB |
-| 2 | `02_pytest_9_xanh.png` | Kết quả chạy kiểm thử tự động (9/9 passed) |
+| 1 | `01_mongo_timeseries_ttl.txt` | Cấu hình Time Series + TTL, index và Vector Search index đọc trực tiếp từ Atlas (31/10/2026) |
+| 2 | `02_pytest_9_xanh.png` | Kết quả kiểm thử lần đầu (9/9 passed, 07/10); kết quả hiện tại: 106 passed — xem [Kiểm thử tự động](#-kiểm-thử-tự-động) |
 | 3 | `03_agent_status.png` | Trạng thái Datadog Agent |
 | 4 | `04_swagger_ui_incidents.png` | Giao diện quản lý sự cố (Incident Management) |
 | 5 | `05_mongodb_event_log.png` | Nhật ký sự kiện (collection `events`) |
@@ -474,13 +517,14 @@ Tất cả ảnh được lưu trong thư mục **`assets_proof/`** với đúng
 | 9 | `07_datadog_dashboard_3.png` | Dashboard — Phần 3: Độ kiềm, CO₂, quạt nước, heatmap |
 | 10 | `08_datadog_monitor_alert.png` | Cảnh báo đỏ (Alert) khi quạt nước hỏng |
 | 11 | `09_datadog_correlation_log_trace_metric.png` | Truy vết Log ↔ Trace ↔ Metric |
-| 12 | `ShrimpWatch_Lifecycle.mp4` | Video demo trọn vẹn vòng đời sự cố |
+| 12 | Video demo (link ở [Thông tin nộp bài](#-thông-tin-nộp-bài)) | Video demo trọn vẹn vòng đời sự cố |
 | 13 | `13_mongodb_atlas_cluster.png` | Cụm MongoDB Atlas (Cloud, gói M0) đang hoạt động |
 | 14 | `14_mongodb_atlas_data.png` | Dữ liệu cảm biến 6 ao chảy trực tiếp lên Atlas |
+| 15 | `15_control_panel_incident.png` | Bảng điều khiển 31/10: ao 1 sự cố nghiêm trọng (quạt 0 W, đang xử lý), ao 3 cảnh báo độ mặn 7,8 ppt |
 
 ### 📸 Cách lấy từng ảnh
 
-**1. `01_mongo_timeseries_ttl.png` — Time Series + TTL**
+**1. `01_mongo_timeseries_ttl.txt` — Time Series + TTL** (đã có bản đọc trực tiếp từ Atlas; có thể chụp thêm ảnh theo các bước dưới)
 1. Atlas → **Database** → cluster0 → **Browse Collections** → nút **`>_` (Open MongoDB Shell)**.
 2. Dán toàn bộ nội dung [scripts/step4_check_ts_ttl_ponds.js](scripts/step4_check_ts_ttl_ponds.js) rồi Enter.
 3. Chụp phần kết quả in ra: `timeseries.timeField`, `metaField`, `granularity` và `expireAfterSeconds TTL : 604800 (~ 7 ngày)`.
@@ -565,12 +609,45 @@ pytest tests/unit              # chỉ unit test, không cần MongoDB
 - `tests/unit/`: công thức hoá học nước, quy tắc phát hiện sự cố, vòng đời sự cố, mô hình simulator, cấu trúc pipeline.
 - `tests/integration/`: chạy với MongoDB thật qua API và worker.
 
-Bộ test integration bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng và vòng đời 4 trạng thái — **14/14 PASSED**.
+Bộ test integration bao phủ: health check, seed collection, cấu hình Time Series + TTL, ghi dữ liệu cảm biến, nhập độ kiềm/TAN/nitrite thủ công, pipeline `$setWindowFields`, pipeline biên độ pH, công thức suy ra CO₂ và NH₃, DO/ORP giảm khi quạt hỏng, mở sự cố khi quạt hỏng vòng đời 4 trạng thái (kể cả sự cố ở `resolving` được worker tự đóng), Vector Search và bảng điều khiển — **106 test PASSED**, coverage 78,8%.
 
 > ⚠️ **Lưu ý quan trọng:** fixture `setup_db` gọi `init_collections(force=True)` → **xoá toàn bộ collection** của database đang kết nối. Không chạy lệnh này khi `.env` đang trỏ lên MongoDB Atlas đang chứa dữ liệu báo cáo.
 
 ---
 
+
+## 🧾 Khai báo thành phần tái sử dụng, dataset & công cụ AI
+
+Theo thể lệ, đội khai báo các phần có sẵn trước thời gian build, thư viện, dữ liệu và công cụ AI đã dùng.
+
+### Mã có trước thời gian build (17/10 – 31/10/2026)
+
+| Thời điểm | Phần đã có | Ghi chú |
+|---|---|---|
+| 07/10 – 09/10/2026 | Bản nguyên mẫu v1.0 (các commit đầu tiên của repo): API FastAPI nhận dữ liệu, simulator 6 ao, worker tính DO drop rate bằng `$setWindowFields`, Time Series Collection + TTL, đẩy metric/log/trace lên Datadog, vòng đời sự cố 4 trạng thái cơ bản, 9 test | Viết dạng một file mỗi phần (`app/db.py`, `app/worker.py`, `app/simulator.py`, …). Lịch sử đầy đủ trong `git log` |
+
+Làm trong thời gian build (20/10 – 31/10/2026): chuyển sang MongoDB Atlas; tách kiến trúc theo tầng (`core`/`domain`/`db`/`services`/`api`/`worker`); chỉ số mới (độ mặn, ORP, TAN, nitrite, NH₃, biên độ pH 24h) và rollup theo giờ `$merge`; kiểm tra chuyển trạng thái sự cố (409) và nâng mức sự cố không mở trùng; **Atlas Vector Search** gợi ý sự cố tương tự; **bảng điều khiển simulator** và API kịch bản; 6 monitor môi trường + dashboard đẩy theo kiểu upsert; CI (lint, test MongoDB 7, smoke test Docker Compose); bộ test từ 9 lên 106.
+
+### Thư viện & thành phần mã nguồn mở
+
+Dùng nguyên trạng theo giấy phép của từng dự án, không sửa mã nguồn: FastAPI, Uvicorn, Pydantic / pydantic-settings, PyMongo / Motor, dnspython, python-json-logger, datadog (DogStatsD), ddtrace, httpx, python-dotenv, pytest, ruff (xem [requirements.txt](requirements.txt), [requirements-dev.txt](requirements-dev.txt)). Docker image chính thức: `mongo:7`, `gcr.io/datadoghq/agent:7.59.0`, `python:3.11-slim`. Swagger UI do FastAPI phục vụ.
+
+### Dữ liệu
+
+- **Không dùng dữ liệu thật hay dataset bên ngoài.** Toàn bộ số liệu cảm biến do simulator sinh ra ([pond_model.py](app/simulator/pond_model.py)); lịch sử sự cố dùng cho Vector Search là dữ liệu tổng hợp đánh dấu `notes.synthetic = true` ([seed_incident_history.py](app/cli/seed_incident_history.py)).
+- Công thức NH₃ tự do theo Emerson et al. (1975), *Aqueous ammonia equilibrium calculations*; CO₂ từ pH và độ kiềm theo cân bằng carbonate. Ngưỡng vận hành (DO, pH, độ mặn, nhiệt độ) theo khuyến nghị chung cho nuôi tôm thẻ chân trắng.
+
+### Công cụ AI
+
+| Công cụ | Dùng để |
+|---|---|
+| **Claude Code** (Anthropic, model Claude Opus) | Hỗ trợ viết và refactor code, viết test, rà soát và kiểm thử end-to-end (Playwright), cập nhật tài liệu. Các commit có AI hỗ trợ ghi `Co-Authored-By: Claude` |
+| **GitHub Copilot code review** | Review pull request theo [.github/copilot-instructions.md](.github/copilot-instructions.md) |
+| **DeepSeek** (GitHub Action) | Review tự động trên pull request |
+
+Ứng dụng **không gọi mô hình AI khi chạy**: fingerprint cho Vector Search là vector 6 chiều tính bằng công thức từ `evidence`. Đội đã đọc, kiểm tra và hiểu toàn bộ mã được AI gợi ý.
+
+---
 
 ## 💻 Công nghệ sử dụng
 
