@@ -9,6 +9,7 @@ from app.core.log import get_logger
 from app.core.telemetry import increment, set_span_tags
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
+from app.domain.incident_lifecycle import ensure_transition
 from app.domain.incident_rules import Finding
 from app.domain.models import Incident, IncidentEvidence, IncidentState
 
@@ -81,6 +82,7 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
         raise IncidentNotFound(incident_id)
     pond_id = incident.get("pond_id")
     set_span_tags(pond_id=pond_id)
+    ensure_transition(incident.get("state"), state)
     if action:
         events_repo.record(
             "incident_action", pond_id, incident_id=incident_id, details={"state": state.value, "action": action}

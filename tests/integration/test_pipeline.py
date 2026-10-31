@@ -387,6 +387,35 @@ def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
     assert (row["min"], row["max"], row["count"]) == (150.0, 250.0, 2)
 
 
+def test_incident_patch_rejects_invalid_transition(client: TestClient):
+    incidents_collection().insert_one(
+        {
+            "_id": "inc-done-001",
+            "created_at": utcnow(),
+            "updated_at": utcnow(),
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-02",
+            "severity": "warning",
+            "state": "recovered",
+            "title": "already recovered",
+            "description": "test",
+            "evidence": {},
+            "actions": [],
+        }
+    )
+    r = client.patch("/incidents/inc-done-001", params={"state": "open", "action": "reopen"})
+    assert r.status_code == 409, r.text
+    assert incidents_collection().find_one({"_id": "inc-done-001"})["state"] == "recovered"
+    assert events_collection().find_one({"incident_id": "inc-done-001"}) is None
+    assert client.patch("/incidents/inc-missing", params={"state": "investigating"}).status_code == 404
+
+
+def test_pump_fail_unknown_pond_is_404_without_event(client: TestClient):
+    r = client.post("/ponds/pond-99/pump/fail", params={"failed": "true"})
+    assert r.status_code == 404
+    assert events_collection().find_one({"pond_id": "pond-99"}) is None
+
+
 def test_worker_auto_recovers_when_do_is_healthy():
     from app.worker.pond_check import check_pond
 

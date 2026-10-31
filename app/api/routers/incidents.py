@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.domain.incident_lifecycle import InvalidTransition
 from app.domain.models import IncidentState
 from app.services import incidents as incident_service
 
@@ -25,4 +26,6 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
         incident_service.transition(incident_id, state, action)
     except incident_service.IncidentNotFound as e:
         raise HTTPException(404, "incident not found") from e
+    except InvalidTransition as e:
+        raise HTTPException(409, str(e)) from e
     return {"ok": True, "incident_id": incident_id, "state": state.value}

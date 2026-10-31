@@ -23,7 +23,8 @@ Flag as important:
 - **Irreversible schema changes**: time series options, TTLs (`TS_TTL_SECONDS`, `ROLLUP_TTL_SECONDS`), or the
   unique index used by the `$merge` in `rollup_hourly_pipeline`.
 - **Incident lifecycle**: more than one open incident per pond, skipped or stuck states, state changes that
-  do not also write to `events`, or incident writes outside `app/services/incidents.py`.
+  do not also write to `events`, incident writes outside `app/services/incidents.py`, or transitions that
+  skip `app/domain/incident_lifecycle.py`.
 - **Derived metrics**: wrong units or formulas for CO2, NH3, DO drop rate or pH swing; threshold changes in
   `app/core/config.py` without a reason.
 - **Datadog drift**: metric or tag names changed in `app/core/telemetry.py` / `app/services/` but not in
