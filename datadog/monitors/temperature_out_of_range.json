@@ -1,0 +1,21 @@
+{
+  "name": "[ShrimpWatch] WARNING: Nhiệt độ nước ngoài ngưỡng 26-32 °C",
+  "type": "metric alert",
+  "query": "avg(last_5m):abs(avg:shrimpwatch.metric.temperature{*} by {pond} - 29) > 3",
+  "message": "## 🌡️ Nhiệt độ ao {{pond.name}} ngoài ngưỡng\n\nĐộ lệch so với 29 °C (giữa ngưỡng 26-32 °C) = {{value}} °C. Nóng làm giảm oxy hòa tan và tăng NH3 độc; lạnh làm tôm giảm ăn.\n\nĐối chiếu sự cố `temperature_out_of_range` của worker: `GET /incidents?state=open`.",
+  "tags": [
+    "shrimpwatch",
+    "metric:temperature",
+    "sev:warning"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3.0,
+      "critical_recovery": 2.5
+    },
+    "renotify_interval": 60,
+    "notify_no_data": false,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

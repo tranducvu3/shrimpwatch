@@ -14,6 +14,10 @@ class PondSnapshot:
     avg_pump_watts: float | None
     do_drop_rate: float | None  # mg/L/phut, duong khi DO giam
     min_do: float | None
+    # Trung binh 5 phut (khong lay 1 diem de tranh nhieu cam bien); None = khong co so lieu
+    avg_temperature: float | None = None
+    avg_ph: float | None = None
+    avg_salinity: float | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,11 @@ class Thresholds:
     pump_failed_max_watts: float
     pump_running_min_watts: float
     do_recovery_margin: float
+    temp_warn_low: float
+    temp_warn_high: float
+    ph_warn_low: float
+    ph_warn_high: float
+    salinity_warn_low: float
 
     @classmethod
     def from_settings(cls) -> Thresholds:
@@ -34,6 +43,11 @@ class Thresholds:
             pump_failed_max_watts=settings.PUMP_FAILED_MAX_WATTS,
             pump_running_min_watts=settings.PUMP_RUNNING_MIN_WATTS,
             do_recovery_margin=settings.DO_RECOVERY_MARGIN,
+            temp_warn_low=settings.TEMP_WARN_LOW,
+            temp_warn_high=settings.TEMP_WARN_HIGH,
+            ph_warn_low=settings.PH_WARN_LOW,
+            ph_warn_high=settings.PH_WARN_HIGH,
+            salinity_warn_low=settings.SALINITY_WARN_LOW,
         )
 
 
@@ -85,6 +99,37 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
             "WARNING: DO dưới ngưỡng cảnh báo",
             f"Min DO = {s.min_do:.3f} mg/L < {t.do_warn}",
             "do_low",
+        )
+    return _environment_finding(s, t)
+
+
+def _outside(value: float | None, low: float, high: float) -> bool:
+    return value is not None and not low <= value <= high
+
+
+def _environment_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
+    """Nhiet do, pH, do man ngoai nguong: canh bao, xet sau cac quy tac oxy (nguy hiem hon)."""
+    if _outside(s.avg_temperature, t.temp_warn_low, t.temp_warn_high):
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: Nhiệt độ nước ngoài ngưỡng",
+            f"Nhiệt độ trung bình 5 phút = {s.avg_temperature:.2f} °C, ngoài ngưỡng "
+            f"{t.temp_warn_low}–{t.temp_warn_high} °C.",
+            "temperature_out_of_range",
+        )
+    if _outside(s.avg_ph, t.ph_warn_low, t.ph_warn_high):
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: pH ngoài ngưỡng",
+            f"pH trung bình 5 phút = {s.avg_ph:.2f}, ngoài ngưỡng {t.ph_warn_low}–{t.ph_warn_high}.",
+            "ph_out_of_range",
+        )
+    if s.avg_salinity is not None and s.avg_salinity < t.salinity_warn_low:
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: Độ mặn thấp",
+            f"Độ mặn trung bình 5 phút = {s.avg_salinity:.2f} ppt < {t.salinity_warn_low} ppt.",
+            "salinity_low",
         )
     return None
 

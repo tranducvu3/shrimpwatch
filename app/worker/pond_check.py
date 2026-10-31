@@ -44,6 +44,9 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         avg_pump_watts=metrics_repo.average_value(pond_id, "pump_power", now - RECENT),
         do_drop_rate=do_row.get("do_drop_rate_mg_per_l_per_min"),
         min_do=do_row.get("min_do"),
+        avg_temperature=metrics_repo.average_value(pond_id, "temperature", now - RECENT),
+        avg_ph=metrics_repo.average_value(pond_id, "ph", now - RECENT),
+        avg_salinity=metrics_repo.average_value(pond_id, "salinity", now - RECENT),
     )
     thresholds = Thresholds.from_settings()
 
@@ -57,7 +60,12 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
             nh3_mg_per_l=derived.nh3,
             ph_swing_24h=derived.ph_swing,
             do_window_sec=settings.DO_WINDOW_SEC,
-            notes={"timestamp": now.isoformat()},
+            notes={
+                "timestamp": now.isoformat(),
+                "avg_temperature": snapshot.avg_temperature,
+                "avg_ph": snapshot.avg_ph,
+                "avg_salinity": snapshot.avg_salinity,
+            },
         )
         incident_service.open_or_update(pond_id, finding, evidence)
     elif has_recovered(snapshot, thresholds):

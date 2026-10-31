@@ -10,7 +10,7 @@ from app.core.telemetry import gauge, increment, set_span_tags
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
 from app.domain.incident_fingerprint import fingerprint, is_valid
-from app.domain.incident_lifecycle import ensure_transition
+from app.domain.incident_lifecycle import ensure_transition, is_escalation
 from app.domain.incident_rules import Finding
 from app.domain.models import Incident, IncidentEvidence, IncidentState
 
@@ -25,22 +25,48 @@ def _to_doc(incident: Incident) -> dict:
     return {**incident.model_dump(by_alias=True), "fingerprint": fingerprint(incident.evidence)}
 
 
+def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence) -> str:
+    """Su co giu nguyen nhan nghiem trong nhat da thay: chi nang muc, khong ha.
+
+    Vd quat hong (critical) roi quat chay lai, DO con dang giam (warning): su co van la pump_failure.
+    """
+    incident_id = existing["_id"]
+    fields: dict = {"evidence": evidence.model_dump(), "fingerprint": fingerprint(evidence)}
+    current = existing.get("severity")
+    if is_escalation(current, finding.severity):
+        fields |= {
+            "severity": finding.severity.value,
+            "title": finding.title,
+            "description": finding.description,
+            "root_cause": finding.root_cause,
+        }
+        events_repo.record(
+            "incident_escalated",
+            existing["pond_id"],
+            incident_id=incident_id,
+            details={
+                "from_severity": current,
+                "to_severity": finding.severity.value,
+                "from_root_cause": existing.get("root_cause"),
+                "to_root_cause": finding.root_cause,
+            },
+        )
+        increment(
+            "incident.escalated",
+            tags={"pond": existing["pond_id"], "severity": finding.severity.value, "root_cause": finding.root_cause},
+        )
+    elif finding.root_cause == existing.get("root_cause"):
+        # Cung nguyen nhan: lam moi mo ta voi so lieu moi nhat
+        fields["description"] = finding.description
+    incidents_repo.update_fields(incident_id, fields)
+    return incident_id
+
+
 def open_or_update(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str:
     """Cap nhat su co dang mo cua ao; neu chua co thi mo su co moi."""
     existing = incidents_repo.find_active(pond_id)
     if existing:
-        incidents_repo.update_fields(
-            existing["_id"],
-            {
-                "severity": finding.severity.value,
-                "title": finding.title,
-                "description": finding.description,
-                "evidence": evidence.model_dump(),
-                "fingerprint": fingerprint(evidence),
-                "root_cause": finding.root_cause,
-            },
-        )
-        return existing["_id"]
+        return _update_active(existing, finding, evidence)
 
     incident_id = f"inc-{uuid.uuid4().hex[:10]}"
     incident = Incident(

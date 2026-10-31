@@ -356,7 +356,8 @@ def test_incident_timeline_joins_events(client: TestClient):
 
     r = client.get("/incidents/inc-timeline-001/timeline")
     assert r.status_code == 200, r.text
-    events = [e["event"] for e in r.json()["timeline"]]
+    # Bo qua goi y Vector Search: co hay khong tuy lich su su co do test khac de lai
+    events = [e["event"] for e in r.json()["timeline"] if e["event"] != "incident_similar_matched"]
     assert events == ["pump_state_change", "incident_action"]
     assert client.get("/incidents/inc-missing/timeline").status_code == 404
 

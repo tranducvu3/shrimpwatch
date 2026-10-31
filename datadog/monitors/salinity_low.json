@@ -1,0 +1,21 @@
+{
+  "name": "[ShrimpWatch] WARNING: Độ mặn thấp (dưới 10 ppt)",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:shrimpwatch.metric.salinity{*} by {pond} < 10",
+  "message": "## 🌧️ Độ mặn ao {{pond.name}} thấp: {{value}} ppt\n\nThường do mưa lớn hoặc cấp nước ngọt. Tôm thẻ chân trắng bị sốc khi độ mặn giảm đột ngột.\n\nĐối chiếu sự cố `salinity_low` của worker: `GET /incidents?state=open`.",
+  "tags": [
+    "shrimpwatch",
+    "metric:salinity",
+    "sev:warning"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 10.0,
+      "critical_recovery": 11.0
+    },
+    "renotify_interval": 60,
+    "notify_no_data": false,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

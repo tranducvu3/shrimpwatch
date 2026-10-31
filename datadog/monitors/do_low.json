@@ -1,0 +1,23 @@
+{
+  "name": "[ShrimpWatch] DO thấp (Warning dưới 4, Critical dưới 3 mg/L)",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:shrimpwatch.metric.do{*} by {pond} < 3",
+  "message": "## ⚠️ DO ao {{pond.name}} thấp: {{value}} mg/L\n\n{{#is_alert}}Dưới 3 mg/L: tôm thiếu oxy nghiêm trọng, bật quạt dự phòng ngay.{{/is_alert}}{{#is_warning}}Dưới 4 mg/L: theo dõi quạt và mật độ tảo.{{/is_warning}}\n\nĐối chiếu sự cố `do_critical` / `do_low` của worker: `GET /incidents?state=open`.",
+  "tags": [
+    "shrimpwatch",
+    "metric:do",
+    "sev:critical"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3.0,
+      "warning": 4.0,
+      "critical_recovery": 3.5,
+      "warning_recovery": 4.5
+    },
+    "renotify_interval": 15,
+    "notify_no_data": false,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

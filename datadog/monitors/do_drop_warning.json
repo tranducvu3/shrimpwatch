@@ -1,11 +1,20 @@
 {
-  "name": "[ShrimpWatch] WARNING: DO giảm nhanh bất thường (anomaly drop rate)",
+  "name": "[ShrimpWatch] WARNING: DO giảm nhanh (> 0.25 mg/L trong 5 phút)",
   "type": "query alert",
-  "query": "avg(last_5m):anomalies(avg:shrimpwatch.metric.do{*} by {pond}, 'agile', 2, direction='below') >= 1",
-  "message": "## ⚠️ Cảnh báo: DO giảm nhanh bất thường\n\nDO ao {{pod.name}} trong 5 phút gần đây giảm nhiều hơn ngưỡng dự báo (seasonality 24h). Kiểm tra:\n- Công suất quạt qua dashboard (biểu đồ pump_power)\n- Log worker (tag `device_type:worker`, `pond:{{pod.name}}`) để xem pipeline `$setWindowFields` đã phát hiện tốc độ giảm DO (evidence.do_drop_rate_mg_per_l_per_min) chưa.\n- Xem incident vừa tạo trên `/incidents?state=open`",
-  "tags": ["shrimpwatch", "pond:do_anomaly", "sev:warning"],
-  "notify_no_data": false,
-  "renotify_interval": 30,
-  "evaluation_delay": 60,
-  "include_tags": true
+  "query": "change(avg(last_5m),last_5m):avg:shrimpwatch.metric.do{*} by {pond} < -0.25",
+  "message": "## ⚠️ Cảnh báo: DO ao {{pond.name}} giảm nhanh\n\nDO trung bình 5 phút gần nhất giảm {{value}} mg/L so với 5 phút trước (ngưỡng -0.25 mg/L, tương đương 0.05 mg/L/phút như `DO_DROP_RATE_WARN_MGPERL_PER_MIN`). Kiểm tra:\n- Công suất quạt (biểu đồ pump_power) và monitor quạt hỏng\n- Log worker (`device_type:worker`, `pond:{{pond.name}}`): evidence.do_drop_rate_mg_per_l_per_min\n- Sự cố đang mở: `GET /incidents?state=open`",
+  "tags": [
+    "shrimpwatch",
+    "metric:do",
+    "sev:warning"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": -0.25
+    },
+    "renotify_interval": 30,
+    "notify_no_data": false,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
 }
