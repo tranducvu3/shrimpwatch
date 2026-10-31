@@ -2,7 +2,9 @@
   // Codespaces: chay ca stack (MongoDB, API, simulator, worker, Datadog Agent neu co key) bang Docker Compose.
   // Secret (Codespaces secrets cua repo): MONGODB_URI, DD_API_KEY, DD_APP_KEY, DD_SITE. Khong co -> Mongo local, khong Datadog.
   "name": "ShrimpWatch",
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
