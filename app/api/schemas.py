@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.clock import utcnow
 from app.domain.models import MetricRecord
+from app.domain.scenarios import MAX_DURATION_MIN, ScenarioType
 
 MAX_BATCH = 1000
 
@@ -31,3 +32,9 @@ class ManualInput(BaseModel):
     pond_id: str
     value: float
     tester_id: str = "tech-001"
+
+
+class ScenarioRequest(BaseModel):
+    scenario: ScenarioType
+    offset: float
+    duration_min: int = Field(default=15, ge=1, le=MAX_DURATION_MIN)

@@ -9,6 +9,7 @@ from datetime import datetime
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.domain.models import DeviceType, MetricRecord, MetricType, Source
+from app.domain.scenarios import ScenarioType
 
 
 def _hour_fraction(dt: datetime) -> float:
@@ -34,16 +35,20 @@ class PondSimulator:
         self._orp_last = 280.0
         self._salinity_last = 15.0 + self._rng.uniform(-1.0, 1.0)
 
-    def step(self, now: datetime, pump_failed: bool) -> list[MetricRecord]:
+    def step(
+        self, now: datetime, pump_failed: bool, offsets: dict[ScenarioType, float] | None = None
+    ) -> list[MetricRecord]:
+        offsets = offsets or {}
         hf = _hour_fraction(now)
         temp_amp = diurnal_amplitude(hf, phase_offset_hours=0)
-        temp = self._temp_base + temp_amp * 3.0 + self._rng.gauss(0, 0.15)
+        temp = self._temp_base + temp_amp * 3.0 + offsets.get(ScenarioType.TEMPERATURE, 0.0) + self._rng.gauss(0, 0.15)
 
         ph_amp = diurnal_amplitude(hf, phase_offset_hours=12)
-        ph = self._ph_base + ph_amp * 0.35 + self._rng.gauss(0, 0.05)
+        ph = self._ph_base + ph_amp * 0.35 + offsets.get(ScenarioType.PH, 0.0) + self._rng.gauss(0, 0.05)
 
+        # Kich ban DO doi baseline: DO bi keo dan ve muc moi (hang so thoi gian ~10 phut), khong nhay tuc thi
         do_amp = diurnal_amplitude(hf, phase_offset_hours=18)
-        do_baseline = self._do_base + do_amp * 0.8
+        do_baseline = self._do_base + do_amp * 0.8 + offsets.get(ScenarioType.DO, 0.0)
 
         delta_min = max(0.1, (now - self._do_last_ts).total_seconds() / 60.0)
         if pump_failed:
@@ -63,7 +68,7 @@ class PondSimulator:
         orp = self._orp_last + self._rng.gauss(0, 4)
 
         self._salinity_last += self._rng.gauss(0, 0.02)
-        salinity = self._salinity_last
+        salinity = self._salinity_last + offsets.get(ScenarioType.SALINITY, 0.0)
 
         pump_power = 0.0 if pump_failed else (1500.0 + self._rng.gauss(0, 50))
         pump_status = 0.0 if pump_failed else 1.0

@@ -19,12 +19,12 @@ class ShrimpWatchClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
 
-    def pump_states(self) -> dict[str, bool]:
-        """pond_id -> quat dang hong? Loi mang tra ve {} (coi nhu quat chay binh thuong)."""
+    def pond_states(self) -> dict[str, dict]:
+        """pond_id -> document ao (quat hong, kich ban). Loi mang tra ve {} (coi nhu ao binh thuong)."""
         try:
             r = httpx.get(self._url("/ponds"), timeout=5.0)
             r.raise_for_status()
-            return {p["_id"]: bool(p.get("pump", {}).get("failed", False)) for p in r.json()}
+            return {p["_id"]: p for p in r.json()}
         except Exception as e:
             logger.warning("fetch ponds failed", extra={"err": str(e)})
             return {}

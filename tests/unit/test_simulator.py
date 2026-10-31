@@ -1,7 +1,10 @@
 from datetime import timedelta
 
+import pytest
+
 from app.core.clock import utcnow
 from app.domain.models import DeviceType, MetricType
+from app.domain.scenarios import ScenarioType
 from app.simulator.pond_model import PondSimulator
 
 
@@ -30,3 +33,30 @@ def test_simulator_do_and_orp_fall_when_pump_fails():
     assert last["orp"] < first["orp"], "ORP should fall with DO"
     assert last["pump_power"] == 0.0
     assert "salinity" in last
+
+
+def _values(records):
+    return {r.metric.value: r.value for r in records}
+
+
+def test_offsets_shift_temperature_ph_and_salinity():
+    t = utcnow()
+    base = _values(PondSimulator("pond-02").step(t, pump_failed=False))
+    offsets = {ScenarioType.TEMPERATURE: 4.0, ScenarioType.PH: 0.8, ScenarioType.SALINITY: -7.0}
+    shifted = _values(PondSimulator("pond-02").step(t, pump_failed=False, offsets=offsets))
+    assert shifted["temperature"] == pytest.approx(base["temperature"] + 4.0, abs=0.01)
+    assert shifted["ph"] == pytest.approx(base["ph"] + 0.8, abs=0.01)
+    assert shifted["salinity"] == pytest.approx(base["salinity"] - 7.0, abs=0.01)
+
+
+def test_do_offset_pulls_do_down_while_pump_runs():
+    # Cung seed, cung moc thoi gian: chi khac do lech DO -> so sanh khong phu thuoc gio trong ngay
+    normal, low = PondSimulator("pond-04"), PondSimulator("pond-04")
+    t = utcnow()
+    for i in range(61):  # 30 phut, hang so thoi gian ~10 phut
+        ts = t + timedelta(seconds=30 * i)
+        base = _values(normal.step(ts, pump_failed=False))
+        last = _values(low.step(ts, pump_failed=False, offsets={ScenarioType.DO: -3.5}))
+    assert last["do"] < base["do"] - 2.8, f"DO should follow lowered baseline: {base['do']} vs {last['do']}"
+    assert last["orp"] < base["orp"], "ORP should follow DO"
+    assert last["pump_power"] > 1000

@@ -288,3 +288,38 @@ def similar_incidents_fallback_pipeline(
         {"$limit": k},
         *_similar_incident_output(),
     ]
+
+
+def latest_readings_pipeline(pond_ids: list[str], metrics: list[str], since: datetime) -> list[dict[str, Any]]:
+    """Gia tri moi nhat cua tung (ao, chi so) ke tu `since`, cho bang dieu khien.
+
+    Loc pond_id + metric + timestamp khop index pond_metric_ts; `since` gioi han so ban ghi quet.
+    """
+    return [
+        {
+            "$match": {
+                "metadata.pond_id": {"$in": pond_ids},
+                "metadata.metric": {"$in": metrics},
+                "timestamp": {"$gte": since},
+            }
+        },
+        {"$sort": {"timestamp": -1}},
+        {
+            "$group": {
+                "_id": {"pond_id": "$metadata.pond_id", "metric": "$metadata.metric"},
+                "value": {"$first": "$value"},
+                "unit": {"$first": "$metadata.unit"},
+                "timestamp": {"$first": "$timestamp"},
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "pond_id": "$_id.pond_id",
+                "metric": "$_id.metric",
+                "value": 1,
+                "unit": 1,
+                "timestamp": 1,
+            }
+        },
+    ]

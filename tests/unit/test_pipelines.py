@@ -1,6 +1,11 @@
 from datetime import datetime
 
-from app.db.pipelines import compute_do_drop_rate_pipeline, compute_ph_swing_pipeline, rollup_hourly_pipeline
+from app.db.pipelines import (
+    compute_do_drop_rate_pipeline,
+    compute_ph_swing_pipeline,
+    latest_readings_pipeline,
+    rollup_hourly_pipeline,
+)
 
 NOW = datetime(2026, 10, 31, 12, 34, 56)
 
@@ -23,3 +28,12 @@ def test_rollup_covers_whole_hours_and_merges_idempotently():
 def test_ph_swing_reads_last_24_hours_of_rollups():
     match = compute_ph_swing_pipeline("pond-01", now=NOW)[0]["$match"]
     assert match["hour"] == {"$gte": datetime(2026, 10, 30, 12)}
+
+
+def test_latest_readings_filter_matches_compound_index():
+    match = latest_readings_pipeline(["pond-01"], ["do", "ph"], NOW)[0]["$match"]
+    assert match == {
+        "metadata.pond_id": {"$in": ["pond-01"]},
+        "metadata.metric": {"$in": ["do", "ph"]},
+        "timestamp": {"$gte": NOW},
+    }

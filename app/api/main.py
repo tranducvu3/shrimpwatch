@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import health, incidents, ingest, ponds
+from app.api.routers import control, health, incidents, ingest, ponds
 from app.core.log import get_logger
 from app.core.telemetry import init_metrics
 from app.db.schema import init_collections
@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-    for router in (health.router, ingest.router, ponds.router, incidents.router):
+    for router in (health.router, ingest.router, ponds.router, incidents.router, control.router):
         app.include_router(router)
     return app
 
