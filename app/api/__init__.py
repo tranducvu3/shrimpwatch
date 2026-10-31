@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import models
 from app.config import settings
 from app.db import (
     events_collection,
@@ -21,14 +20,11 @@ from app.metrics import gauge, increment, set_span_tags
 from app.models import (
     AlkalinityInput,
     BatchIngestRequest,
-    Incident,
-    IncidentEvidence,
     IncidentState,
     MANUAL_METRIC_UNITS,
     ManualInput,
     MetricRecord,
     MetricType,
-    Severity,
     Source,
     DeviceType,
 )
@@ -228,8 +224,6 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
                 "details": {"state": state.value, "action": action},
             }
         )
-        update_doc["$push"] = {
-            "actions": {"time": datetime.utcnow(), "state": state.value, "action": action}
-        }
+        update_doc["$push"] = {"actions": {"time": datetime.utcnow(), "state": state.value, "action": action}}
     incidents_collection().update_one({"_id": incident_id}, update_doc)
     return {"ok": True, "incident_id": incident_id, "state": state.value}

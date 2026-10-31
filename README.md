@@ -408,6 +408,8 @@ Tất cả ảnh được lưu trong thư mục **`assets_proof/`** với đúng
 2. Chụp dòng `9 passed`.
 > ⚠️ **Cảnh báo:** bộ test gọi `init_collections(force=True)` nên sẽ **xoá sạch collection** trong database đang kết nối. `make test` đã ghi đè `MONGODB_URI`/`MONGODB_DB` về MongoDB local; đừng chạy `pytest` trực tiếp khi `.env` trỏ lên Atlas.
 
+> 🔁 **CI (GitHub Actions):** mỗi PR và mỗi lần push lên `main` chạy 3 job — `Lint (ruff)` (= `make lint`), `Tests (MongoDB 7)` với coverage tối thiểu 64% ([.coveragerc](.coveragerc)), và `Compose smoke test` (dựng stack thật, kiểm tra dữ liệu chảy vào `metrics` / `metrics_hourly`). Xem [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
 **3. `03_agent_status.png` — Datadog Agent**
 ```powershell
 docker compose exec -T datadog-agent agent status

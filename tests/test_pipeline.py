@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app import models
 from app.api import app
 from app.config import settings
 from app.db import (
@@ -44,8 +43,14 @@ def client():
     return TestClient(app)
 
 
-def _insert_record(metric: str, pond: str, value: float, ts: datetime | None = None, source: str = "sensor",
-                   device_type: str = "water_node"):
+def _insert_record(
+    metric: str,
+    pond: str,
+    value: float,
+    ts: datetime | None = None,
+    source: str = "sensor",
+    device_type: str = "water_node",
+):
     doc = pack_ts_doc(
         {
             "timestamp": ts or datetime.utcnow(),
@@ -87,8 +92,7 @@ def test_timeseries_collection_metadata():
             (
                 i
                 for i in infos
-                if i.get("name") == "metrics"
-                and (i.get("db") == settings.MONGODB_DB or i.get("md", {}).get("options"))
+                if i.get("name") == "metrics" and (i.get("db") == settings.MONGODB_DB or i.get("md", {}).get("options"))
             ),
             None,
         )
@@ -198,6 +202,7 @@ def test_setwindowfields_do_drop_rate_pipeline():
 
 def test_co2_derivation_formula():
     from app.worker import derive_co2_for_pond
+
     now = datetime.utcnow()
     _insert_record("alkalinity", "pond-04", 170.0, ts=now, source="manual", device_type="manual_tester")
     _insert_record("ph", "pond-04", 7.9, ts=now)
@@ -209,16 +214,20 @@ def test_co2_derivation_formula():
 
 def test_pump_fail_event_and_incident_opening(client: TestClient):
     from app.worker import check_pond
+
     now = datetime.utcnow()
     for i in range(10):
         _insert_record(
-            "pump_power", "pond-05", 10.0 if i >= 5 else 1500.0,
+            "pump_power",
+            "pond-05",
+            10.0 if i >= 5 else 1500.0,
             ts=now - timedelta(seconds=30 * (10 - i)),
             device_type="pump",
         )
     for i in range(15):
         _insert_record(
-            "do", "pond-05",
+            "do",
+            "pond-05",
             max(2.0, 6.0 - i * 0.15),
             ts=now - timedelta(seconds=30 * (15 - i)),
         )
@@ -278,6 +287,7 @@ def test_incident_lifecycle_patch(client: TestClient):
 
 def test_nh3_derivation_formula():
     from app.worker import derive_nh3_for_pond
+
     now = datetime.utcnow()
     _insert_record("tan", "pond-01", 1.0, ts=now, source="manual", device_type="manual_tester")
     _insert_record("ph", "pond-01", 8.0, ts=now)
@@ -300,6 +310,7 @@ def test_ph_swing_pipeline():
 
 def test_simulator_do_and_orp_fall_when_pump_fails():
     from app.simulator import PondSimulator
+
     sim = PondSimulator("pond-03")
     t = datetime.utcnow()
     first = {r.metric.value: r.value for r in sim.step(t, pump_failed=False)}
@@ -341,9 +352,18 @@ def test_hourly_rollup_is_idempotent():
 
 
 def test_worker_queries_use_compound_index():
-    plan = metrics_collection().find(
-        {"metadata.pond_id": "pond-01", "metadata.metric": "do", "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=5)}}
-    ).sort("timestamp", -1).explain()
+    plan = (
+        metrics_collection()
+        .find(
+            {
+                "metadata.pond_id": "pond-01",
+                "metadata.metric": "do",
+                "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=5)},
+            }
+        )
+        .sort("timestamp", -1)
+        .explain()
+    )
     assert f"'indexName': '{METRICS_POND_METRIC_TS_INDEX}'" in str(plan)
 
 

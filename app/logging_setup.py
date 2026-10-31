@@ -35,10 +35,7 @@ def setup_logging(name: str = "shrimpwatch", level: str = "INFO") -> logging.Log
     handler.addFilter(TraceIdFilter())
 
     formatter = jsonlogger.JsonFormatter(
-        fmt=(
-            "%(asctime)s %(levelname)s %(service)s %(name)s "
-            "%(trace_id)s %(span_id)s %(message)s"
-        ),
+        fmt=("%(asctime)s %(levelname)s %(service)s %(name)s " "%(trace_id)s %(span_id)s %(message)s"),
         rename_fields={
             "levelname": "level",
             "asctime": "timestamp",
