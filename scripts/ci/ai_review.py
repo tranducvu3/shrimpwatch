@@ -1,7 +1,8 @@
 """Review AI cho pull request bang DeepSeek, dang ket qua thanh 1 comment tren PR.
 
 Chi dung thu vien chuan. Doc diff qua GitHub API (khong checkout/chay code cua PR), gui kem quy tac
-review trong .github/copilot-instructions.md, roi tao/cap nhat 1 comment co marker co dinh.
+review trong .github/copilot-instructions.md cua nhanh base (workflow checkout base, khong phai PR),
+roi tao/cap nhat 1 comment co marker co dinh.
 
 Bien moi truong: GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, DEEPSEEK_API_KEY,
 tuy chon DEEPSEEK_MODEL (mac dinh deepseek-flash), DEEPSEEK_EFFORT (low|high|max, mac dinh low),
@@ -100,9 +101,18 @@ def _ask_deepseek(api_key: str, model: str, effort: str, pr: dict, diff: str) ->
     return content, usage
 
 
+def _find_marker_comment(api: str, token: str, number: int) -> dict | None:
+    page = 1
+    while True:
+        comments = _request(f"{api}/issues/{number}/comments?per_page=100&page={page}", token)
+        mine = next((c for c in comments if MARKER in (c.get("body") or "")), None)
+        if mine or len(comments) < 100:
+            return mine
+        page += 1
+
+
 def _upsert_comment(api: str, token: str, number: int, body: str) -> str:
-    comments = _request(f"{api}/issues/{number}/comments?per_page=100", token)
-    mine = next((c for c in comments if MARKER in (c.get("body") or "")), None)
+    mine = _find_marker_comment(api, token, number)
     if mine:
         return _request(f"{api}/issues/comments/{mine['id']}", token, {"body": body}, "PATCH")["html_url"]
     return _request(f"{api}/issues/{number}/comments", token, {"body": body}, "POST")["html_url"]
