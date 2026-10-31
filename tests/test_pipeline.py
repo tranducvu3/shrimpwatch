@@ -13,9 +13,12 @@ from app.db import (
     get_client,
     incidents_collection,
     init_collections,
+    METRICS_POND_METRIC_TS_INDEX,
     metrics_collection,
+    metrics_hourly_collection,
     pack_ts_doc,
     ponds_collection,
+    run_hourly_rollup,
 )
 from app.models import (
     AlkalinityInput,
@@ -181,13 +184,14 @@ def test_setwindowfields_do_drop_rate_pipeline():
     start = now - timedelta(minutes=10)
     for i, t in enumerate([start + timedelta(seconds=30 * j) for j in range(20)]):
         _insert_record("do", "pond-03", max(1.5, 7.0 - i * 0.15), ts=t)
-    pipeline = compute_do_drop_rate_pipeline("pond-03", window_sec=300)
+    pipeline = compute_do_drop_rate_pipeline(["pond-03"], window_sec=300)
     rows = list(metrics_collection().aggregate(pipeline))
-    assert len(rows) >= 1, "expected at least one aggregated row"
+    assert len(rows) == 1, "expected exactly one row per pond"
     row = rows[0]
-    assert "do_drop_rate_mg_per_l_per_min" in row
+    assert row["pond_id"] == "pond-03"
     assert row["do_drop_mg_per_l"] > 0, "DO is dropping so drop_mg_per_l should be > 0"
-    assert row["do_drop_rate_mg_per_l_per_min"] > 0
+    # 0.15 mg/L moi 30s = 0.3 mg/L/phut
+    assert row["do_drop_rate_mg_per_l_per_min"] == pytest.approx(0.3, abs=0.01)
     # This result is used as Yêu cầu #2 evidence stored in incidents.evidence
     assert "min_do" in row
 
@@ -288,7 +292,8 @@ def test_ph_swing_pipeline():
     now = datetime.utcnow()
     for i, v in enumerate([7.8, 8.4, 8.1, 7.9]):
         _insert_record("ph", "pond-06", v, ts=now - timedelta(hours=i * 3))
-    rows = list(metrics_collection().aggregate(compute_ph_swing_pipeline("pond-06")))
+    run_hourly_rollup(now - timedelta(hours=24))
+    rows = list(metrics_hourly_collection().aggregate(compute_ph_swing_pipeline("pond-06")))
     assert len(rows) == 1
     assert rows[0]["ph_swing"] == 0.6
 
@@ -303,3 +308,69 @@ def test_simulator_do_and_orp_fall_when_pump_fails():
     assert last["do"] < first["do"] - 0.7, f"DO should fall without aerator: {first['do']} -> {last['do']}"
     assert last["orp"] < first["orp"], "ORP should fall with DO"
     assert "salinity" in last
+
+
+def test_do_drop_rate_survives_sensor_dropout():
+    # Cam bien rot goi: chi con 3 diem trong 5 phut. Cua so theo thoi gian van cho dung toc do.
+    now = datetime.utcnow()
+    for minutes_ago, value in ((4, 6.0), (2, 5.4), (0, 4.8)):
+        _insert_record("do", "pond-02", value, ts=now - timedelta(minutes=minutes_ago))
+    rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(["pond-02"], window_sec=300)))
+    assert rows[0]["do_drop_rate_mg_per_l_per_min"] == pytest.approx(0.3, abs=0.01)
+    assert rows[0]["min_do"] == 4.8
+
+
+def test_do_drop_rate_all_ponds_in_one_query():
+    ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
+    now = datetime.utcnow()
+    for pond in ponds:
+        _insert_record("do", pond, 6.0, ts=now - timedelta(seconds=1))
+    rows = list(metrics_collection().aggregate(compute_do_drop_rate_pipeline(ponds, window_sec=300)))
+    assert sorted(r["pond_id"] for r in rows) == ponds
+
+
+def test_hourly_rollup_is_idempotent():
+    hour = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    for i, v in enumerate([20.0, 30.0, 25.0]):
+        _insert_record("salinity", "pond-04", v, ts=hour + timedelta(minutes=10 * i))
+    run_hourly_rollup(hour)
+    run_hourly_rollup(hour)
+    rows = list(metrics_hourly_collection().find({"pond_id": "pond-04", "metric": "salinity", "hour": hour}))
+    assert len(rows) == 1
+    assert (rows[0]["min"], rows[0]["max"], rows[0]["avg"], rows[0]["count"]) == (20.0, 30.0, 25.0, 3)
+
+
+def test_worker_queries_use_compound_index():
+    plan = metrics_collection().find(
+        {"metadata.pond_id": "pond-01", "metadata.metric": "do", "timestamp": {"$gte": datetime.utcnow() - timedelta(minutes=5)}}
+    ).sort("timestamp", -1).explain()
+    assert f"'indexName': '{METRICS_POND_METRIC_TS_INDEX}'" in str(plan)
+
+
+def test_incident_timeline_joins_events(client: TestClient):
+    incidents_collection().insert_one(
+        {
+            "_id": "inc-timeline-001",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-03",
+            "severity": "critical",
+            "state": "open",
+            "title": "timeline test",
+            "description": "test",
+            "evidence": {},
+            "actions": [],
+        }
+    )
+    assert client.post("/ponds/pond-03/pump/fail", params={"failed": "true"}).status_code == 200
+    client.patch("/incidents/inc-timeline-001", params={"state": "investigating", "action": "Kiem tra quat"})
+
+    action = events_collection().find_one({"event": "incident_action", "incident_id": "inc-timeline-001"})
+    assert action is not None, "incident_id must be top-level on every event"
+
+    r = client.get("/incidents/inc-timeline-001/timeline")
+    assert r.status_code == 200, r.text
+    events = [e["event"] for e in r.json()["timeline"]]
+    assert events == ["pump_state_change", "incident_action"]
+    assert client.get("/incidents/inc-missing/timeline").status_code == 404

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     API_URL: str = "http://localhost:8000"
 
     TS_TTL_SECONDS: int = 7 * 24 * 3600
+    ROLLUP_TTL_SECONDS: int = 365 * 24 * 3600
+    ROLLUP_INTERVAL_SEC: int = 300
 
     TEMP_WARN_LOW: float = 26.0
     TEMP_WARN_HIGH: float = 32.0

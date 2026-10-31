@@ -14,8 +14,9 @@ from app.db import (
     events_collection,
     incidents_collection,
     metrics_collection,
+    metrics_hourly_collection,
     pack_ts_doc,
-    ponds_collection,
+    run_hourly_rollup,
 )
 from app.logging_setup import get_logger
 from app.metrics import gauge, increment, set_span_tags, init_metrics
@@ -82,7 +83,7 @@ def derive_nh3_for_pond(pond_id: str, timestamp: datetime) -> float | None:
 
 
 def compute_ph_swing(pond_id: str) -> float | None:
-    rows = list(metrics_collection().aggregate(compute_ph_swing_pipeline(pond_id)))
+    rows = list(metrics_hourly_collection().aggregate(compute_ph_swing_pipeline(pond_id)))
     return rows[0]["ph_swing"] if rows else None
 
 
@@ -109,14 +110,12 @@ def write_derived_record(pond_id: str, timestamp: datetime, metric: str, value: 
     increment(f"{metric}.derived", tags={"pond": pond_id})
 
 
-def evaluate_pond_do_drop(pond_id: str, window_sec: int = 300):
-    pipeline = compute_do_drop_rate_pipeline(pond_id, window_sec=window_sec)
-    result = list(metrics_collection().aggregate(pipeline))
-    if not result:
-        return None
-    row = result[0]
-    logger.info("DO window computed", extra={"pond": pond_id, "row": row})
-    return row
+def evaluate_do_drop(pond_ids: list[str], window_sec: int = 300) -> dict[str, dict]:
+    pipeline = compute_do_drop_rate_pipeline(pond_ids, window_sec=window_sec)
+    rows = {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
+    for pond_id, row in rows.items():
+        logger.info("DO window computed", extra={"pond": pond_id, "row": row})
+    return rows
 
 
 def avg_pump_power_last_n(pond_id: str, minutes: int = 5) -> float | None:
@@ -190,8 +189,10 @@ def open_or_update_incident(pond_id: str, severity: Severity, title: str, descri
     return incident_id
 
 
-def check_pond(pond_id: str):
+def check_pond(pond_id: str, do_row: dict | None = None):
     set_span_tags(pond_id=pond_id, device_type=DeviceType.WORKER.value)
+    if do_row is None:
+        do_row = evaluate_do_drop([pond_id]).get(pond_id)
     now = datetime.utcnow()
 
     co2 = derive_co2_for_pond(pond_id, now)
@@ -219,9 +220,8 @@ def check_pond(pond_id: str):
     avg_pump = avg_pump_power_last_n(pond_id, minutes=5)
     pump_failed = avg_pump is not None and avg_pump < 50.0
 
-    row = evaluate_pond_do_drop(pond_id, window_sec=300)
-    drop_rate = row.get("do_drop_rate_mg_per_l_per_min") if row else None
-    min_do = row.get("min_do") if row else None
+    drop_rate = do_row.get("do_drop_rate_mg_per_l_per_min") if do_row else None
+    min_do = do_row.get("min_do") if do_row else None
 
     evidence = IncidentEvidence(
         do_drop_rate_mg_per_l_per_min=drop_rate,
@@ -303,12 +303,29 @@ def run_worker():
     init_metrics()
     logger.info("worker starting")
     ponds = [f"pond-{i:02d}" for i in range(1, settings.NUM_PONDS + 1)]
+    # Lan dau: backfill toan bo khoang TTL; sau do chi tinh lai gio truoc + gio hien tai.
+    rollup_since = datetime.utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
+    last_rollup = 0.0
     while True:
         t0 = time.time()
+        if t0 - last_rollup >= settings.ROLLUP_INTERVAL_SEC:
+            try:
+                with tracer.trace("worker.rollup_hourly"):
+                    run_hourly_rollup(rollup_since)
+                last_rollup = t0
+                rollup_since = datetime.utcnow() - timedelta(hours=1)
+            except Exception as e:
+                logger.error("hourly rollup failed", extra={"err": str(e)})
+        try:
+            with tracer.trace("worker.do_window"):
+                do_rows = evaluate_do_drop(ponds)
+        except Exception as e:
+            logger.error("DO window failed", extra={"err": str(e)})
+            do_rows = {}
         for pid in ponds:
             try:
                 with tracer.trace("worker.check_pond", resource=pid):
-                    check_pond(pid)
+                    check_pond(pid, do_rows.get(pid))
             except Exception as e:
                 logger.error("check_pond failed", extra={"pond": pid, "err": str(e)})
         elapsed = time.time() - t0

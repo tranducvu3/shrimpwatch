@@ -9,6 +9,7 @@ from app import models
 from app.config import settings
 from app.db import (
     events_collection,
+    incident_timeline_pipeline,
     incidents_collection,
     metrics_collection,
     pack_ts_doc,
@@ -189,6 +190,15 @@ def list_incidents(state: IncidentState | None = None):
     return list(incidents_collection().find(q).sort("created_at", -1).limit(50))
 
 
+@app.get("/incidents/{incident_id}/timeline")
+def incident_timeline(incident_id: str):
+    rows = list(incidents_collection().aggregate(incident_timeline_pipeline(incident_id)))
+    if not rows:
+        raise HTTPException(404, "incident not found")
+    set_span_tags(pond_id=rows[0].get("pond_id"))
+    return rows[0]
+
+
 @app.patch("/incidents/{incident_id}")
 def patch_incident(incident_id: str, state: IncidentState, action: str | None = None):
     set_fields: dict = {"updated_at": datetime.utcnow(), "state": state.value}
@@ -204,7 +214,8 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
                 "timestamp": datetime.utcnow(),
                 "pond_id": pond_id,
                 "event": "incident_action",
-                "details": {"incident_id": incident_id, "state": state.value, "action": action},
+                "incident_id": incident_id,
+                "details": {"state": state.value, "action": action},
             }
         )
         update_doc["$push"] = {

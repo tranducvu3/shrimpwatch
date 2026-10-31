@@ -50,8 +50,10 @@ demo:
 push-dashboards:
 	docker compose exec -T api python -m app.datadog_push
 
+# Test xoa sach collection -> luon chay tren DB test cua MongoDB local, khong dung .env (Atlas)
 test:
-	docker compose exec -T api pytest -v tests/
+	docker compose exec -T -e MONGODB_URI='mongodb://admin:admin_pass@mongodb:27017/?authSource=admin' \
+		-e MONGODB_DB=shrimpwatch_test -e DD_TRACE_ENABLED=false api pytest -v tests/
 
 reset:
 	docker compose down -v
