@@ -28,9 +28,7 @@ def main():
     logger.info("API health", extra={"health": health})
 
     before_ponds = httpx.get(f"{api_url}/ponds").json()
-    logger.info("pump state BEFORE", extra={
-        p["_id"]: p.get("pump", {}).get("failed") for p in before_ponds
-    })
+    logger.info("pump state BEFORE", extra={p["_id"]: p.get("pump", {}).get("failed") for p in before_ponds})
 
     logger.info(f"Injecting pump failure on {target_pond}")
     httpx.post(f"{api_url}/ponds/{target_pond}/pump/fail", params={"failed": "true"}).raise_for_status()
@@ -38,11 +36,10 @@ def main():
     logger.info("Waiting for simulator and worker to detect (60-90 seconds)...")
     for i in range(1, 16):
         time.sleep(6)
-        incidents = httpx.get(
-            f"{api_url}/incidents", params={"state": "open"}
-        ).json() + httpx.get(
-            f"{api_url}/incidents", params={"state": "investigating"}
-        ).json()
+        incidents = (
+            httpx.get(f"{api_url}/incidents", params={"state": "open"}).json()
+            + httpx.get(f"{api_url}/incidents", params={"state": "investigating"}).json()
+        )
         target_in = [x for x in incidents if x.get("pond_id") == target_pond]
         state = target_in[-1] if target_in else None
         logger.info(

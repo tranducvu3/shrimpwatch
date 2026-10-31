@@ -54,9 +54,7 @@ class PondSimulator:
         do_amp = diurnal_amplitude(hf, phase_offset_hours=18)
         do_baseline = self._do_base + do_amp * 0.8
 
-        delta_min = max(
-            0.1, (now - self._do_last_ts).total_seconds() / 60.0
-        )
+        delta_min = max(0.1, (now - self._do_last_ts).total_seconds() / 60.0)
         if pump_failed:
             # Khong co quat: tom + vi sinh tieu thu oxy, DO giam deu, khong keo ve baseline
             drift = 0.0
@@ -64,9 +62,7 @@ class PondSimulator:
         else:
             drift = (do_baseline - self._do_last) * min(1.0, delta_min / 10.0)
             aeration = +0.04 + self._rng.gauss(0, 0.005)
-        do = max(
-            0.5, min(10.0, self._do_last + drift + aeration * delta_min + self._rng.gauss(0, 0.03))
-        )
+        do = max(0.5, min(10.0, self._do_last + drift + aeration * delta_min + self._rng.gauss(0, 0.03)))
         self._do_last = do
         self._do_last_ts = now
 
@@ -78,9 +74,7 @@ class PondSimulator:
         self._salinity_last += self._rng.gauss(0, 0.02)
         salinity = self._salinity_last
 
-        pump_power = (
-            0.0 if pump_failed else (1500.0 + self._rng.gauss(0, 50))
-        )
+        pump_power = 0.0 if pump_failed else (1500.0 + self._rng.gauss(0, 50))
         pump_status = 0.0 if pump_failed else 1.0
 
         return [
@@ -169,10 +163,7 @@ def _fetch_pump_state(api_url: str) -> dict[str, bool]:
         r = httpx.get(f"{api_url}/ponds", timeout=5.0)
         r.raise_for_status()
         data = r.json()
-        return {
-            p["_id"]: bool(p.get("pump", {}).get("failed", False))
-            for p in data
-        }
+        return {p["_id"]: bool(p.get("pump", {}).get("failed", False)) for p in data}
     except Exception as e:
         logger.warning("fetch ponds failed", extra={"err": str(e)})
         return {}

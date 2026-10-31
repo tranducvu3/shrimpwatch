@@ -224,8 +224,6 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
                 "details": {"state": state.value, "action": action},
             }
         )
-        update_doc["$push"] = {
-            "actions": {"time": datetime.utcnow(), "state": state.value, "action": action}
-        }
+        update_doc["$push"] = {"actions": {"time": datetime.utcnow(), "state": state.value, "action": action}}
     incidents_collection().update_one({"_id": incident_id}, update_doc)
     return {"ok": True, "incident_id": incident_id, "state": state.value}

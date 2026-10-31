@@ -141,7 +141,14 @@ def find_open_incident(pond_id: str) -> dict | None:
     )
 
 
-def open_or_update_incident(pond_id: str, severity: Severity, title: str, description: str, evidence: IncidentEvidence, root_cause: str | None = None) -> str:
+def open_or_update_incident(
+    pond_id: str,
+    severity: Severity,
+    title: str,
+    description: str,
+    evidence: IncidentEvidence,
+    root_cause: str | None = None,
+) -> str:
     existing = find_open_incident(pond_id)
     if existing:
         incidents_collection().update_one(

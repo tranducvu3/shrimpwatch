@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -163,11 +163,7 @@ def init_collections(force: bool = False) -> dict[str, Any]:
     collection_infos = []
     for coll_name in ["metrics", "metrics_hourly", "incidents", "ponds", "events"]:
         try:
-            info_cursor = db.command(
-                "listCollections",
-                1,
-                filter={"name": coll_name}
-            )
+            info_cursor = db.command("listCollections", 1, filter={"name": coll_name})
             cursor = info_cursor.get("cursor", {})
             first_batch = cursor.get("firstBatch", [])
             if first_batch:
@@ -359,7 +355,9 @@ def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list
                 "from": "events",
                 "let": {
                     "pond": "$pond_id",
-                    "from_ts": {"$dateSubtract": {"startDate": "$created_at", "unit": "minute", "amount": lead_minutes}},
+                    "from_ts": {
+                        "$dateSubtract": {"startDate": "$created_at", "unit": "minute", "amount": lead_minutes}
+                    },
                     "to_ts": "$updated_at",
                 },
                 "pipeline": [
