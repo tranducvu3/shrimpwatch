@@ -1,6 +1,12 @@
 import pytest
 
-from app.domain.incident_lifecycle import InvalidTransition, can_transition, ensure_transition, is_escalation
+from app.domain.incident_lifecycle import (
+    ACTIVE_STATES,
+    InvalidTransition,
+    can_transition,
+    ensure_transition,
+    is_escalation,
+)
 from app.domain.models import IncidentState as S
 from app.domain.models import Severity
 
@@ -42,3 +48,8 @@ def test_rejected_transitions(current, target):
 )
 def test_incident_only_escalates(current, new, expected):
     assert is_escalation(current, new) is expected
+
+
+def test_resolving_is_active_so_worker_keeps_tracking_it():
+    assert S.RESOLVING in ACTIVE_STATES
+    assert S.RECOVERED not in ACTIVE_STATES

@@ -1,6 +1,6 @@
 from app.db.mongo import events_collection, incidents_collection
 from app.domain.incident_rules import Finding
-from app.domain.models import IncidentEvidence, Severity
+from app.domain.models import IncidentEvidence, IncidentState, Severity
 from app.services import incidents as incident_service
 
 POND = "pond-02"
@@ -47,3 +47,27 @@ def test_same_cause_refreshes_description():
     newer = Finding(Severity.WARNING, WARNING.title, "rate 0.12", WARNING.root_cause)
     incident_service.open_or_update(POND, newer, IncidentEvidence())
     assert incidents_collection().find_one({"_id": incident_id})["description"] == "rate 0.12"
+
+
+def test_resolving_incident_stays_active_until_worker_recovers_it():
+    _clear_active()
+    incident_id = incident_service.open_or_update(POND, CRITICAL, IncidentEvidence(min_do=4.5))
+    incident_service.transition(incident_id, IncidentState.RESOLVING, "Thay tu quat")
+
+    # Loi van con trong luc dang xu ly: cap nhat su co cu, khong mo su co trung
+    assert incident_service.open_or_update(POND, CRITICAL, IncidentEvidence(min_do=4.0)) == incident_id
+    assert incidents_collection().count_documents({"pond_id": POND, "state": {"$ne": "recovered"}}) == 1
+
+    # Ao on dinh: worker dong chinh su co dang Resolving
+    assert incident_service.auto_recover(POND) == incident_id
+    assert incidents_collection().find_one({"_id": incident_id})["state"] == "recovered"
+    assert events_collection().count_documents({"incident_id": incident_id, "event": "incident_recovered"}) == 1
+
+
+def test_transition_without_action_still_records_event():
+    _clear_active()
+    incident_id = incident_service.open_or_update(POND, WARNING, IncidentEvidence())
+    incident_service.transition(incident_id, IncidentState.RECOVERED)  # dong bao dong gia, khong ghi chu
+
+    event = events_collection().find_one({"incident_id": incident_id, "event": "incident_action"})
+    assert event["details"] == {"from_state": "open", "state": "recovered"}
