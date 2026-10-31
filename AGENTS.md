@@ -63,6 +63,7 @@ Compose smoke test (`scripts/ci/smoke_test.sh`). All three must pass.
   threshold in `app/core/config.py`, the formula in `app/domain/` and `app/services/derivations.py`, the
   Datadog dashboard/monitor JSON, a test, and the README table.
 - Every incident state change goes through `app/services/incidents.py`, which also writes to `events`.
+  Transitions are validated by `app/domain/incident_lifecycle.py` (invalid ones return 409).
 - Keep ruff clean; do not add new dependencies without a reason in the PR.
 
 ## Review guidelines

@@ -35,11 +35,6 @@ def _log_investigation(incident: dict) -> None:
     logger.info("root_cause: " + str(incident.get("root_cause")))
 
 
-def _latest_incident_id(api: ShrimpWatchClient, pond_id: str) -> str | None:
-    # /incidents da sap xep created_at giam dan
-    return next((x["_id"] for x in api.incidents() if x.get("pond_id") == pond_id), None)
-
-
 def _transition(api: ShrimpWatchClient, incident_id: str, state: str, action: str) -> None:
     resp = api.transition_incident(incident_id, state, action)
     if resp.status_code >= 400:
@@ -88,10 +83,7 @@ def main():
     incident = _wait_for_incident(api, TARGET_POND)
     if incident:
         _log_investigation(incident)
-
-    incident_id = _latest_incident_id(api, TARGET_POND)
-    if incident_id:
-        _resolve(api, TARGET_POND, incident_id)
+        _resolve(api, TARGET_POND, incident["_id"])
     else:
         logger.warning("Chưa phát hiện sự cố. Chạy worker/simulator lâu hơn.")
 

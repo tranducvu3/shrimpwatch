@@ -135,6 +135,7 @@ simulator, cli.demo_incident ──HTTP──► api
 
 - Thêm chỉ số mới: khai báo ở `domain/models.py`, công thức ở `domain/`, ghi ở `services/derivations.py`.
 - Thêm quy tắc cảnh báo: sửa `domain/incident_rules.py` và thêm test ở `tests/unit/test_incident_rules.py` (không cần MongoDB).
+- `PATCH /incidents/{id}` từ chối chuyển trạng thái không hợp lệ (ví dụ `recovered → open`) bằng `409`.
 
 ---
 
