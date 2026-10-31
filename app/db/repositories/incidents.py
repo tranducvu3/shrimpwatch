@@ -29,6 +29,12 @@ def find_active(pond_id: str) -> dict | None:
     return incidents_collection().find_one({"pond_id": pond_id, "state": {"$in": [s.value for s in ACTIVE_STATES]}})
 
 
+def active_pond_ids() -> set[str]:
+    """Cac ao dang co su co chua hoi phuc (toi da 1 su co/ao nen so dong nho)."""
+    cursor = incidents_collection().find({"state": {"$in": [s.value for s in ACTIVE_STATES]}}, {"pond_id": 1})
+    return {doc["pond_id"] for doc in cursor}
+
+
 def list_recent(state: IncidentState | None = None, limit: int = 50) -> list[dict]:
     query = {"state": state.value} if state else {}
     return list(incidents_collection().find(query).sort("created_at", -1).limit(limit))

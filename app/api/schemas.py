@@ -30,7 +30,8 @@ class ManualInput(BaseModel):
     timestamp: datetime = Field(default_factory=utcnow)
     farm_id: str
     pond_id: str
-    value: float
+    # Do kiem, TAN, nitrite la nong do: khong the am
+    value: float = Field(ge=0)
     tester_id: str = "tech-001"
 
 

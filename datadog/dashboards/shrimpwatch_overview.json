@@ -25,12 +25,16 @@
               "title": "Sự cố ĐANG MỞ",
               "title_size": "16",
               "title_align": "left",
-              "time": {"live_span": "10m"},
+              "time": {"live_span": "5m"},
               "autoscale": true,
               "precision": 0,
               "requests": [
                 {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "count:shrimpwatch.incident.open{$farm_id,$pond}"}]}
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "sum:shrimpwatch.incident.active{$farm_id,$pond}"}],
+                 "conditional_formats": [
+                   {"comparator": ">", "value": 0, "palette": "white_on_red"},
+                   {"comparator": "<=", "value": 0, "palette": "white_on_green"}
+                 ]}
               ]
             },
             "layout": {"x": 0, "y": 0, "width": 2, "height": 2}
@@ -79,9 +83,10 @@
               "time": {"live_span": "5m"},
               "autoscale": true,
               "precision": 0,
+              "custom_unit": "/phút",
               "requests": [
-                {"formulas": [{"formula": "query1"}], "response_format": "scalar",
-                 "queries": [{"name": "query1", "data_source": "metrics", "query": "sum:shrimpwatch.ingest.records{$farm_id}.as_rate()"}]}
+                {"formulas": [{"formula": "query1 * 60"}], "response_format": "scalar",
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "avg", "query": "sum:shrimpwatch.ingest.records{$farm_id}.as_rate()"}]}
               ]
             },
             "layout": {"x": 6, "y": 0, "width": 2, "height": 2}
@@ -245,18 +250,20 @@
           {
             "id": 304,
             "definition": {
-              "type": "hostmap",
-              "title": "Heatmap DO theo ao",
+              "type": "toplist",
+              "title": "DO mới nhất theo ao (mg/L) - đỏ dưới 3, vàng dưới 4",
               "title_size": "16",
               "title_align": "left",
-              "requests": {
-                "fill": {
-                  "q": "avg:shrimpwatch.metric.do{$farm_id,$pond} by {pond}"
-                }
-              },
-              "node_type": "host",
-              "group": ["pond"],
-              "scope": ["farm_id:farm-001"]
+              "time": {"live_span": "5m"},
+              "requests": [
+                {"formulas": [{"formula": "query1", "limit": {"count": 6, "order": "asc"}}], "response_format": "scalar",
+                 "queries": [{"name": "query1", "data_source": "metrics", "aggregator": "last", "query": "avg:shrimpwatch.metric.do{$farm_id,$pond} by {pond}"}],
+                 "conditional_formats": [
+                   {"comparator": "<", "value": 3, "palette": "white_on_red"},
+                   {"comparator": "<", "value": 4, "palette": "white_on_yellow"},
+                   {"comparator": ">=", "value": 4, "palette": "white_on_green"}
+                 ]}
+              ]
             },
             "layout": {"x": 4, "y": 2, "width": 4, "height": 2}
           }
