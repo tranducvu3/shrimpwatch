@@ -374,3 +374,29 @@ def test_incident_timeline_joins_events(client: TestClient):
     events = [e["event"] for e in r.json()["timeline"]]
     assert events == ["pump_state_change", "incident_action"]
     assert client.get("/incidents/inc-missing/timeline").status_code == 404
+
+
+def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
+    # Simulator nap 6h lich su khi khoi dong; worker chi tinh lai gio gan nhat -> API phai tu rollup.
+    old = datetime.utcnow() - timedelta(hours=3)
+    hour = old.replace(minute=0, second=0, microsecond=0)
+    records = [
+        {
+            "timestamp": ts,
+            "farm_id": settings.FARM_ID,
+            "pond_id": "pond-06",
+            "device_id": "node-pond-06",
+            "device_type": "water_node",
+            "metric": "orp",
+            "value": value,
+            "source": "sensor",
+            "unit": "mV",
+        }
+        for ts, value in ((old.isoformat(), 250.0), (old.isoformat() + "Z", 150.0))
+    ]
+    r = client.post("/ingest/batch", json={"records": records})
+    assert r.status_code == 202, r.text
+
+    row = metrics_hourly_collection().find_one({"pond_id": "pond-06", "metric": "orp", "hour": hour})
+    assert row is not None, "backfilled hour must be rolled up on ingest"
+    assert (row["min"], row["max"], row["count"]) == (150.0, 250.0, 2)

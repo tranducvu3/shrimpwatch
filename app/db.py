@@ -258,14 +258,17 @@ def compute_do_drop_rate_pipeline(pond_ids: list[str], window_sec: int = 300) ->
     ]
 
 
-def rollup_hourly_pipeline(since: datetime) -> list[dict[str, Any]]:
+def rollup_hourly_pipeline(since: datetime, until: datetime | None = None) -> list[dict[str, Any]]:
     """Gop du lieu tho thanh min/max/avg theo gio va $merge vao metrics_hourly.
 
-    Tinh lai tron ven cac gio tu `since` nen whenMatched=replace la dung (idempotent).
+    Tinh lai tron ven cac gio tu `since` (den het gio chua `until`) nen whenMatched=replace
+    la dung (idempotent).
     """
-    hour_start = since.replace(minute=0, second=0, microsecond=0)
+    time_range: dict[str, datetime] = {"$gte": since.replace(minute=0, second=0, microsecond=0)}
+    if until is not None:
+        time_range["$lt"] = until.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
     return [
-        {"$match": {"timestamp": {"$gte": hour_start}}},
+        {"$match": {"timestamp": time_range}},
         {
             "$group": {
                 "_id": {
@@ -309,8 +312,8 @@ def rollup_hourly_pipeline(since: datetime) -> list[dict[str, Any]]:
     ]
 
 
-def run_hourly_rollup(since: datetime) -> None:
-    metrics_collection().aggregate(rollup_hourly_pipeline(since))
+def run_hourly_rollup(since: datetime, until: datetime | None = None) -> None:
+    metrics_collection().aggregate(rollup_hourly_pipeline(since, until))
 
 
 def compute_ph_swing_pipeline(pond_id: str, hours: int = 24) -> list[dict[str, Any]]:

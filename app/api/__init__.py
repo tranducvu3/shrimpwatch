@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +14,7 @@ from app.db import (
     metrics_collection,
     pack_ts_doc,
     ponds_collection,
+    run_hourly_rollup,
 )
 from app.logging_setup import get_logger
 from app.metrics import gauge, increment, set_span_tags
@@ -84,6 +85,10 @@ def healthz():
     }
 
 
+def _naive_utc(ts: datetime) -> datetime:
+    return ts.astimezone(timezone.utc).replace(tzinfo=None) if ts.tzinfo else ts
+
+
 @app.post("/ingest/batch", status_code=202)
 def ingest_batch(body: BatchIngestRequest) -> dict:
     increment("ingest.batches", tags={"batch_size": len(body.records)})
@@ -119,6 +124,11 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
     except Exception as e:
         logger.error("ingest insert_many failed", extra={"err": str(e)})
         raise HTTPException(500, detail=f"mongo insert failed: {e}")
+
+    # Du lieu tre/backfill nam ngoai cua so rollup 1 gio cua worker -> tu rollup cac gio no cham toi.
+    timestamps = [_naive_utc(r.timestamp) for r in body.records]
+    if min(timestamps) < datetime.utcnow() - timedelta(hours=1):
+        run_hourly_rollup(min(timestamps), max(timestamps))
 
     increment("ingest.records", value=len(docs))
     logger.info(
