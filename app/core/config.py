@@ -43,5 +43,12 @@ class Settings(BaseSettings):
     NITRITE_WARN: float = 1.0
     PH_SWING_WARN: float = 0.5
 
+    # Worker: chu ky kiem tra va nguong phat hien quat hong / hoi phuc
+    WORKER_INTERVAL_SEC: int = 30
+    DO_WINDOW_SEC: int = 300
+    PUMP_FAILED_MAX_WATTS: float = 50.0
+    PUMP_RUNNING_MIN_WATTS: float = 500.0
+    DO_RECOVERY_MARGIN: float = 0.5
+
 
 settings = Settings()

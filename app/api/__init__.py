@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
+from app.core.config import settings
 from app.db import (
     events_collection,
     incident_timeline_pipeline,
@@ -15,14 +15,12 @@ from app.db import (
     ponds_collection,
     run_hourly_rollup,
 )
-from app.logging_setup import get_logger
-from app.metrics import gauge, increment, set_span_tags
-from app.models import (
-    AlkalinityInput,
-    BatchIngestRequest,
+from app.core.log import get_logger
+from app.core.telemetry import gauge, increment, set_span_tags
+from app.api.schemas import BatchIngestRequest, ManualInput
+from app.domain.models import (
     IncidentState,
     MANUAL_METRIC_UNITS,
-    ManualInput,
     MetricRecord,
     MetricType,
     Source,
@@ -53,7 +51,7 @@ app = create_app()
 @app.on_event("startup")
 def _startup():
     from app.db import init_collections
-    from app.metrics import init_metrics
+    from app.core.telemetry import init_metrics
 
     init_metrics()
     try:
@@ -136,11 +134,6 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
         },
     )
     return {"ingested": len(docs), "ponds": sorted(pond_ids)}
-
-
-@app.post("/ingest/manual/alkalinity", status_code=202)
-def ingest_alkalinity(body: AlkalinityInput) -> dict:
-    return ingest_manual(MetricType.ALKALINITY, ManualInput(**body.model_dump()))
 
 
 @app.post("/ingest/manual/{metric}", status_code=202)

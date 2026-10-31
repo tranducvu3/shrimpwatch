@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import app
-from app.config import settings
+from app.core.config import settings
 from app.db import (
     compute_do_drop_rate_pipeline,
     compute_ph_swing_pipeline,
@@ -19,9 +19,8 @@ from app.db import (
     ponds_collection,
     run_hourly_rollup,
 )
-from app.models import (
-    AlkalinityInput,
-    BatchIngestRequest,
+from app.api.schemas import BatchIngestRequest, ManualInput
+from app.domain.models import (
     DeviceType,
     MetricRecord,
     MetricType,
@@ -144,7 +143,7 @@ def test_ingest_batch_and_ttl_schema(client: TestClient):
 
 
 def test_manual_alkalinity_ingest(client: TestClient):
-    body = AlkalinityInput(
+    body = ManualInput(
         farm_id=settings.FARM_ID,
         pond_id="pond-02",
         value=168.0,
