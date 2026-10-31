@@ -58,6 +58,8 @@ Compose smoke test (`scripts/ci/smoke_test.sh`). All three must pass.
 
 ## Review guidelines
 
+These rules are repeated in `.github/copilot-instructions.md` for Copilot code review. Update both together.
+
 Treat these as high priority (P1):
 
 - Tests or scripts that could run destructive setup (`init_collections(force=True)`, `drop`, `delete_many`)
