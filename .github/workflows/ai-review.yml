@@ -1,0 +1,53 @@
+name: AI Review (DeepSeek)
+
+# Review AI tu van (khong chan merge): DeepSeek doc diff cua PR va dang 1 comment.
+# Tu chay khi mo PR; chay lai bang comment `/ci-review deepseek` (chi owner/member/collaborator).
+# Khong checkout hay chay code cua PR: script lay diff qua API va luon chay tu nhanh main
+# (issue_comment) hoac tu chinh PR cung repo (pull_request; PR tu fork khong co secret -> bo qua).
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       github.event.comment.user.type != 'Bot' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+       startsWith(github.event.comment.body, '/ci-review deepseek'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ci/ai_review.py
+            .github/copilot-instructions.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Review with DeepSeek
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          DEEPSEEK_EFFORT: ${{ vars.DEEPSEEK_EFFORT }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: python scripts/ci/ai_review.py
