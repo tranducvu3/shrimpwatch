@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app import models
 from app.api import app
 from app.config import settings
 from app.db import (

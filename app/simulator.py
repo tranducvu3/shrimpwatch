@@ -205,7 +205,7 @@ def post_manual_readings(api_url: str, ponds: list[str], now: datetime):
 
 
 async def run_simulation():
-    from app.db import get_client, ponds_collection
+    from app.db import get_client
     from app.metrics import init_metrics
 
     init_metrics()

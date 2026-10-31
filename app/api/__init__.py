@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import models
 from app.config import settings
 from app.db import (
     events_collection,
@@ -21,14 +20,11 @@ from app.metrics import gauge, increment, set_span_tags
 from app.models import (
     AlkalinityInput,
     BatchIngestRequest,
-    Incident,
-    IncidentEvidence,
     IncidentState,
     MANUAL_METRIC_UNITS,
     ManualInput,
     MetricRecord,
     MetricType,
-    Severity,
     Source,
     DeviceType,
 )

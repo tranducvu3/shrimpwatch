@@ -71,7 +71,7 @@ def main():
         logger.info(f"Incident {incident_id} -> INVESTIGATING (điều tra)")
 
         time.sleep(3)
-        logger.info(f"Repairing pump -> restore power")
+        logger.info("Repairing pump -> restore power")
         httpx.post(f"{api_url}/ponds/{target_pond}/pump/fail", params={"failed": "false"})
         httpx.patch(
             f"{api_url}/incidents/{incident_id}",
