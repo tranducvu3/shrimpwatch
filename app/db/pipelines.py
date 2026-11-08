@@ -144,8 +144,19 @@ def compute_ph_swing_pipeline(pond_id: str, hours: int = 24, now: datetime | Non
     ]
 
 
+# Pond events that explain an incident: what broke (pump, condition, scenario) and what the farmer did (remedy)
+POND_TIMELINE_EVENTS = [
+    "pump_state_change",
+    "condition_start",
+    "condition_clear",
+    "scenario_start",
+    "scenario_clear",
+    "remedy_applied",
+]
+
+
 def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list[dict[str, Any]]:
-    """The incident + all its events + the pond's pump events before/during the incident."""
+    """The incident + all its events + the pond's events (pump, conditions, remedies) before/during the incident."""
     return [
         {"$match": {"_id": incident_id}},
         {
@@ -169,7 +180,7 @@ def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list
                 "pipeline": [
                     {
                         "$match": {
-                            "event": "pump_state_change",
+                            "event": {"$in": POND_TIMELINE_EVENTS},
                             "$expr": {
                                 "$and": [
                                     {"$eq": ["$pond_id", "$$pond"]},

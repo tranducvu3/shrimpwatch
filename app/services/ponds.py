@@ -138,6 +138,9 @@ def apply_remedy(pond_id: str, remedy: Remedy) -> list[str]:
     for condition in cleared:
         ponds_repo.clear_conditions(pond_id, condition.value)
         increment("scenario.change", tags={"pond": pond_id, "scenario": condition.value, "state": "clear"})
+    # The aerator can also be stopped by the older pump flag (POST /ponds/{id}/pump/fail, `make demo`)
+    if remedy == Remedy.REPAIR_AERATOR and pond.get("pump", {}).get("failed"):
+        set_pump_failed(pond_id, False)
     events_repo.record(
         "remedy_applied", pond_id, details={"remedy": remedy.value, "cleared": [c.value for c in cleared]}
     )

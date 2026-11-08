@@ -296,6 +296,8 @@ Go to [http://localhost:8000/docs](http://localhost:8000/docs):
 | `GET /control` | Simulator control panel (see section 5.2) |
 | `GET /incidents?state=open` | Queries incidents by state |
 | `PATCH /incidents/{id}?state=...&action=...` | Updates the incident lifecycle |
+| `POST /incidents/{id}/remedies/{remedy}?note=...` | Applies a remedy to an incident (`repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock`): recorded as an action with an `incident_action` event, the incident moves to `resolving`, and on the simulated farm the cause ends (for `repair_aerator` also the aerator flag set by `/pump/fail`). Recovery is left to the worker, from new readings |
+| `GET /incidents/{id}/timeline` | The incident, its events and the pond's aerator, condition, scenario and remedy events around it, plus `suggested_remedies` for its root cause |
 
 ```powershell
 curl http://localhost:8000/healthz
@@ -385,7 +387,7 @@ The core feature, showing MongoDB and Datadog working together.
 |---|---|---|
 | 1. **Detect** | `open` | The aerator reports *off* (`pump_status = 0`) in two readings in a row → the ingest API opens a **CRITICAL** incident at once, `root_cause = pump_failure`: **within 60 seconds** of the failure at one reading per 30 s. The worker's 5-minute power average (< 50 W) is the second line of defence |
 | 2. **Investigate** | `investigating` | The technician checks the aerator's power supply and records an action note |
-| 3. **Resolve** | `resolving` | Replace the parts, restore aerator power. The worker keeps tracking the incident: if the fault persists, the worker updates this same incident (no duplicate incident is opened) |
+| 3. **Resolve** | `resolving` | Apply the suggested remedy (`pump_failure` → *repair aerator*; waste causes → *cut feed*, *clean bottom*; see `app/domain/remedies.py`) with one call, or replace the parts and restore aerator power by hand. The worker keeps tracking the incident: if the fault persists, the worker updates this same incident (no duplicate incident is opened) |
 | 4. **Recover** | `recovered` | The aerator runs again and DO is stable (5 minutes) → **the worker closes** the incident by itself from `open`/`investigating`/`resolving`. Every transition writes an event to `events` |
 
 Run the automated demo (acts on pond 3):

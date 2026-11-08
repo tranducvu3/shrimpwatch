@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
+from app.domain.conditions import Remedy
 from app.domain.incident_lifecycle import InvalidTransition
 from app.domain.models import IncidentState
+from app.services import ponds as pond_service
 from app.services import incidents as incident_service
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
@@ -29,3 +31,14 @@ def patch_incident(incident_id: str, state: IncidentState, action: str | None = 
     except InvalidTransition as e:
         raise HTTPException(409, str(e)) from e
     return {"ok": True, "incident_id": incident_id, "state": state.value}
+
+
+@router.post("/{incident_id}/remedies/{remedy}")
+def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = Query(None, max_length=500)):
+    """Apply a remedy to an incident: recorded as an action, the incident moves to Resolving."""
+    try:
+        return incident_service.apply_remedy(incident_id, remedy, note)
+    except (incident_service.IncidentNotFound, pond_service.PondNotFound) as e:
+        raise HTTPException(404, "incident not found") from e
+    except InvalidTransition as e:
+        raise HTTPException(409, str(e)) from e
