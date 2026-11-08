@@ -175,7 +175,9 @@ def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list
                     "from_ts": {
                         "$dateSubtract": {"startDate": "$created_at", "unit": "minute", "amount": lead_minutes}
                     },
-                    "to_ts": "$updated_at",
+                    # Active incident: up to now, so a remedy written just after the transition still shows;
+                    # recovered: up to its last change
+                    "to_ts": {"$cond": [{"$eq": ["$state", "recovered"]}, "$updated_at", "$$NOW"]},
                 },
                 "pipeline": [
                     {

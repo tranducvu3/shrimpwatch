@@ -77,3 +77,23 @@ def test_a_second_remedy_on_a_resolving_incident_is_recorded(client):
     inc = incidents_collection().find_one({"_id": incident_id})
     assert inc["state"] == "resolving"
     assert [a["action"] for a in inc["actions"]] == ["Ngừng cho ăn", "Hút bùn đáy"]
+
+
+def test_timeline_of_an_active_incident_includes_pond_events_after_its_last_update(client):
+    from datetime import timedelta
+
+    from app.core.clock import utcnow
+
+    incident_id = _open_pump_incident(client)
+    # The incident's last change was 10 s ago; a remedy event was written 5 s ago (after it)
+    incidents_collection().update_one({"_id": incident_id}, {"$set": {"updated_at": utcnow() - timedelta(seconds=10)}})
+    events_collection().insert_one(
+        {
+            "timestamp": utcnow() - timedelta(seconds=5),
+            "pond_id": POND,
+            "event": "remedy_applied",
+            "details": {"remedy": "cut_feed"},
+        }
+    )
+    events = [e["event"] for e in client.get(f"/incidents/{incident_id}/timeline").json()["timeline"]]
+    assert "remedy_applied" in events
