@@ -40,15 +40,19 @@ MONGODB_URI=mongodb://localhost:27017 MONGODB_DB=shrimpwatch_test DD_TRACE_ENABL
 Without MongoDB the integration tests skip locally; with `CI=true` they fail instead. A skipped run is not a
 passing run. `pytest tests/unit` needs no MongoDB.
 
-Lint (same as CI, ruff 0.7.4, line length 120):
+Lint (same as CI, ruff 0.7.4, line length 120) and dead code (vulture, config in `pyproject.toml`):
 
 ```bash
 ruff check app tests
 ruff format --check app tests
+vulture
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, tests with a coverage floor of 64% (`.coveragerc`), and a Docker
-Compose smoke test (`scripts/ci/smoke_test.sh`). All three must pass.
+If vulture flags code that is really dead, delete it. If it is used outside Python call sites (framework hooks,
+env settings, Pydantic fields stored in MongoDB), add it to `scripts/ci/vulture_whitelist.py` with the reason.
+
+CI (`.github/workflows/ci.yml`) runs lint (ruff + vulture), tests with a coverage floor of 64% (`.coveragerc`), and
+a Docker Compose smoke test (`scripts/ci/smoke_test.sh`). All three must pass.
 
 CD (`.github/workflows/cd.yml`) runs after CI succeeds on a push to `main`: it builds the `Dockerfile` and pushes
 `ghcr.io/tranducvu3/shrimpwatch:sha-<7>` and `:latest`. The repo is public and the package can be too, so

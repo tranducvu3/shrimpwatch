@@ -81,7 +81,7 @@ def test_investigating_attaches_similar_incidents_and_event(history, client: Tes
 def test_failed_similar_lookup_does_not_block_transition(history, client: TestClient, monkeypatch):
     incident_id = _open_pump_incident("pond-04")
 
-    def boom(*args, **kwargs):
+    def boom(*_args, **_kwargs):
         raise RuntimeError("search down")
 
     monkeypatch.setattr(incident_service.incidents_repo, "find_similar", boom)

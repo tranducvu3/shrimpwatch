@@ -20,9 +20,9 @@ class _Resp:
 def calls(monkeypatch):
     log: list[tuple[str, str]] = []
     monitors = [{"id": 7, "name": "[ShrimpWatch] Existing"}, {"id": 8, "name": "[ShrimpWatch] Existing (copy)"}]
-    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **kw: _Resp(monitors))
-    monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **kw: log.append(("POST", url)) or _Resp({}))
-    monkeypatch.setattr(datadog_push.httpx, "put", lambda url, **kw: log.append(("PUT", url)) or _Resp({}))
+    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp(monitors))
+    monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **_kw: log.append(("POST", url)) or _Resp({}))
+    monkeypatch.setattr(datadog_push.httpx, "put", lambda url, **_kw: log.append(("PUT", url)) or _Resp({}))
     return log
 
 

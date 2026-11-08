@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint (ruff)
+    name: Lint (ruff)  # required check name in the main ruleset: do not rename
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -24,14 +24,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install ruff
-        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+      - name: Install ruff and vulture
+        run: pip install "$(grep '^ruff==' requirements-dev.txt)" "$(grep '^vulture==' requirements-dev.txt)"
 
       - name: Lint
         run: ruff check --output-format github app tests
 
       - name: Format
         run: ruff format --check app tests
+
+      # Config in pyproject.toml [tool.vulture]; false positives go in scripts/ci/vulture_whitelist.py.
+      - name: Dead code
+        run: vulture
 
   test:
     name: Tests (MongoDB 7)

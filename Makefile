@@ -16,7 +16,7 @@ help:
 	@echo "  demo          - Run demo incident (pump failure -> oxygen drop)"
 	@echo "  push-dashboards - Upload Datadog dashboard & monitor"
 	@echo "  test          - Run pytest"
-	@echo "  lint          - Ruff lint + format check (same as CI)"
+	@echo "  lint          - Ruff lint + format check + vulture dead code (same as CI)"
 	@echo "  fmt           - Ruff auto-fix + format"
 	@echo "  reset         - Wipe MongoDB data and re-init"
 
@@ -61,11 +61,14 @@ test:
 	docker compose exec -T -e MONGODB_URI='mongodb://admin:admin_pass@mongodb:27017/?authSource=admin' \
 		-e MONGODB_DB=shrimpwatch_test -e DD_TRACE_ENABLED=false api pytest -v tests/
 
+VULTURE := docker run --rm -u $(shell id -u):$(shell id -g) -e HOME=/tmp -v $(CURDIR):/src -w /src python:3.11-slim \
+	sh -c 'pip install -q --user --disable-pip-version-check --no-warn-script-location "$$(grep ^vulture== requirements-dev.txt)" && python -m vulture'
 RUFF := docker run --rm -u $(shell id -u):$(shell id -g) -v $(CURDIR):/src -w /src ghcr.io/astral-sh/ruff:0.7.4
 
 lint:
 	$(RUFF) check --no-cache app tests
 	$(RUFF) format --no-cache --check app tests
+	$(VULTURE)
 
 fmt:
 	$(RUFF) check --no-cache --fix app tests
