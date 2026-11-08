@@ -1,8 +1,8 @@
 {
-  "name": "[ShrimpWatch] DO thấp (Warning dưới 4, Critical dưới 3 mg/L)",
+  "name": "[ShrimpWatch] Low DO (warning below 4, critical below 3 mg/L) · DO thấp (cảnh báo dưới 4, nguy hiểm dưới 3 mg/L)",
   "type": "metric alert",
   "query": "avg(last_5m):avg:shrimpwatch.metric.do{*} by {pond} < 3",
-  "message": "## ⚠️ DO ao {{pond.name}} thấp: {{value}} mg/L\n\n{{#is_alert}}Dưới 3 mg/L: tôm thiếu oxy nghiêm trọng, bật quạt dự phòng ngay.{{/is_alert}}{{#is_warning}}Dưới 4 mg/L: theo dõi quạt và mật độ tảo.{{/is_warning}}\n\nĐối chiếu sự cố `do_critical` / `do_low` của worker: `GET /incidents?state=open`.",
+  "message": "## ⚠️ Low DO in pond {{pond.name}}: {{value}} mg/L\n\n{{#is_alert}}Below 3 mg/L: shrimp are badly short of oxygen, turn on the backup aerator now.{{/is_alert}}{{#is_warning}}Below 4 mg/L: watch the aerators and the algae density.{{/is_warning}}\n\nMatches the worker's `do_out_of_range` incident: `GET /incidents?state=open`.\n\n---\n**Tiếng Việt**\n\n## ⚠️ DO ao {{pond.name}} thấp: {{value}} mg/L\n\n{{#is_alert}}Dưới 3 mg/L: tôm thiếu oxy nghiêm trọng, bật quạt dự phòng ngay.{{/is_alert}}{{#is_warning}}Dưới 4 mg/L: theo dõi quạt và mật độ tảo.{{/is_warning}}\n\nĐối chiếu sự cố `do_out_of_range` của worker: `GET /incidents?state=open`.",
   "tags": [
     "shrimpwatch",
     "metric:do",

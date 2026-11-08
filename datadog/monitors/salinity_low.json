@@ -1,8 +1,8 @@
 {
-  "name": "[ShrimpWatch] WARNING: Độ mặn thấp (dưới 10 ppt)",
+  "name": "[ShrimpWatch] WARNING: Low salinity (below 10 ppt) · Độ mặn thấp (dưới 10 ppt)",
   "type": "metric alert",
   "query": "avg(last_5m):avg:shrimpwatch.metric.salinity{*} by {pond} < 10",
-  "message": "## 🌧️ Độ mặn ao {{pond.name}} thấp: {{value}} ppt\n\nThường do mưa lớn hoặc cấp nước ngọt. Tôm thẻ chân trắng bị sốc khi độ mặn giảm đột ngột.\n\nĐối chiếu sự cố `salinity_low` của worker: `GET /incidents?state=open`.",
+  "message": "## 🌧️ Low salinity in pond {{pond.name}}: {{value}} ppt\n\nUsually caused by heavy rain or fresh water intake. Whiteleg shrimp are shocked by a sudden salinity drop.\n\nMatches the worker's `salinity_out_of_range` incident: `GET /incidents?state=open`.\n\n---\n**Tiếng Việt**\n\n## 🌧️ Độ mặn ao {{pond.name}} thấp: {{value}} ppt\n\nThường do mưa lớn hoặc cấp nước ngọt. Tôm thẻ chân trắng bị sốc khi độ mặn giảm đột ngột.\n\nĐối chiếu sự cố `salinity_out_of_range` của worker: `GET /incidents?state=open`.",
   "tags": [
     "shrimpwatch",
     "metric:salinity",

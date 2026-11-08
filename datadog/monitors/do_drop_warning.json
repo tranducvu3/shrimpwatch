@@ -1,8 +1,8 @@
 {
-  "name": "[ShrimpWatch] WARNING: DO giảm nhanh (> 0.25 mg/L trong 5 phút)",
+  "name": "[ShrimpWatch] WARNING: Fast DO drop (> 0.25 mg/L in 5 min) · DO giảm nhanh (> 0.25 mg/L trong 5 phút)",
   "type": "query alert",
   "query": "change(avg(last_5m),last_5m):avg:shrimpwatch.metric.do{*} by {pond} < -0.25",
-  "message": "## ⚠️ Cảnh báo: DO ao {{pond.name}} giảm nhanh\n\nDO trung bình 5 phút gần nhất giảm {{value}} mg/L so với 5 phút trước (ngưỡng -0.25 mg/L, tương đương 0.05 mg/L/phút như `DO_DROP_RATE_WARN_MGPERL_PER_MIN`). Kiểm tra:\n- Công suất quạt (biểu đồ pump_power) và monitor quạt hỏng\n- Log worker (`device_type:worker`, `pond:{{pond.name}}`): evidence.do_drop_rate_mg_per_l_per_min\n- Sự cố đang mở: `GET /incidents?state=open`",
+  "message": "## ⚠️ Warning: DO in pond {{pond.name}} is dropping fast\n\nThe 5-minute average DO fell by {{value}} mg/L compared with the previous 5 minutes (threshold -0.25 mg/L, the same as 0.05 mg/L/min in `DO_DROP_RATE_WARN_MGPERL_PER_MIN`). Check:\n- Aerator power (pump_power chart) and the aerator failure monitor\n- Worker logs (`device_type:worker`, `pond:{{pond.name}}`): evidence.do_drop_rate_mg_per_l_per_min\n- Open incidents (`do_out_of_range`): `GET /incidents?state=open`\n\n---\n**Tiếng Việt**\n\n## ⚠️ Cảnh báo: DO ao {{pond.name}} giảm nhanh\n\nDO trung bình 5 phút gần nhất giảm {{value}} mg/L so với 5 phút trước (ngưỡng -0.25 mg/L, tương đương 0.05 mg/L/phút như `DO_DROP_RATE_WARN_MGPERL_PER_MIN`). Kiểm tra:\n- Công suất quạt (biểu đồ pump_power) và monitor quạt hỏng\n- Log worker (`device_type:worker`, `pond:{{pond.name}}`): evidence.do_drop_rate_mg_per_l_per_min\n- Sự cố đang mở (`do_out_of_range`): `GET /incidents?state=open`",
   "tags": [
     "shrimpwatch",
     "metric:do",

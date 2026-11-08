@@ -383,6 +383,8 @@ A pond has at most one open incident. When a more severe cause appears, the inci
 
 `python -m app.cli.datadog_push` updates monitors/dashboards with the same name, and creates them if they do not exist yet.
 
+Each monitor has an English · Vietnamese name and an English message followed by the Vietnamese one. `datadog_push` finds a renamed monitor by its query, so renaming updates it instead of creating a copy.
+
 ---
 
 ## Incident Demo Scenario (Incident Lifecycle)
