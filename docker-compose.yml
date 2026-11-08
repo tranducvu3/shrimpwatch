@@ -24,7 +24,8 @@ services:
       - --
     command: [ "mongod", "--replSet", "rs0", "--keyFile", "/tmp/mongo-keyfile", "--bind_ip_all", "--wiredTigerCacheSizeGB", "1.5" ]
     healthcheck:
-      # Initiates the replica set on first start (and on an existing data volume from before the replica set)
+      # Initiates the replica set on first start (also on a data volume from before it); healthy only once the node
+      # is a writable primary, so the API never starts against a node still electing itself
       test:
         - CMD
         - mongosh
@@ -36,7 +37,7 @@ services:
         - --authenticationDatabase
         - admin
         - --eval
-        - "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }"
+        - "try { rs.status() } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}) }; quit(db.hello().isWritablePrimary ? 0 : 1)"
       interval: 5s
       timeout: 10s
       retries: 20

@@ -72,3 +72,44 @@ def test_sse_events_sends_changes_and_keep_alives_then_closes():
     assert json.loads(chunks[1].removeprefix("data: "))["incident_id"] == "inc-3"
     assert chunks[2] == ": keep-alive\n\n"
     assert stream.closed
+
+
+def test_a_mongo_error_ends_the_stream_cleanly():
+    from pymongo.errors import OperationFailure
+
+    class BrokenStream(FakeStream):
+        def try_next(self):
+            raise OperationFailure("change stream invalidated")
+
+    stream = BrokenStream([])
+
+    async def connected():
+        return False
+
+    async def collect():
+        return [chunk async for chunk in sse_events(stream, connected)]
+
+    assert asyncio.run(collect()) == ["retry: 5000\n\n"]
+    assert stream.closed
+
+
+def test_open_streams_are_capped(monkeypatch):
+    import pytest
+
+    from app.services import incident_stream
+
+    monkeypatch.setattr(incident_stream.changes_repo, "watch_incident_changes", lambda: FakeStream([]))
+    monkeypatch.setattr(incident_stream, "_open_streams", 0)
+    monkeypatch.setattr(incident_stream, "MAX_STREAMS", 2)
+    streams = [incident_stream.open_stream(), incident_stream.open_stream()]
+    with pytest.raises(incident_stream.StreamUnavailable):
+        incident_stream.open_stream()
+
+    async def gone():
+        return True
+
+    async def drain(s):
+        return [c async for c in sse_events(s, gone)]
+
+    asyncio.run(drain(streams[0]))  # a client leaving frees its slot
+    assert incident_stream.open_stream() is not None

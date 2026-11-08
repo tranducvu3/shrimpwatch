@@ -13,7 +13,7 @@ async def incident_changes(request: Request):
     try:
         stream = await run_in_threadpool(incident_stream.open_stream)
     except incident_stream.StreamUnavailable as e:
-        raise HTTPException(503, "live updates need MongoDB as a replica set") from e
+        raise HTTPException(503, f"live updates unavailable: {e}") from e
     return StreamingResponse(
         incident_stream.sse_events(stream, request.is_disconnected),
         media_type="text/event-stream",
