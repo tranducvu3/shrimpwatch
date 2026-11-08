@@ -48,3 +48,17 @@ def test_new_monitor_is_created(tmp_path, calls):
 def test_renamed_monitor_is_updated_by_query(tmp_path, calls):
     datadog_push._push("monitor", _monitor(tmp_path, name="[ShrimpWatch] Renamed · Đổi tên", query="avg:b < 1"))
     assert calls == [("PUT", "https://api.datadoghq.com/api/v1/monitor/8")]
+
+
+def test_forecast_monitors_follow_datadog_rules():
+    """Datadog rejects forecast monitors looking less than 12 h ahead, and threshold_windows (anomaly monitors only)."""
+    import re
+
+    hours = {"h": 1, "d": 24, "w": 168}
+    for path in (datadog_push.ROOT / "datadog" / "monitors").glob("*.json"):
+        monitor = json.loads(path.read_text(encoding="utf-8"))
+        if "forecast(" not in monitor["query"]:
+            continue
+        amount, unit = re.match(r"\w+\(next_(\d+)([hdw])\)", monitor["query"]).groups()
+        assert int(amount) * hours[unit] >= 12, path.name
+        assert "threshold_windows" not in monitor["options"], path.name
