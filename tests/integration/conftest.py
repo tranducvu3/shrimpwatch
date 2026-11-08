@@ -13,7 +13,7 @@ def setup_db():
     try:
         ping()
     except Exception as e:
-        # Ngoai CI: skip khi khong co MongoDB. Tren CI skip = xanh gia -> phai fail.
+        # Outside CI: skip when MongoDB is unavailable. On CI a skip is a false green -> must fail.
         if os.environ.get("CI") == "true":
             pytest.exit(f"CI requires a reachable MongoDB: {e}", returncode=1)
         pytest.skip(f"MongoDB not reachable, skipping integration tests: {e}")

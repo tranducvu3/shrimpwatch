@@ -1,4 +1,4 @@
-"""Tao collection, index va migrate du lieu cu. Chay lai nhieu lan van an toan (idempotent)."""
+"""Create collections and indexes, and migrate old data. Safe to run repeatedly (idempotent)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ _OBSOLETE_METRIC_INDEXES = [
 
 
 def _ensure_collection(db: Database, name: str, force: bool, **options: Any) -> bool:
-    """Tao collection neu chua co (force: xoa roi tao lai). Tra ve True neu vua tao."""
+    """Create the collection if missing (force: drop and recreate). Returns True if it was created."""
     exists = name in db.list_collection_names()
     if exists and not force:
         return False
@@ -57,8 +57,8 @@ def _init_metrics(db: Database, force: bool) -> dict[str, Any]:
             raise
 
     coll = db[METRICS]
-    # ESR: moi truy van cua worker la pond_id (=) + metric (=) + timestamp (range/sort)
-    # -> 1 index ghep thay cho 3 index don le cu (planner chi dung duoc 1 trong so do).
+    # ESR: every worker query is pond_id (=) + metric (=) + timestamp (range/sort)
+    # -> 1 compound index replaces the 3 old single-field indexes (the planner could only use 1 of them).
     existing = coll.index_information()
     for name in _OBSOLETE_METRIC_INDEXES:
         if name in existing:
@@ -74,9 +74,9 @@ def _init_metrics(db: Database, force: bool) -> dict[str, Any]:
 def _init_metrics_hourly(db: Database, force: bool) -> None:
     _ensure_collection(db, METRICS_HOURLY, force)
     hourly = db[METRICS_HOURLY]
-    # Unique index: dich cua $merge (on: pond_id + metric + hour) va phuc vu truy van lich su.
+    # Unique index: the $merge target (on: pond_id + metric + hour), also serves history queries.
     hourly.create_index([("pond_id", 1), ("metric", 1), ("hour", -1)], unique=True)
-    # Du lieu "am" giu 1 nam, du lieu tho trong metrics chi giu 7 ngay.
+    # "Warm" data is kept for 1 year; raw data in metrics is kept for only 7 days.
     hourly.create_index([("hour", 1)], expireAfterSeconds=settings.ROLLUP_TTL_SECONDS)
 
 
@@ -98,13 +98,13 @@ def incident_vector_index_definition() -> dict[str, Any]:
 
 
 def _init_incident_vector_index(db: Database) -> str:
-    """Atlas Vector Search index cho incidents.fingerprint. mongod thuong khong ho tro -> bo qua."""
+    """Atlas Vector Search index on incidents.fingerprint. Plain mongod does not support it -> skipped."""
     incidents = db[INCIDENTS]
     definition = incident_vector_index_definition()
     try:
         existing = next(iter(incidents.list_search_indexes(INCIDENT_VECTOR_INDEX)), None)
         if existing:
-            # Chi so sanh "fields": Atlas co the tra them khoa khac -> tranh rebuild index moi lan init
+            # Compare only "fields": Atlas may return extra keys -> avoids rebuilding the index on every init
             if (existing.get("latestDefinition") or {}).get("fields") != definition["fields"]:
                 incidents.update_search_index(INCIDENT_VECTOR_INDEX, definition)
                 return "updated"
@@ -136,7 +136,7 @@ def _init_ponds(db: Database, force: bool) -> list[dict]:
             },
             upsert=True,
         )
-    # Ban cu luu created_at dang epoch ms -> chuyen ve BSON Date nhu cac collection khac.
+    # Older versions stored created_at as epoch ms -> convert to BSON Date like the other collections.
     ponds.update_many({"created_at": {"$type": "number"}}, [{"$set": {"created_at": {"$toDate": "$created_at"}}}])
     return list(ponds.find({}, {"_id": 1, "name": 1}))
 
@@ -144,7 +144,7 @@ def _init_ponds(db: Database, force: bool) -> list[dict]:
 def _init_events(db: Database, force: bool) -> None:
     _ensure_collection(db, EVENTS, force)
     events = db[EVENTS]
-    # Ban cu luu incident_action voi details.incident_id -> dua len top-level nhu cac event khac.
+    # Older versions stored incident_action with details.incident_id -> move it to top level like other events.
     events.update_many(
         {"details.incident_id": {"$exists": True}, "incident_id": {"$exists": False}},
         [{"$set": {"incident_id": "$details.incident_id"}}, {"$unset": "details.incident_id"}],
@@ -154,10 +154,10 @@ def _init_events(db: Database, force: bool) -> None:
 
 
 def describe_collections(db: Database) -> list[dict[str, Any]]:
-    """Thong tin timeseries/TTL tung collection.
+    """Time series/TTL info for each collection.
 
-    Khong dung $listCatalog (can quyen cao) -> listCollections (readWrite/dbOwner deu duoc),
-    roi dua ve dang giong output $listCatalog: md.timeseries + md.options.expireAfterSeconds.
+    Avoids $listCatalog (needs elevated rights) -> uses listCollections (readWrite/dbOwner are enough),
+    then reshapes it like $listCatalog output: md.timeseries + md.options.expireAfterSeconds.
     """
     infos = []
     for name in ALL:

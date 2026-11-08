@@ -1,4 +1,4 @@
-"""Quy tac phat hien su co cho 1 ao. Ham thuan: nhan snapshot, tra ve ket luan; khong doc/ghi DB."""
+"""Incident detection rules for 1 pond. Pure functions: take a snapshot, return a finding; no DB reads/writes."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from app.domain.models import Severity
 class PondSnapshot:
     pond_id: str
     avg_pump_watts: float | None
-    do_drop_rate: float | None  # mg/L/phut, duong khi DO giam
+    do_drop_rate: float | None  # mg/L/min, positive when DO falls
     min_do: float | None
-    # Trung binh 5 phut (khong lay 1 diem de tranh nhieu cam bien); None = khong co so lieu
+    # 5-minute average (not a single point, to avoid sensor noise); None = no data
     avg_temperature: float | None = None
     avg_ph: float | None = None
     avg_salinity: float | None = None
@@ -68,7 +68,7 @@ def _fmt(value: float | None, spec: str) -> str:
 
 
 def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
-    """Tra ve su co can mo/cap nhat, theo thu tu uu tien; None neu ao binh thuong."""
+    """Returns the incident to open/update, in priority order; None if the pond is normal."""
     failed = pump_failed(s, t)
 
     if failed and (s.do_drop_rate is None or s.do_drop_rate >= 0):
@@ -108,7 +108,7 @@ def _outside(value: float | None, low: float, high: float) -> bool:
 
 
 def _environment_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
-    """Nhiet do, pH, do man ngoai nguong: canh bao, xet sau cac quy tac oxy (nguy hiem hon)."""
+    """Temperature, pH, salinity out of range: warning, checked after the oxygen rules (which are more dangerous)."""
     if _outside(s.avg_temperature, t.temp_warn_low, t.temp_warn_high):
         return Finding(
             Severity.WARNING,
@@ -135,7 +135,7 @@ def _environment_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
 
 
 def has_recovered(s: PondSnapshot, t: Thresholds) -> bool:
-    """DO da len an toan va quat chay lai (hoac khong co so lieu quat)."""
+    """DO is back to a safe level and the pump is running again (or there is no pump data)."""
     return (
         s.min_do is not None
         and s.min_do > t.do_warn + t.do_recovery_margin

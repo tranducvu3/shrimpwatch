@@ -1,9 +1,9 @@
 name: AI Review (DeepSeek)
 
-# Review AI tu van (khong chan merge): DeepSeek doc diff cua PR va dang 1 comment.
-# Tu chay khi mo PR; chay lai bang comment `/ci-review deepseek` (chi owner/member/collaborator).
-# Khong checkout hay chay code cua PR: script va quy tac review luon lay tu nhanh base (commit base cua PR
-# hoac main), diff lay qua API. PR tu fork khong co secret -> bo qua.
+# Advisory AI review (does not block merge): DeepSeek reads the PR diff and posts 1 comment.
+# Runs when a PR is opened; re-run with a `/ci-review deepseek` comment (owner/member/collaborator only).
+# Never checks out or runs PR code: the script and review rules always come from the base branch (the PR's base commit
+# or main), and the diff comes from the API. PRs from forks have no secrets -> skipped.
 
 on:
   pull_request:
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Code tin cay: PR khong the sua script/quy tac roi chay voi DEEPSEEK_API_KEY
+          # Trusted code: a PR cannot change the script/rules and then run them with DEEPSEEK_API_KEY
           ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
           sparse-checkout: |
             scripts/ci/ai_review.py

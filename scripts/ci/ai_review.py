@@ -1,12 +1,12 @@
-"""Review AI cho pull request bang DeepSeek, dang ket qua thanh 1 comment tren PR.
+"""AI review for pull requests with DeepSeek, posting the result as 1 comment on the PR.
 
-Chi dung thu vien chuan. Doc diff qua GitHub API (khong checkout/chay code cua PR), gui kem quy tac
-review trong .github/copilot-instructions.md cua nhanh base (workflow checkout base, khong phai PR),
-roi tao/cap nhat 1 comment co marker co dinh.
+Standard library only. Reads the diff through the GitHub API (never checks out or runs PR code), sends the
+review rules from .github/copilot-instructions.md on the base branch along with it (the workflow checks out
+base, not the PR), then creates/updates 1 comment with a fixed marker.
 
-Bien moi truong: GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, DEEPSEEK_API_KEY,
-tuy chon DEEPSEEK_MODEL (mac dinh deepseek-flash), DEEPSEEK_EFFORT (low|high|max, mac dinh low),
-DRY_RUN=1 (in ra thay vi comment).
+Environment: GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, DEEPSEEK_API_KEY,
+optional DEEPSEEK_MODEL (default deepseek-flash), DEEPSEEK_EFFORT (low|high|max, default low),
+DRY_RUN=1 (print instead of commenting).
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def _request(url: str, token: str, data: dict | None = None, method: str = "GET"
 
 
 def _filter_diff(diff: str) -> tuple[str, list[str]]:
-    """Bo file nhi phan/lock; cat diff qua dai. Tra ve (diff, danh sach file bi bo)."""
+    """Drop binary/lock files; truncate an overly long diff. Returns (diff, list of skipped files)."""
     kept, skipped = [], []
     for chunk in diff.split("diff --git ")[1:]:
         path = chunk.split("\n", 1)[0].split(" b/")[-1]
@@ -82,7 +82,7 @@ def _ask_deepseek(api_key: str, model: str, effort: str, pr: dict, diff: str) ->
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT + rules}, {"role": "user", "content": user}],
-        # effort cao -> model dung het token cho suy luan, khong con cho cau tra loi
+        # high effort -> the model spends all tokens on reasoning, none left for the answer
         "reasoning_effort": effort,
         "max_tokens": 32000,
     }
@@ -91,7 +91,7 @@ def _ask_deepseek(api_key: str, model: str, effort: str, pr: dict, diff: str) ->
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=600) as resp:
         data = json.loads(resp.read().decode())
-    # reasoning_content (suy luan noi bo) khong dang len PR
+    # reasoning_content (internal reasoning) is not posted to the PR
     usage = data.get("usage", {})
     content = (data["choices"][0]["message"].get("content") or "").strip()
     if not content:

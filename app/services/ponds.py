@@ -12,7 +12,7 @@ from app.domain.models import DeviceType, MetricType
 from app.domain.ponds import pond_ids
 from app.domain.scenarios import SCENARIO_LIMITS, ScenarioType, build_scenario, validate_offset
 
-# Chi so cam bien hien tren bang dieu khien (do simulator gui moi 30 s)
+# Sensor metrics shown on the control panel (sent by the simulator every 30 s)
 LIVE_METRICS = [
     MetricType.DO,
     MetricType.TEMPERATURE,
@@ -24,7 +24,7 @@ LIVE_METRICS = [
     MetricType.NH3,
 ]
 LIVE_WINDOW = timedelta(minutes=10)
-# Simulator hoi lai toi da 6h de biet can backfill tu dau
+# The simulator looks back up to 6h to know where to start backfilling
 MAX_READINGS_WINDOW_MIN = 360
 
 
@@ -37,7 +37,7 @@ def list_ponds() -> list[dict]:
 
 
 def set_pump_failed(pond_id: str, failed: bool) -> None:
-    """Danh dau quat hong/da sua (simulator doc trang thai nay de mo phong DO sut)."""
+    """Mark the pump as failed/repaired (the simulator reads this to simulate a DO drop)."""
     set_span_tags(pond_id=pond_id, device_type=DeviceType.PUMP.value)
     if not ponds_repo.set_pump_failed(pond_id, failed):
         raise PondNotFound(pond_id)
@@ -46,7 +46,7 @@ def set_pump_failed(pond_id: str, failed: bool) -> None:
 
 
 def start_scenario(pond_id: str, scenario: ScenarioType, offset: float, duration_min: int) -> dict:
-    """Bat kich ban lech chi so; ghi de kich ban cung loai dang chay. InvalidScenario neu vuot gioi han."""
+    """Start a metric-offset scenario; overwrites a running scenario of the same type. InvalidScenario if over the limit."""
     set_span_tags(pond_id=pond_id, scenario=scenario.value)
     validate_offset(scenario, offset)
     doc = build_scenario(offset, duration_min, utcnow())
@@ -70,7 +70,7 @@ def clear_scenarios(pond_id: str, scenario: ScenarioType | None = None) -> None:
 
 
 def scenario_catalog() -> dict:
-    """Gioi han kich ban va nguong canh bao, de giao dien khong phai chep lai cau hinh."""
+    """Scenario limits and alert thresholds, so the UI does not have to duplicate the config."""
     return {
         "scenarios": [
             {
@@ -99,7 +99,7 @@ def scenario_catalog() -> dict:
 
 
 def live_readings(window: timedelta = LIVE_WINDOW) -> dict[str, dict[str, dict]]:
-    """pond_id -> metric -> {value, unit, timestamp}: gia tri moi nhat trong `window` gan day (mac dinh 10 phut)."""
+    """pond_id -> metric -> {value, unit, timestamp}: the latest value within the recent `window` (default 10 minutes)."""
     rows = metrics_repo.latest_readings(pond_ids(), [m.value for m in LIVE_METRICS], utcnow() - window)
     result: dict[str, dict[str, dict]] = {}
     for row in rows:

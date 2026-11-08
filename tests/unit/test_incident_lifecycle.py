@@ -19,7 +19,7 @@ from app.domain.models import Severity
         ("resolving", S.RECOVERED),
         ("open", S.RECOVERED),
         ("resolving", S.INVESTIGATING),
-        ("investigating", S.INVESTIGATING),  # chi ghi them hanh dong
+        ("investigating", S.INVESTIGATING),  # only adds an action note
     ],
 )
 def test_allowed_transitions(current, target):

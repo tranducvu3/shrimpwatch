@@ -1,4 +1,4 @@
-"""Doc/ghi telemetry trong Time Series `metrics` va rollup `metrics_hourly`."""
+"""Read/write telemetry in the `metrics` Time Series and the `metrics_hourly` rollup."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _TS_META = ["farm_id", "pond_id", "device_id", "device_type", "metric", "source"
 
 
 def pack_ts_doc(rec: dict[str, Any]) -> dict[str, Any]:
-    """Ban ghi phang -> document Time Series: cac truong mo ta nam trong `metadata`."""
+    """Flat record -> Time Series document: the identifying fields go under `metadata`."""
     return {
         "timestamp": rec["timestamp"],
         "metadata": {k: rec.get(k) for k in _TS_META if k in rec},
@@ -60,7 +60,7 @@ def latest_value(pond_id: str, metric: str, since: datetime, source: str | None 
 
 
 def average_value(pond_id: str, metric: str, since: datetime, limit: int = 30) -> float | None:
-    """Trung binh `limit` diem moi nhat ke tu `since`."""
+    """Average of the latest `limit` points since `since`."""
     docs = list(
         metrics_collection()
         .find({"metadata.pond_id": pond_id, "metadata.metric": metric, "timestamp": {"$gte": since}})
@@ -71,7 +71,7 @@ def average_value(pond_id: str, metric: str, since: datetime, limit: int = 30) -
 
 
 def do_windows(pond_ids: list[str], window_sec: int) -> dict[str, dict]:
-    """Ket qua cua so DO 5 phut cho nhieu ao trong 1 lan aggregate, theo pond_id."""
+    """5-minute DO window results for many ponds in a single aggregate, keyed by pond_id."""
     pipeline = compute_do_drop_rate_pipeline(pond_ids, window_sec=window_sec)
     return {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
 

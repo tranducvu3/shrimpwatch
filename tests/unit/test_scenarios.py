@@ -32,16 +32,16 @@ def test_build_scenario_sets_end_time():
 def test_active_offsets_skips_expired_unknown_and_malformed():
     scenarios = {
         "temperature": build_scenario(3.0, 10, NOW),
-        "ph": {"offset": 0.5, "until": NOW - timedelta(seconds=1)},  # het han
-        "salinity": {"offset": "x", "until": NOW + timedelta(minutes=5)},  # sai kieu
+        "ph": {"offset": 0.5, "until": NOW - timedelta(seconds=1)},  # expired
+        "salinity": {"offset": "x", "until": NOW + timedelta(minutes=5)},  # wrong type
         "do": {"offset": -2, "until": "not-a-date"},
-        "wind": {"offset": 1, "until": NOW + timedelta(minutes=5)},  # loai khong ton tai
+        "wind": {"offset": 1, "until": NOW + timedelta(minutes=5)},  # unknown type
     }
     assert active_offsets(scenarios, NOW) == {ScenarioType.TEMPERATURE: 3.0}
 
 
 def test_active_offsets_parses_iso_strings_from_api():
-    # Simulator nhan JSON tu GET /ponds: until la chuoi ISO (naive hoac co timezone)
+    # The simulator gets JSON from GET /ponds: until is an ISO string (naive or timezone-aware)
     scenarios = {
         "do": {"offset": -3, "until": (NOW + timedelta(minutes=1)).isoformat()},
         "ph": {"offset": 0.4, "until": "2026-10-31T12:05:00+00:00"},

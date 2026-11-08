@@ -1,7 +1,7 @@
 name: CD
 
-# Chi build va day image khi CI tren main xanh: lint, test va smoke test deu da qua cho dung commit nay.
-# Image: ghcr.io/<owner>/shrimpwatch, tag `sha-<7 ky tu>` va `latest`.
+# Only build and push the image when CI on main is green: lint, tests and smoke test all passed for this exact commit.
+# Image: ghcr.io/<owner>/shrimpwatch, tags `sha-<7 chars>` and `latest`.
 
 on:
   workflow_run:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build dung commit CI da kiem tra, khong phai dau main hien tai
+          # Build the exact commit CI checked, not the current head of main
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: docker/setup-buildx-action@v3
@@ -39,8 +39,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # type=sha cua metadata-action doc github.sha (dau main), khong phai commit CI da chay
-      # `latest` chi khi commit nay van la dau main: CI chay lai cho commit cu khong duoc ghi de `latest`
+      # metadata-action's type=sha reads github.sha (head of main), not the commit CI ran on
+      # `latest` only if this commit is still the head of main: a CI re-run for an old commit must not overwrite `latest`
       - id: rev
         run: |
           echo "short=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"

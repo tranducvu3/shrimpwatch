@@ -1,4 +1,4 @@
-"""Vong doi su co. Moi thay doi su co (worker hay API) deu di qua day: ghi incident + event + metric 1 cho."""
+"""Incident lifecycle. Every incident change (worker or API) goes through here: writes incident + event + metric in one place."""
 
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ def _to_doc(incident: Incident) -> dict:
 
 
 def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence) -> str:
-    """Su co giu nguyen nhan nghiem trong nhat da thay: chi nang muc, khong ha.
+    """An incident keeps the most severe cause seen so far: it only escalates, never downgrades.
 
-    Vd quat hong (critical) roi quat chay lai, DO con dang giam (warning): su co van la pump_failure.
+    E.g. pump failure (critical), then the pump restarts while DO is still falling (warning): the incident stays pump_failure.
     """
     incident_id = existing["_id"]
     fields: dict = {"evidence": evidence.model_dump(), "fingerprint": fingerprint(evidence)}
@@ -56,14 +56,14 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
             tags={"pond": existing["pond_id"], "severity": finding.severity.value, "root_cause": finding.root_cause},
         )
     elif finding.root_cause == existing.get("root_cause"):
-        # Cung nguyen nhan: lam moi mo ta voi so lieu moi nhat
+        # Same cause: refresh the description with the latest data
         fields["description"] = finding.description
     incidents_repo.update_fields(incident_id, fields)
     return incident_id
 
 
 def open_or_update(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str:
-    """Cap nhat su co dang mo cua ao; neu chua co thi mo su co moi."""
+    """Update the pond's active incident; open a new one if there is none."""
     existing = incidents_repo.find_active(pond_id)
     if existing:
         return _update_active(existing, finding, evidence)
@@ -96,7 +96,7 @@ def open_or_update(pond_id: str, finding: Finding, evidence: IncidentEvidence) -
 
 
 def auto_recover(pond_id: str) -> str | None:
-    """Worker tu dong dong su co dang mo khi ao da on dinh. Tra ve id su co neu co."""
+    """The worker closes the active incident automatically once the pond is stable. Returns the incident id if any."""
     existing = incidents_repo.find_active(pond_id)
     if not existing:
         return None
@@ -108,7 +108,7 @@ def auto_recover(pond_id: str) -> str | None:
 
 
 def transition(incident_id: str, state: IncidentState, action: str | None = None) -> None:
-    """Ky thuat vien chuyen buoc su co (Investigating/Resolving/Recovered), kem ghi chu hanh dong."""
+    """A technician moves the incident to the next step (Investigating/Resolving/Recovered), with an action note."""
     incident = incidents_repo.get(incident_id)
     if not incident:
         raise IncidentNotFound(incident_id)
@@ -116,7 +116,7 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
     set_span_tags(pond_id=pond_id)
     from_state = incident.get("state")
     ensure_transition(from_state, state)
-    # Moi lan chuyen buoc deu ghi events (ke ca khi khong kem ghi chu) de timeline khong bi hong
+    # Every transition writes to events (even without a note) so the timeline has no gaps
     details = {"from_state": from_state, "state": state.value}
     if action:
         details["action"] = action
@@ -133,12 +133,12 @@ def _query_vector(incident: dict) -> list[float]:
     vector = incident.get("fingerprint")
     if is_valid(vector):
         return vector
-    # Su co cu chua co fingerprint -> tinh lai tu evidence
+    # Older incidents have no fingerprint -> recompute it from evidence
     return fingerprint(IncidentEvidence(**(incident.get("evidence") or {})))
 
 
 def similar_incidents(incident_id: str, k: int = SIMILAR_K) -> dict:
-    """Su co da hoi phuc giong nhat (Vector Search tren fingerprint) va cach da xu ly."""
+    """The most similar recovered incidents (Vector Search on fingerprint) and how they were handled."""
     incident = incidents_repo.get(incident_id)
     if not incident:
         raise IncidentNotFound(incident_id)
@@ -162,7 +162,7 @@ def _find_similar(incident: dict, k: int) -> dict:
 
 
 def _attach_similar(incident: dict) -> None:
-    """Buoc Dieu tra: luu goi y tu su co cu vao incident va events. Loi tim kiem khong chan chuyen trang thai."""
+    """Investigating step: store hints from past incidents in the incident and events. A search error never blocks the transition."""
     try:
         result = _find_similar(incident, SIMILAR_K)
     except Exception as e:
@@ -193,7 +193,7 @@ def _attach_similar(incident: dict) -> None:
 
 
 def import_history(incidents: list[Incident]) -> int:
-    """Nap lich su su co da hoi phuc (du lieu tong hop) lam co so cho Vector Search. Idempotent theo _id."""
+    """Load a history of recovered incidents (synthetic data) as a base for Vector Search. Idempotent by _id."""
     imported = 0
     for incident in incidents:
         if incidents_repo.insert_if_absent(_to_doc(incident)):
@@ -209,7 +209,7 @@ def import_history(incidents: list[Incident]) -> int:
 
 
 def report_active(pond_ids: list[str]) -> None:
-    """Gauge 0/1 moi ao moi chu ky: dashboard dem su co DANG mo (counter incident.open chi dem lan mo)."""
+    """0/1 gauge per pond per cycle: the dashboard counts CURRENTLY active incidents (the incident.open counter only counts openings)."""
     active = incidents_repo.active_pond_ids()
     for pid in pond_ids:
         gauge("incident.active", 1 if pid in active else 0, tags={"pond": pid})

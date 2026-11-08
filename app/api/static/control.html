@@ -258,7 +258,7 @@
 
     refs.chips = el("div", { class: "chips" });
 
-    // Form: chon kich ban + do lech + thoi gian
+    // Form: pick scenario + offset + duration
     const select = el("select", { "aria-label": "Kịch bản" });
     for (const s of catalog.scenarios) select.append(el("option", { value: s.type, text: s.label }));
     const range = el("input", { type: "range", "aria-label": "Độ lệch" });

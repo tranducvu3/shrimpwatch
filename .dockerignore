@@ -1,4 +1,4 @@
-# Image duoc day len GHCR (public): khong bao gio dua .env (Atlas URI, Datadog key) vao image
+# The image is pushed to GHCR (public): never put .env (Atlas URI, Datadog keys) in the image
 .env
 .env.*
 !.env.example
@@ -14,7 +14,7 @@ htmlcov
 **/__pycache__
 **/*.py[cod]
 
-# Khong can khi chay: test (compose mount ./tests khi can), anh minh chung, docs
+# Not needed at runtime: tests (compose mounts ./tests when needed), proof screenshots, docs
 tests
 assets_proof
 screenshots_pytest.txt

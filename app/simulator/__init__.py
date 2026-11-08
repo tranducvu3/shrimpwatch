@@ -1,1 +1,1 @@
-"""Simulator: gia lap cam bien + ky thuat vien, chi giao tiep voi he thong qua HTTP API (nhu thiet bi that)."""
+"""Simulator: fakes sensors + technicians and talks to the system only through the HTTP API (like real devices)."""

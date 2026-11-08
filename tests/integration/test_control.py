@@ -33,10 +33,10 @@ def test_clear_all_scenarios(client: TestClient):
 
 
 def test_scenario_validation(client: TestClient):
-    # Vuot gioi han do lech -> 422 tu domain
+    # Offset over the limit -> 422 from domain
     r = client.post(f"/ponds/{POND}/scenarios", json={"scenario": "ph", "offset": 3.0})
     assert r.status_code == 422
-    # Loai kich ban khong ton tai / thoi gian vuot muc -> 422 tu Pydantic
+    # Unknown scenario type / duration over the limit -> 422 from Pydantic
     assert client.post(f"/ponds/{POND}/scenarios", json={"scenario": "$where", "offset": 1}).status_code == 422
     r = client.post(f"/ponds/{POND}/scenarios", json={"scenario": "ph", "offset": 0.1, "duration_min": 100000})
     assert r.status_code == 422
@@ -83,7 +83,7 @@ def test_live_readings_window(client: TestClient):
         "value": 123.0,
     }
     metrics_collection().insert_one(pack_ts_doc(doc))
-    # Mac dinh 10 phut: ban ghi 30 phut truoc khong hien; simulator hoi 6h thi thay
+    # Default 10 minutes: a record from 30 minutes ago is hidden; the simulator's 6h lookback sees it
     assert "orp" not in client.get("/ponds/readings").json().get("pond-06", {})
     assert client.get("/ponds/readings", params={"window_min": 60}).json()["pond-06"]["orp"]["value"] == 123.0
     assert client.get("/ponds/readings", params={"window_min": 100000}).status_code == 422

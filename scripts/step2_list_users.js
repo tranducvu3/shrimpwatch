@@ -1,4 +1,4 @@
-﻿// Dùng getUsers trên ADMIN db (có quyền admin) và filter theo db shrimpwatch
+// Use getUsers on the ADMIN db (has admin rights) and filter by the shrimpwatch db
 db = db.getSiblingDB("admin");
 const usersCursor = db.system.users.find({db: "shrimpwatch"}, {user:1, db:1, roles:1});
 const users = usersCursor.toArray();

@@ -30,7 +30,7 @@ def find_active(pond_id: str) -> dict | None:
 
 
 def active_pond_ids() -> set[str]:
-    """Cac ao dang co su co chua hoi phuc (toi da 1 su co/ao nen so dong nho)."""
+    """Ponds with an unrecovered incident (at most 1 incident per pond, so few rows)."""
     cursor = incidents_collection().find({"state": {"$in": [s.value for s in ACTIVE_STATES]}}, {"pond_id": 1})
     return {doc["pond_id"] for doc in cursor}
 
@@ -62,17 +62,17 @@ def timeline(incident_id: str) -> dict | None:
 
 
 def insert_if_absent(doc: dict[str, Any]) -> bool:
-    """Chen su co neu chua co _id nay. Tra ve True neu vua chen."""
+    """Insert the incident if this _id does not exist yet. Returns True if it was inserted."""
     result = incidents_collection().update_one({"_id": doc["_id"]}, {"$setOnInsert": doc}, upsert=True)
     return result.upserted_id is not None
 
 
 def find_similar(vector: list[float], exclude_id: str | None, k: int) -> tuple[list[dict], str]:
-    """Su co da hoi phuc gan nhat. Uu tien Atlas Vector Search, mongod thuong thi dung aggregation."""
+    """Nearest recovered incidents. Prefers Atlas Vector Search; falls back to aggregation on plain mongod."""
     try:
         rows = list(incidents_collection().aggregate(similar_incidents_pipeline(vector, exclude_id, k)))
-        # Index dang build (hoac chua tao) -> Atlas tra rong thay vi bao loi. Fallback co gioi han
-        # nen chay lai khi rong la chap nhan duoc; neu fallback cung rong thi thuc su chua co lich su.
+        # Index still building (or not created) -> Atlas returns nothing instead of an error. The fallback is bounded,
+        # so re-running it on an empty result is fine; if the fallback is empty too, there really is no history yet.
         if rows:
             return rows, VECTOR_SEARCH
     except OperationFailure as e:

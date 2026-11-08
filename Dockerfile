@@ -15,5 +15,5 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
-# Mac dinh chay API; compose ghi de command cho simulator va worker
+# Runs the API by default; compose overrides the command for the simulator and worker
 CMD ["ddtrace-run", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

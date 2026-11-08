@@ -26,7 +26,7 @@ def _dump(records: list[MetricRecord]) -> list[dict]:
 
 
 def post_manual_readings(client: ShrimpWatchClient, ponds: list[str], now: datetime) -> None:
-    """Mo phong ky thuat vien do test-kit: do kiem, TAN, nitrite."""
+    """Simulate a technician taking test-kit readings: alkalinity, TAN, nitrite."""
     for pid in ponds:
         readings = {
             "alkalinity": round(150 + random.gauss(0, 8), 1),
@@ -42,8 +42,8 @@ def post_manual_readings(client: ShrimpWatchClient, ponds: list[str], now: datet
 
 
 def backfill_start(now: datetime, latest: datetime | None) -> datetime:
-    """Chi nap khoang trong tu ban ghi moi nhat: khoi dong lai khong ghi de chuoi du lieu da co
-    (du lieu chong lap lam sai bien do pH 24h va tao dot ingest gia)."""
+    """Only fill the gap since the latest record: a restart does not rewrite the existing series
+    (overlapping data skews the 24h pH swing and creates a fake ingest spike)."""
     start = now - timedelta(hours=BACKFILL_HOURS)
     if latest is not None:
         start = max(start, latest + timedelta(seconds=settings.SIMULATOR_INTERVAL_SEC))
@@ -51,9 +51,9 @@ def backfill_start(now: datetime, latest: datetime | None) -> datetime:
 
 
 def warm_up(sims: dict[str, PondSimulator], now: datetime, send_from: datetime | None) -> list[dict]:
-    """Chay mo hinh qua ca cua so 6h de trang thai (DO, ORP, do man) lien mach voi chuoi dang co,
-    chi tra ve ban ghi tu `send_from` (None: khong gui gi). Bo buoc nay thi DO khoi dong lai o muc
-    ban dau, lech so voi chuoi cu -> worker mo nham su co do_anomaly_drop."""
+    """Run the model through the whole 6h window so its state (DO, ORP, salinity) continues the existing series,
+    and return only records from `send_from` (None: send nothing). Without this step DO restarts at its
+    initial level, out of line with the old series -> the worker wrongly opens a do_anomaly_drop incident."""
     records: list[dict] = []
     t = now - timedelta(hours=BACKFILL_HOURS)
     while t <= now:
@@ -66,12 +66,12 @@ def warm_up(sims: dict[str, PondSimulator], now: datetime, send_from: datetime |
 
 
 def backfill(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: datetime) -> None:
-    """Nap lich su con thieu (toi da 6h) khi khoi dong de dashboard va rollup co du lieu ngay."""
+    """Load the missing history (up to 6h) on start so the dashboard and rollup have data right away."""
     try:
         latest = client.latest_reading_time(window_min=BACKFILL_HOURS * 60)
         send_from: datetime | None = backfill_start(now, latest)
     except Exception as e:
-        # Khong biet du lieu hien co thi khong gui, tranh ghi chong; van lam nong mo hinh
+        # If existing data is unknown, send nothing to avoid overlapping writes; still warm up the model
         logger.warning("backfill skipped: cannot read latest reading", extra={"err": str(e)})
         latest, send_from = None, None
     records = warm_up(sims, now, send_from)

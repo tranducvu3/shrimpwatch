@@ -1,4 +1,4 @@
-"""Thoi gian UTC dang naive: MongoDB luu BSON Date khong co timezone, moi so sanh trong app deu dung dang nay."""
+"""Naive UTC time: MongoDB stores BSON Dates without a timezone, so every comparison in the app uses this form."""
 
 from __future__ import annotations
 

@@ -63,7 +63,7 @@ def test_timeseries_collection_metadata():
     try:
         info_cursor = db.command("listCollections", 1, filter={"name": "metrics"})
     except Exception:
-        # Fallback: dung admin DB voi $listCatalog neu user co quyen
+        # Fallback: use the admin DB with $listCatalog if the user has the rights
         adm = get_client()["admin"]
         infos = list(adm.aggregate([{"$listCatalog": {}}]))
         ts_info = next(
@@ -180,9 +180,9 @@ def test_setwindowfields_do_drop_rate_pipeline():
     row = rows[0]
     assert row["pond_id"] == "pond-03"
     assert row["do_drop_mg_per_l"] > 0, "DO is dropping so drop_mg_per_l should be > 0"
-    # 0.15 mg/L moi 30s = 0.3 mg/L/phut
+    # 0.15 mg/L every 30s = 0.3 mg/L/min
     assert row["do_drop_rate_mg_per_l_per_min"] == pytest.approx(0.3, abs=0.01)
-    # This result is used as Yêu cầu #2 evidence stored in incidents.evidence
+    # This result is used as Requirement #2 evidence stored in incidents.evidence
     assert "min_do" in row
 
 
@@ -194,7 +194,7 @@ def test_co2_derivation_formula():
     _insert_record("ph", "pond-04", 7.9, ts=now)
     co2 = derive_co2_for_pond("pond-04", now)
     assert co2 is not None
-    # Kiểm tra thử: pH 7.9, alk 170 => khoảng 4.2 mg/L (theo đề bài)
+    # Spot check: pH 7.9, alk 170 => about 4.2 mg/L (per the problem statement)
     assert 3.5 <= co2 <= 5.0, f"Expected CO2 ~4.2, got {co2}"
 
 
@@ -228,7 +228,7 @@ def test_pump_fail_event_and_incident_opening(client: TestClient):
     assert inc is not None
     assert inc["severity"] in ("critical", "warning")
     assert "evidence" in inc
-    # Yêu cầu #2: kết quả $setWindowFields nằm trong incidents.evidence
+    # Requirement #2: the $setWindowFields result is stored in incidents.evidence
     assert "do_drop_rate_mg_per_l_per_min" in inc["evidence"] or "avg_pump_power_watts" in inc["evidence"]
     assert inc.get("root_cause") == "pump_failure" or inc.get("title")
 
@@ -280,7 +280,7 @@ def test_nh3_derivation_formula():
     _insert_record("temperature", "pond-01", 30.0, ts=now)
     nh3 = derive_nh3_for_pond("pond-01", now)
     assert nh3 is not None
-    # pH 8.0, 30 do C: ~7-8% TAN o dang NH3 doc
+    # pH 8.0, 30 deg C: ~7-8% of TAN is toxic NH3
     assert 0.06 <= nh3 <= 0.09, f"Expected NH3 ~0.075, got {nh3}"
 
 
@@ -295,7 +295,7 @@ def test_ph_swing_pipeline():
 
 
 def test_do_drop_rate_survives_sensor_dropout():
-    # Cam bien rot goi: chi con 3 diem trong 5 phut. Cua so theo thoi gian van cho dung toc do.
+    # Sensor drops packets: only 3 points in 5 minutes. The time-based window still gives the right rate.
     now = utcnow()
     for minutes_ago, value in ((4, 6.0), (2, 5.4), (0, 4.8)):
         _insert_record("do", "pond-02", value, ts=now - timedelta(minutes=minutes_ago))
@@ -364,14 +364,14 @@ def test_incident_timeline_joins_events(client: TestClient):
 
     r = client.get("/incidents/inc-timeline-001/timeline")
     assert r.status_code == 200, r.text
-    # Bo qua goi y Vector Search: co hay khong tuy lich su su co do test khac de lai
+    # Ignore the Vector Search hint: whether it appears depends on incident history left by other tests
     events = [e["event"] for e in r.json()["timeline"] if e["event"] != "incident_similar_matched"]
     assert events == ["pump_state_change", "incident_action"]
     assert client.get("/incidents/inc-missing/timeline").status_code == 404
 
 
 def test_backfill_ingest_rolls_up_old_hours(client: TestClient):
-    # Simulator nap 6h lich su khi khoi dong; worker chi tinh lai gio gan nhat -> API phai tu rollup.
+    # The simulator loads 6h of history on start; the worker only recomputes recent hours -> the API must roll up itself.
     old = utcnow() - timedelta(hours=3)
     hour = old.replace(minute=0, second=0, microsecond=0)
     records = [

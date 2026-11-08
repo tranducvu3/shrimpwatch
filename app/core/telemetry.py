@@ -1,4 +1,4 @@
-"""Datadog: DogStatsD metric va tag cho span hien tai. Loi gui metric khong bao gio duoc lam hong luong chinh."""
+"""Datadog: DogStatsD metrics and tags for the current span. A failed metric send must never break the main flow."""
 
 from datadog import initialize, statsd
 from ddtrace import tracer

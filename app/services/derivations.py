@@ -1,4 +1,4 @@
-"""Chi so tinh toan (source=derived): CO2, NH3, bien do pH 24h. Ghi lai vao Time Series nhu telemetry."""
+"""Derived metrics (source=derived): CO2, NH3, 24h pH swing. Written back to the Time Series like telemetry."""
 
 from __future__ import annotations
 

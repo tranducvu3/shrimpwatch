@@ -1,4 +1,4 @@
-"""Body cua request HTTP. Mo hinh nghiep vu nam o app.domain.models."""
+"""HTTP request bodies. Domain models live in app.domain.models."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class ManualInput(BaseModel):
     timestamp: datetime = Field(default_factory=utcnow)
     farm_id: str
     pond_id: str
-    # Do kiem, TAN, nitrite la nong do: khong the am
+    # Alkalinity, TAN and nitrite are concentrations: never negative
     value: float = Field(ge=0)
     tester_id: str = "tech-001"
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Khoi dong stack that (MongoDB local, API, simulator, worker) va kiem tra luong du lieu dau-cuoi.
+# Start the real stack (local MongoDB, API, simulator, worker) and check the end-to-end data flow.
 set -euo pipefail
 
 API=http://localhost:8000
 export COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml
 
 cp .env.example .env
-# Khong co Datadog Agent tren CI
+# No Datadog Agent on CI
 sed -i 's/^DD_TRACE_ENABLED=.*/DD_TRACE_ENABLED=false/' .env
 
 docker compose config --quiet
 docker compose up -d --build --wait mongodb api
 docker compose up -d simulator worker
 
-# Doc log vao bien truoc khi grep: voi pipefail, `logs | grep -q` co the tra 141 (SIGPIPE) du da tim thay
+# Read logs into a variable before grep: with pipefail, `logs | grep -q` can return 141 (SIGPIPE) even on a match
 worker_logs() { docker compose logs worker 2>&1; }
 
 echo "Waiting for the worker's first DO window..."

@@ -1,9 +1,9 @@
 ﻿db = db.getSiblingDB('shrimpwatch');
 
-// Xoa user cu neu co (de tranh loi user da ton tai neu chay lai nhieu lan)
+// Drop the old user if present (avoids a user-already-exists error on re-runs)
 try { db.dropUser('shrimp_app'); print("Dropped old shrimp_app user"); } catch(e) { print("Old user not exist, skip drop: " + e.message); }
 
-// Tao user moi voi QUYEN DBOWNER (du quyen cho tat ca hoat dong hackathon)
+// Create a new user with the DBOWNER role (enough for everything the hackathon needs)
 db.createUser({
   user: 'shrimp_app',
   pwd: 'shrimp_pass',

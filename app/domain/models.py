@@ -1,4 +1,4 @@
-"""Mo hinh nghiep vu dung chung cho API, worker va simulator."""
+"""Domain models shared by the API, worker and simulator."""
 
 from __future__ import annotations
 
