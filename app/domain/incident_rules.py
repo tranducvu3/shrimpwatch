@@ -25,6 +25,8 @@ class PondSnapshot:
     tan: float | None = None
     nitrite: float | None = None
     alkalinity: float | None = None
+    # The aerator reported "off" in each of its last readings (see pump_stopped): faster than the 5-minute power average
+    pump_stopped: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,8 +80,17 @@ class Finding:
     root_cause: str
 
 
+def pump_stopped(statuses: list[float], required: int) -> bool:
+    """The aerator reported "off" (pump_status 0) in each of its latest `required` readings, newest first.
+
+    Two readings, not one: a single glitch must not open a critical incident. At one reading per 30 s this
+    catches a stopped aerator within 60 s, while the 5-minute power average needs several minutes.
+    """
+    return required > 0 and len(statuses) >= required and all(v == 0 for v in statuses[:required])
+
+
 def pump_failed(s: PondSnapshot, t: Thresholds) -> bool:
-    return s.avg_pump_watts is not None and s.avg_pump_watts < t.pump_failed_max_watts
+    return s.pump_stopped or (s.avg_pump_watts is not None and s.avg_pump_watts < t.pump_failed_max_watts)
 
 
 def _fmt(value: float | None, spec: str) -> str:
@@ -94,7 +105,7 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
         return Finding(
             Severity.CRITICAL,
             "SỰ CỐ: Quạt nước hỏng → oxy sụt",
-            f"Công suất quạt ao {s.pond_id} trung bình 5 phút gần nhất: {s.avg_pump_watts:.1f} W. "
+            f"Quạt ao {s.pond_id} đã dừng. Công suất trung bình 5 phút gần nhất: {_fmt(s.avg_pump_watts, '.1f')} W. "
             f"DO drop rate: {_fmt(s.do_drop_rate, '.4f')} mg/L/phút, min DO: {s.min_do}",
             "pump_failure",
         )
@@ -204,7 +215,8 @@ def _water_quality_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
 def has_recovered(s: PondSnapshot, t: Thresholds) -> bool:
     """DO is back to a safe level and the pump is running again (or there is no pump data)."""
     return (
-        s.min_do is not None
+        not s.pump_stopped
+        and s.min_do is not None
         and s.min_do > t.do_warn + t.do_recovery_margin
         and (s.avg_pump_watts is None or s.avg_pump_watts > t.pump_running_min_watts)
     )

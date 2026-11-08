@@ -355,7 +355,7 @@ Monitors evaluate a **full 5-minute** average and Datadog receives data a few te
 
 The **Sự cố ĐANG MỞ** (open incidents) widget reads the gauge `shrimpwatch.incident.active` (0/1 per pond, sent by the worker every 30-second cycle), so the number drops as soon as an incident recovers. The counters `shrimpwatch.incident.open` / `incident.recovered` are still used to count how many times incidents opened / recovered.
 
-A pond has at most one open incident. When a more severe cause appears, the incident is escalated and an `incident_escalated` event is written; incidents are never downgraded, so they keep the most severe cause until they recover.
+A pond has at most one open incident, enforced by MongoDB with a unique partial index (`one_active_incident_per_pond`: unique `pond_id` where `state` is open, investigating or resolving), because both the ingest check and the worker can open one. When a more severe cause appears, the incident is escalated and an `incident_escalated` event is written; incidents are never downgraded, so they keep the most severe cause until they recover.
 
 `python -m app.cli.datadog_push` updates monitors/dashboards with the same name, and creates them if they do not exist yet.
 
@@ -369,7 +369,7 @@ The core feature, showing MongoDB and Datadog working together.
 
 | Step | State | Action |
 |---|---|---|
-| 1. **Detect** | `open` | The worker detects an aerator failure (`pump_power` 5-minute average < 50W) → opens a **CRITICAL** incident, `root_cause = pump_failure` |
+| 1. **Detect** | `open` | The aerator reports *off* (`pump_status = 0`) in two readings in a row → the ingest API opens a **CRITICAL** incident at once, `root_cause = pump_failure`: **within 60 seconds** of the failure at one reading per 30 s. The worker's 5-minute power average (< 50 W) is the second line of defence |
 | 2. **Investigate** | `investigating` | The technician checks the aerator's power supply and records an action note |
 | 3. **Resolve** | `resolving` | Replace the parts, restore aerator power. The worker keeps tracking the incident: if the fault persists, the worker updates this same incident (no duplicate incident is opened) |
 | 4. **Recover** | `recovered` | The aerator runs again and DO is stable (5 minutes) → **the worker closes** the incident by itself from `open`/`investigating`/`resolving`. Every transition writes an event to `events` |
