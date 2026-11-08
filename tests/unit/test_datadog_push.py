@@ -19,22 +19,32 @@ class _Resp:
 @pytest.fixture
 def calls(monkeypatch):
     log: list[tuple[str, str]] = []
-    monitors = [{"id": 7, "name": "[ShrimpWatch] Existing"}, {"id": 8, "name": "[ShrimpWatch] Existing (copy)"}]
+    monitors = [
+        {"id": 7, "name": "[ShrimpWatch] Existing", "query": "avg:a < 1"},
+        {"id": 8, "name": "[ShrimpWatch] Existing (copy)", "query": "avg:b < 1"},
+    ]
     monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp(monitors))
     monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **_kw: log.append(("POST", url)) or _Resp({}))
     monkeypatch.setattr(datadog_push.httpx, "put", lambda url, **_kw: log.append(("PUT", url)) or _Resp({}))
     return log
 
 
-def test_existing_monitor_is_updated_by_exact_name(tmp_path, calls):
+def _monitor(tmp_path, **payload):
     path = tmp_path / "m.json"
-    path.write_text(json.dumps({"name": "[ShrimpWatch] Existing"}), encoding="utf-8")
-    datadog_push._push("monitor", path)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_existing_monitor_is_updated_by_exact_name(tmp_path, calls):
+    datadog_push._push("monitor", _monitor(tmp_path, name="[ShrimpWatch] Existing"))
     assert calls == [("PUT", "https://api.datadoghq.com/api/v1/monitor/7")]
 
 
 def test_new_monitor_is_created(tmp_path, calls):
-    path = tmp_path / "m.json"
-    path.write_text(json.dumps({"name": "[ShrimpWatch] New"}), encoding="utf-8")
-    datadog_push._push("monitor", path)
+    datadog_push._push("monitor", _monitor(tmp_path, name="[ShrimpWatch] New", query="avg:c < 1"))
     assert calls == [("POST", "https://api.datadoghq.com/api/v1/monitor")]
+
+
+def test_renamed_monitor_is_updated_by_query(tmp_path, calls):
+    datadog_push._push("monitor", _monitor(tmp_path, name="[ShrimpWatch] Renamed · Đổi tên", query="avg:b < 1"))
+    assert calls == [("PUT", "https://api.datadoghq.com/api/v1/monitor/8")]

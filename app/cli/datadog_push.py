@@ -29,11 +29,20 @@ def _base_url() -> str:
 
 
 def _existing_id(kind: str, payload: dict) -> str | int | None:
-    """Find an existing one with the same name (monitor: name, dashboard: title) to update instead of creating a duplicate."""
+    """Find an existing one with the same name (monitor: name, dashboard: title) to update instead of creating a duplicate.
+
+    A renamed monitor is found by its query instead, so a new name updates it rather than adding a second alert.
+    """
     if kind == "monitor":
         resp = httpx.get(f"{_base_url()}/monitor", headers=_headers(), params={"name": payload["name"]}, timeout=30)
         resp.raise_for_status()
         matches = [m["id"] for m in resp.json() if m.get("name") == payload["name"]]
+        if not matches:
+            resp = httpx.get(
+                f"{_base_url()}/monitor", headers=_headers(), params={"monitor_tags": "shrimpwatch"}, timeout=30
+            )
+            resp.raise_for_status()
+            matches = [m["id"] for m in resp.json() if m.get("query") == payload.get("query")]
     else:
         resp = httpx.get(f"{_base_url()}/dashboard", headers=_headers(), timeout=30)
         resp.raise_for_status()
@@ -58,7 +67,7 @@ def _push(kind: str, path: Path):
 
 def main():
     if not settings.DD_API_KEY or not settings.DD_APP_KEY:
-        logger.error("DD_API_KEY/DD_APP_KEY chưa cấu hình trong .env")
+        logger.error("DD_API_KEY/DD_APP_KEY are not set in .env")
         return 1
     for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):

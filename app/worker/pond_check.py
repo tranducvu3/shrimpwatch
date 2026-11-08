@@ -10,7 +10,7 @@ from app.core.log import get_logger
 from app.core.telemetry import set_span_tags
 from app.db.repositories import metrics as metrics_repo
 from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered
-from app.domain.models import DeviceType, IncidentEvidence
+from app.domain.models import DeviceType, IncidentEvidence, Source
 from app.services import derivations
 from app.services import incidents as incident_service
 
@@ -24,6 +24,11 @@ def load_do_windows(pond_ids: list[str]) -> dict[str, dict]:
     for pond_id, row in rows.items():
         logger.info("DO window computed", extra={"pond": pond_id, "row": row})
     return rows
+
+
+def _latest_manual(pond_id: str, metric: str, now):
+    """Latest test-kit reading of the last 24 h (technicians test a few times a day)."""
+    return metrics_repo.latest_value(pond_id, metric, now - derivations.MANUAL_FRESHNESS, source=Source.MANUAL.value)
 
 
 def check_pond(pond_id: str, do_row: dict | None = None) -> None:
@@ -47,6 +52,12 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         avg_temperature=metrics_repo.average_value(pond_id, "temperature", now - RECENT),
         avg_ph=metrics_repo.average_value(pond_id, "ph", now - RECENT),
         avg_salinity=metrics_repo.average_value(pond_id, "salinity", now - RECENT),
+        last_orp=last_orp,
+        nh3=derived.nh3,
+        co2=derived.co2,
+        tan=_latest_manual(pond_id, "tan", now),
+        nitrite=_latest_manual(pond_id, "nitrite", now),
+        alkalinity=_latest_manual(pond_id, "alkalinity", now),
     )
     thresholds = Thresholds.from_settings()
 
@@ -65,6 +76,10 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
                 "avg_temperature": snapshot.avg_temperature,
                 "avg_ph": snapshot.avg_ph,
                 "avg_salinity": snapshot.avg_salinity,
+                "co2": snapshot.co2,
+                "tan": snapshot.tan,
+                "nitrite": snapshot.nitrite,
+                "alkalinity": snapshot.alkalinity,
             },
         )
         incident_service.open_or_update(pond_id, finding, evidence)

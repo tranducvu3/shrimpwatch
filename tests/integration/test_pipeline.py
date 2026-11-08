@@ -364,8 +364,7 @@ def test_incident_timeline_joins_events(client: TestClient):
 
     r = client.get("/incidents/inc-timeline-001/timeline")
     assert r.status_code == 200, r.text
-    # Ignore the Vector Search hint: whether it appears depends on incident history left by other tests
-    events = [e["event"] for e in r.json()["timeline"] if e["event"] != "incident_similar_matched"]
+    events = [e["event"] for e in r.json()["timeline"]]
     assert events == ["pump_state_change", "incident_action"]
     assert client.get("/incidents/inc-missing/timeline").status_code == 404
 
@@ -448,3 +447,61 @@ def test_worker_auto_recovers_when_do_is_healthy():
     assert inc["state"] == "recovered"
     assert inc["actions"][-1]["action"] == "worker_auto_recovered"
     assert events_collection().find_one({"event": "incident_recovered", "incident_id": "inc-auto-001"})
+
+
+def test_worker_opens_incident_for_high_test_kit_reading():
+    from app.worker.pond_check import check_pond
+
+    now = utcnow()
+    for i in range(10):
+        _insert_record("do", "pond-77", 6.5, ts=now - timedelta(seconds=30 * (10 - i)))
+        _insert_record("pump_power", "pond-77", 1500.0, ts=now - timedelta(seconds=30 * (10 - i)), device_type="pump")
+    _insert_record("tan", "pond-77", 2.5, ts=now, source="manual", device_type="manual_tester")
+
+    check_pond("pond-77")
+    inc = incidents_collection().find_one({"pond_id": "pond-77"})
+    assert inc is not None and inc["root_cause"] == "tan_out_of_range"
+    assert inc["evidence"]["notes"]["tan"] == 2.5
+
+
+def test_migrate_root_causes_renames_old_incidents_and_events():
+    from app.db.mongo import get_db
+    from app.db.schema import migrate_root_causes
+
+    incidents_collection().insert_many(
+        [
+            {"_id": "inc-legacy-1", "pond_id": "pond-88", "root_cause": "do_low"},
+            {"_id": "inc-legacy-2", "pond_id": "pond-88", "root_cause": "salinity_low"},
+        ]
+    )
+    events_collection().insert_one(
+        {
+            "event": "incident_escalated",
+            "pond_id": "pond-88",
+            "details": {"from_root_cause": "do_anomaly_drop", "to_root_cause": "pump_failure"},
+        }
+    )
+
+    assert migrate_root_causes(get_db()) == 3
+    assert incidents_collection().find_one({"_id": "inc-legacy-1"})["root_cause"] == "do_out_of_range"
+    assert incidents_collection().find_one({"_id": "inc-legacy-2"})["root_cause"] == "salinity_out_of_range"
+    details = events_collection().find_one({"pond_id": "pond-88"})["details"]
+    assert (details["from_root_cause"], details["to_root_cause"]) == ("do_out_of_range", "pump_failure")
+    assert migrate_root_causes(get_db()) == 0  # idempotent
+
+
+def test_remove_similar_incident_search_unsets_old_fields():
+    from app.db.mongo import get_db
+    from app.db.schema import remove_similar_incident_search
+
+    incidents_collection().insert_many(
+        [
+            {"_id": "inc-vec-1", "pond_id": "pond-87", "fingerprint": [0.5] * 6, "similar_incidents": [{"x": 1}]},
+            {"_id": "inc-vec-2", "pond_id": "pond-87", "root_cause": "pump_failure"},
+        ]
+    )
+
+    assert remove_similar_incident_search(get_db()) == 1
+    first = incidents_collection().find_one({"_id": "inc-vec-1"})
+    assert "fingerprint" not in first and "similar_incidents" not in first
+    assert remove_similar_incident_search(get_db()) == 0  # idempotent

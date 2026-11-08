@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ShrimpWatch - Điều khiển</title>
 <style>
   :root {
@@ -11,6 +11,12 @@
     --ok: #1f7a4d; --ok-bg: #e3f4ea; --warn: #9a5b00; --warn-bg: #fdf0d9;
     --crit: #b42318; --crit-bg: #fde7e5; --info-bg: #e2f1f7;
     --radius: 10px; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+    /* Page content width; the header lines up with it. The gutter respects phone notches (viewport-fit=cover). */
+    --page-max: 1400px;
+    --gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --page-pad: max(var(--gutter), calc((100% - var(--page-max)) / 2 + var(--gutter)));
+    /* Narrowest reading cell that still fits "0.131 mg/L" without clipping */
+    --reading-min: 92px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -27,23 +33,47 @@
     font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   header {
-    position: sticky; top: 0; z-index: 2; background: var(--surface); border-bottom: 1px solid var(--border);
-    padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: max(12px, env(safe-area-inset-top)) var(--page-pad) 12px;
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+  }
+  /* Keep the header (and "Restore all") in view only where it costs little height: not on phones or short landscape */
+  @media (min-width: 640px) and (min-height: 500px) {
+    header { position: sticky; top: 0; z-index: 2; }
   }
   header h1 { font-size: 17px; margin: 0; }
   header .meta { color: var(--muted); font-size: 13px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   header .spacer { flex: 1; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--muted); }
-  .dot.ok { background: var(--ok); } .dot.bad { background: var(--crit); }
-  main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+  .dot.ok { background: var(--ok); } .dot.bad, .dot.crit { background: var(--crit); } .dot.warn { background: var(--warn); }
+  /* Pond filter: one toggle per pond with its status dot; scrolls sideways when it does not fit */
+  .filter {
+    flex: 1 1 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: -2px;
+  }
+  .filter::-webkit-scrollbar { display: none; }
+  .fbtn {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .fbtn .dot { margin: 0; }
+  /* Selected: tinted fill + 2px accent outline, so the status dot keeps its colour */
+  .fbtn[aria-pressed="true"] {
+    background: var(--info-bg); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent);
+  }
+  .fbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (hover: hover) { .fbtn[aria-pressed="false"]:hover { background: var(--surface-2); } }
+  .card[hidden] { display: none; }
+  main { padding: 16px var(--page-pad) max(40px, env(safe-area-inset-bottom)); }
   .note {
     background: var(--info-bg); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px;
     color: var(--text); font-size: 13px;
   }
-  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  /* 1 column on phones, 2 on tablets, 3 on desktop (6 ponds = 2 rows) */
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: var(--shadow); padding: 14px; display: flex; flex-direction: column; gap: 12px;
+    box-shadow: var(--shadow); padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
   }
   .card.alert { border-color: var(--crit); }
   .card-head { display: flex; align-items: baseline; gap: 8px; }
@@ -56,63 +86,96 @@
   .pill.crit { color: var(--crit); background: var(--crit-bg); }
   .incident { font-size: 13px; color: var(--crit); background: var(--crit-bg); border-radius: 8px; padding: 6px 10px; }
   .incident.warning { color: var(--warn); background: var(--warn-bg); }
-  .readings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  /* Columns follow the card width (2 to 4), so values never clip whatever the page layout */
+  .readings { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--reading-min), 1fr)); gap: 6px; }
   .reading { background: var(--surface-2); border-radius: 8px; padding: 6px 8px; min-width: 0; }
   .reading .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
   .reading .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .reading .u { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 2px; }
   .reading.warn { background: var(--warn-bg); } .reading.warn .v { color: var(--warn); }
   .reading.crit { background: var(--crit-bg); } .reading.crit .v { color: var(--crit); }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  /* A metric that the pond's conditions are moving: accent outline (the summary says which way) */
+  .reading.changing { box-shadow: inset 0 0 0 1px var(--accent); }
   .label { font-weight: 600; font-size: 13px; }
   .muted { color: var(--muted); font-size: 12px; }
-  .switch { position: relative; width: 44px; height: 24px; flex: none; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .switch span {
-    position: absolute; inset: 0; background: var(--crit); border-radius: 999px; cursor: pointer; transition: .15s;
+  .conds-head { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; }
+  .conds-head .btn { margin-left: auto; }
+  /* Condition dropdown: a <details> whose menu is a checklist; each option lists what it raises and lowers */
+  .dd { position: relative; }
+  .dd-btn {
+    list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 36px;
+    padding: 7px 34px 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    font-size: 13px; font-weight: 600; position: relative;
   }
-  .switch span::before {
-    content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff;
-    border-radius: 50%; transition: .15s;
+  .dd-btn::-webkit-details-marker { display: none; }
+  .dd-btn::after {
+    content: ""; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -5px;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg);
+    transition: transform .15s;
   }
-  .switch input:checked + span { background: var(--ok); }
-  .switch input:checked + span::before { transform: translateX(20px); }
-  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 4px 3px 10px;
-    border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-weight: 600;
+  .dd[open] .dd-btn::after { transform: rotate(225deg); margin-top: -1px; }
+  .dd[open] .dd-btn, .dd-btn:focus-visible { border-color: var(--accent); }
+  .dd-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dd-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-value.placeholder { color: var(--muted); font-weight: 400; }
+  .dd-menu {
+    position: absolute; z-index: 3; left: 0; right: 0; top: calc(100% + 4px); max-height: min(420px, 60vh);
+    overflow-y: auto; overscroll-behavior: contain; padding: 4px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, .16);
   }
-  .chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; padding: 0 6px; }
-  fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 0; display: grid; gap: 8px; }
-  legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
-  select, input[type=number] {
-    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; padding: 5px 8px; min-width: 0;
+  .dd-opt { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+  .dd-opt + .dd-opt { border-top: 1px solid var(--surface-2); }
+  .dd-opt input { margin: 2px 0 0; width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+  .dd-opt:has(input:checked) { background: var(--info-bg); }
+  .dd-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  @media (hover: hover) { .dd-opt:hover { background: var(--surface-2); } .dd-opt:has(input:checked):hover { background: var(--info-bg); } }
+  .dd-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .dd-text .name { display: flex; gap: 8px; align-items: baseline; font-weight: 600; font-size: 13px; }
+  /* "Tăng: …" / "Giảm: …" lines, in the options and in the summary */
+  .sub { font-size: 12px; line-height: 1.4; color: var(--muted); }
+  .sub b { font-weight: 600; color: var(--text); }
+  .sev-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sev-row select {
+    min-height: 32px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text); font: inherit; font-size: 13px;
   }
-  input[type=range] { flex: 1; min-width: 100px; accent-color: var(--accent); }
-  .offset-val { font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; font-weight: 600; }
+  .remedies { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .remedies[hidden] { display: none; }
+  .summary { display: flex; flex-direction: column; gap: 2px; }
+  .summary.on { background: var(--info-bg); border-radius: 8px; padding: 6px 10px; }
+  .summary.on .sub { color: var(--text); }
+  .summary .sub.title { font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   button.btn {
     font: inherit; font-weight: 600; border-radius: 6px; padding: 6px 12px; cursor: pointer;
     border: 1px solid var(--border); background: var(--surface); color: var(--text);
   }
-  button.btn:hover { background: var(--surface-2); }
+  @media (hover: hover) { button.btn:hover { background: var(--surface-2); } }
+  button.btn:active { background: var(--surface-2); }
+  button.btn.primary:active { filter: brightness(.92); }
   button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   button.btn.danger { color: var(--crit); }
   button.btn.small { padding: 3px 8px; font-size: 12px; font-weight: 500; }
   button:disabled { opacity: .55; cursor: progress; }
-  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
   #toast {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+    position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
     padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none;
     max-width: calc(100% - 32px);
   }
   #toast.show { opacity: 1; }
   #toast.error { background: var(--crit); color: #fff; }
   @media (max-width: 480px) {
-    header, main { padding-left: 16px; padding-right: 16px; }
-    .grid { grid-template-columns: 1fr; }
-    .readings { grid-template-columns: repeat(2, 1fr); }
+    :root { --gutter: max(16px, env(safe-area-inset-left), env(safe-area-inset-right)); --reading-min: 88px; }
+    header h1 { font-size: 16px; flex: 1 1 100%; }
+    .grid { gap: 12px; }
+    .card { padding: 12px; }
+  }
+  /* Touch screens (phones, tablets, touch laptops): 44px targets, and 16px form text so iOS does not zoom on focus */
+  @media (pointer: coarse) {
+    button.btn, button.btn.small, .fbtn, .dd-btn, .dd-opt { min-height: 44px; }
+    .fbtn { padding: 8px 14px; }
+    .filter { gap: 8px; }
+    button.btn.small { padding: 6px 12px; font-size: 13px; }
+    .dd-opt { padding: 10px 12px; }
   }
 </style>
 </head>
@@ -125,12 +188,16 @@
   </div>
   <div class="spacer"></div>
   <button class="btn danger" id="reset-all" type="button">Khôi phục tất cả ao</button>
+  <div class="filter" id="filter" role="group" aria-label="Lọc ao">
+    <button class="fbtn" id="filter-all" type="button" aria-pressed="true">Tất cả</button>
+  </div>
 </header>
 <main>
   <div class="note">
     Các điều khiển thay đổi dữ liệu simulator gửi lên. Simulator áp dụng ở lần gửi kế tiếp (mỗi 30 giây), worker
     kiểm tra ao mỗi 30 giây, còn monitor Datadog xét cửa sổ 5 phút, nên cần chờ 1–5 phút để thấy sự cố hoặc cảnh
-    báo. Lệch DO sẽ dời mức DO nền: DO giảm nhanh lúc đầu và đạt gần mức mới sau khoảng 20 phút.
+    báo. DO đổi dần và đạt gần mức mới sau khoảng 20 phút; độ kiềm, TAN, nitrite được đo lại ngay khi bật hoặc tắt
+    một điều kiện.
   </div>
   <div class="grid" id="ponds"></div>
 </main>
@@ -148,21 +215,24 @@
     { key: "pump_power", label: "Quạt", digits: 0 },
     { key: "co2", label: "CO₂", digits: 1 },
     { key: "nh3", label: "NH₃", digits: 3 },
+    // Test-kit readings (entered a few times a day), from /ponds/manual-readings
+    // (short label and unit so the cell does not clip; `manual` holds the full name for the tooltip)
+    { key: "alkalinity", label: "Độ kiềm", digits: 0, manual: "Độ kiềm (mg CaCO₃/L)" },
+    { key: "tan", label: "TAN", digits: 2, manual: "TAN - tổng amoni (mg/L)" },
+    { key: "nitrite", label: "Nitrite", digits: 2, manual: "Nitrite NO₂⁻ (mg/L)" },
   ];
-  const UNITS = { C: "°C", ppt: "ppt", "mg/L": "mg/L", mV: "mV", W: "W", pH: "" };
-  const PRESETS = [
-    { label: "Giảm oxy", scenario: "do", offset: -4, duration: 30 },
-    { label: "Nắng nóng", scenario: "temperature", offset: 4.5, duration: 30 },
-    { label: "pH tăng vọt", scenario: "ph", offset: 0.8, duration: 30 },
-    { label: "Mưa lớn", scenario: "salinity", offset: -7, duration: 60 },
-  ];
-  const DURATIONS = [5, 10, 15, 30, 60, 120];
+  const UNITS = { C: "°C", ppt: "ppt", "mg/L": "mg/L", "mg_CaCO3/L": "mg/L", mV: "mV", W: "W", pH: "" };
   const STATES = { open: "MỞ", investigating: "ĐANG ĐIỀU TRA", resolving: "ĐANG XỬ LÝ", recovered: "ĐÃ HỒI PHỤC" };
   const SEVERITIES = { critical: "nghiêm trọng", warning: "cảnh báo", info: "thông tin" };
 
+  const FILTER_PARAM = "ao";
+
   let catalog = null;
+  const SEVERITY_LABEL = { light: "Nhẹ", medium: "Vừa", severe: "Nặng" };
   let lastPonds = [];
   const cards = new Map();
+  // Ponds picked in the header filter; empty = show all. Kept in the URL (?ao=pond-01,pond-03) so it survives reloads.
+  let selected = new Set((new URLSearchParams(location.search).get(FILTER_PARAM) || "").split(",").filter(Boolean));
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const el = (tag, attrs = {}, children = []) => {
@@ -215,8 +285,6 @@
     }
   }
 
-  const scenarioMeta = (type) => catalog.scenarios.find((s) => s.type === type);
-  const fmtOffset = (v, unit) => `${v > 0 ? "+" : ""}${Number(v).toFixed(unit === "pH" ? 2 : 1)} ${UNITS[unit] ?? unit}`.trim();
 
   function levelFor(metric, value) {
     const t = catalog.thresholds;
@@ -229,9 +297,44 @@
       case "pump_power": return value < t.pump_failed_max_watts ? "crit" : "";
       case "co2": return value > t.co2_warn ? "warn" : "";
       case "nh3": return value > t.nh3_warn ? "warn" : "";
+      case "alkalinity": return value < t.alk_warn_low ? "warn" : "";
+      case "tan": return value > t.tan_warn ? "warn" : "";
+      case "nitrite": return value > t.nitrite_warn ? "warn" : "";
       default: return "";
     }
   }
+
+  // Metric names + units for the "Tăng: … / Giảm: …" lines
+  const METRIC = Object.fromEntries(READINGS.map((r) => [r.key, r.label]));
+  const OFFSET_UNIT = { do: "mg/L", temperature: "°C", ph: "", salinity: "ppt", tan: "mg/L", nitrite: "mg/L", alkalinity: "mg/L" };
+
+  // "DO 1.5 mg/L" with the amount, "NH₃" for a metric that follows from the others or when amounts are off
+  function fmtMetric(c, withAmount) {
+    const name = METRIC[c.metric] || c.metric;
+    if (!withAmount || c.offset == null) return name;
+    const digits = c.metric === "ph" || c.metric === "tan" || c.metric === "nitrite" ? 2 : c.metric === "alkalinity" ? 0 : 1;
+    return `${name} ${Math.abs(c.offset).toFixed(digits)} ${OFFSET_UNIT[c.metric] ?? ""}`.trim();
+  }
+
+  // Two sub-lines: what goes up, what goes down (an empty line is left out)
+  function changeLines(changes, withAmount) {
+    return [["up", "Tăng"], ["down", "Giảm"]].flatMap(([dir, word]) => {
+      const names = changes.filter((c) => c.direction === dir).map((c) => fmtMetric(c, withAmount));
+      return names.length ? [el("span", { class: `sub ${dir}` }, [el("b", { text: `${word}: ` }), names.join(", ")])] : [];
+    });
+  }
+
+  // Close any open condition dropdown when clicking elsewhere or pressing Escape
+  document.addEventListener("click", (ev) => {
+    for (const d of document.querySelectorAll("details.dd[open]")) if (!d.contains(ev.target)) d.open = false;
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    for (const d of document.querySelectorAll("details.dd[open]")) {
+      d.open = false;
+      d.querySelector("summary").focus();
+    }
+  });
 
   function buildCard(pond) {
     const id = pond._id;
@@ -248,56 +351,49 @@
       refs.readings.append(cell);
     }
 
-    refs.pump = el("input", { type: "checkbox", "aria-label": `Nguồn quạt nước ${id}` });
-    refs.pumpText = el("span", { class: "muted" });
-    refs.pump.addEventListener("change", () => {
-      const failed = !refs.pump.checked;
-      act(refs.pump, () => api("POST", `/ponds/${id}/pump/fail?failed=${failed}`),
-        `${id}: đã ${failed ? "tắt" : "bật"} quạt nước`);
+    // Severity applies to the next condition that gets ticked
+    refs.severity = el(
+      "select",
+      { "aria-label": "Mức độ khi bật điều kiện" },
+      catalog.severities.map((sv) => el("option", { value: sv.type, text: SEVERITY_LABEL[sv.type] || sv.type })),
+    );
+    refs.severity.value = "medium";
+    refs.remedies = el("div", { class: "remedies", hidden: "" });
+    refs.remedyKey = "";
+
+    // Conditions: one dropdown, tick any number; each option says what it raises and lowers
+    refs.conds = {};
+    const options = catalog.conditions.map((c) => {
+      const box = el("input", { type: "checkbox", value: c.type });
+      box.addEventListener("change", () => {
+        const on = box.checked;
+        // Contradicting conditions (rain vs sun...) cannot both be on: the server ends them, show it at once
+        if (on) for (const other of c.conflicts || []) if (refs.conds[other]) refs.conds[other].box.checked = false;
+        act(box, () => api(on ? "POST" : "DELETE", `/ponds/${id}/conditions/${c.type}${on ? `?severity=${refs.severity.value}` : ""}`),
+          `${pond.name || id}: ${on ? "bật" : "tắt"} ${c.label}`);
+      });
+      refs.conds[c.type] = { box, label: c.label };
+      return el("label", { class: "dd-opt", title: c.description }, [
+        box,
+        el("span", { class: "dd-text" }, [el("span", { class: "name", text: c.label }), ...changeLines(c.changes, false)]),
+      ]);
+    });
+    refs.ddValue = el("span", { class: "dd-value" });
+    refs.dropdown = el("details", { class: "dd" }, [
+      el("summary", { class: "dd-btn", "aria-label": `Điều kiện ${pond.name || id}` }, [refs.ddValue]),
+      el("div", { class: "dd-menu", role: "group", "aria-label": "Điều kiện" }, options),
+    ]);
+    refs.dropdown.addEventListener("toggle", () => {
+      if (!refs.dropdown.open) return;
+      for (const d of document.querySelectorAll("details.dd[open]")) if (d !== refs.dropdown) d.open = false;
+      // On a phone the menu can open below the fold: scroll just enough to show it
+      refs.dropdown.querySelector(".dd-menu").scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
 
-    refs.chips = el("div", { class: "chips" });
-
-    // Form: pick scenario + offset + duration
-    const select = el("select", { "aria-label": "Kịch bản" });
-    for (const s of catalog.scenarios) select.append(el("option", { value: s.type, text: s.label }));
-    const range = el("input", { type: "range", "aria-label": "Độ lệch" });
-    const valueLabel = el("span", { class: "offset-val" });
-    const duration = el("select", { "aria-label": "Thời gian" });
-    for (const d of DURATIONS) duration.append(el("option", { value: d, text: `${d} phút` }));
-    duration.value = "15";
-
-    const syncRange = (resetValue) => {
-      const meta = scenarioMeta(select.value);
-      range.min = meta.min_offset;
-      range.max = meta.max_offset;
-      range.step = meta.unit === "pH" ? 0.05 : 0.1;
-      if (resetValue) range.value = meta.min_offset < 0 ? meta.min_offset / 2 : meta.max_offset / 2;
-      valueLabel.textContent = fmtOffset(range.value, meta.unit);
-    };
-    select.addEventListener("change", () => syncRange(true));
-    range.addEventListener("input", () => syncRange(false));
-    syncRange(true);
-
-    const apply = el("button", { class: "btn primary", type: "button", text: "Áp dụng" });
-    apply.addEventListener("click", () => {
-      const meta = scenarioMeta(select.value);
-      act(apply, () => api("POST", `/ponds/${id}/scenarios`, {
-        scenario: select.value, offset: Number(range.value), duration_min: Number(duration.value),
-      }), `${id}: ${meta.label} ${fmtOffset(range.value, meta.unit)} trong ${duration.value} phút`);
-    });
-
-    const presets = el("div", { class: "presets" }, PRESETS.map((p) => {
-      const b = el("button", { class: "btn small", type: "button", text: p.label });
-      b.addEventListener("click", () => act(b, () => api("POST", `/ponds/${id}/scenarios`, {
-        scenario: p.scenario, offset: p.offset, duration_min: p.duration,
-      }), `${id}: ${p.label} trong ${p.duration} phút`));
-      return b;
-    }));
-
-    const clear = el("button", { class: "btn small danger", type: "button", text: "Xoá kịch bản" });
-    clear.addEventListener("click", () => act(clear, () => api("DELETE", `/ponds/${id}/scenarios`),
-      `${id}: đã xoá các kịch bản`));
+    refs.clear = el("button", { class: "btn small", type: "button", text: "Bỏ chọn tất cả", hidden: "" });
+    refs.clear.addEventListener("click", () => act(refs.clear, () => api("DELETE", `/ponds/${id}/conditions`),
+      `${pond.name || id}: đã tắt các điều kiện`));
+    refs.summary = el("div", { class: "summary", "aria-live": "polite" });
 
     const card = el("section", { class: "card", "aria-label": id }, [
       el("div", { class: "card-head" }, [
@@ -305,22 +401,26 @@
       ]),
       refs.incident,
       refs.readings,
-      el("div", { class: "row" }, [
-        el("label", { class: "switch" }, [refs.pump, el("span")]),
-        el("span", { class: "label", text: "Nguồn quạt nước" }),
-        refs.pumpText,
+      el("div", { class: "conds-head" }, [
+        el("span", { class: "label", text: "Điều kiện" }),
+        el("span", { class: "muted", text: "chọn nhiều được · bật đến khi bỏ chọn" }),
+        refs.clear,
       ]),
-      el("fieldset", {}, [
-        el("legend", { text: "Kịch bản môi trường" }),
-        el("div", { class: "row" }, [select, duration]),
-        el("div", { class: "row" }, [range, valueLabel, apply]),
-        presets,
-      ]),
-      el("div", { class: "row" }, [el("span", { class: "label", text: "Đang chạy" }), refs.chips, clear]),
+      el("div", { class: "sev-row" }, [el("span", { class: "muted", text: "Mức độ khi bật" }), refs.severity]),
+      refs.dropdown,
+      refs.summary,
+      refs.remedies,
     ]);
     refs.card = card;
-    refs.clear = clear;
     return refs;
+  }
+
+  // "Tảo tàn · Nặng · đang tăng 40%": how far a condition's effect has built up (or, for one-off actions, faded)
+  function progressText(a) {
+    const spec = catalog.conditions.find((c) => c.type === a.type) || {};
+    const pct = Math.round(a.intensity * 100);
+    const state = spec.duration_min ? `còn tác dụng ${pct}%` : pct < 100 ? `đang tăng ${pct}%` : "đã đạt mức tối đa";
+    return `${spec.label || a.type} · ${SEVERITY_LABEL[a.severity] || a.severity} · ${state}`;
   }
 
   function minutesLeft(until) {
@@ -329,36 +429,68 @@
   }
 
   function updateCard(refs, pond, readings, incident) {
-    const failed = Boolean(pond.pump && pond.pump.failed);
-    if (document.activeElement !== refs.pump) refs.pump.checked = !failed;
-    refs.pumpText.textContent = failed ? "Tắt (giả lập hỏng)" : "Bật";
-
+    const changing = new Set((pond.changes || []).map((c) => c.metric));
     for (const r of READINGS) {
       const { cell, v } = refs.cells[r.key];
+      const mark = changing.has(r.key) ? " changing" : "";
       const reading = readings[r.key];
       if (!reading) {
         v.textContent = "–";
-        cell.className = "reading";
+        cell.className = "reading" + mark;
         continue;
       }
       v.textContent = Number(reading.value).toFixed(r.digits);
       const unit = UNITS[reading.unit] ?? reading.unit ?? "";
       if (unit) v.append(el("span", { class: "u", text: unit }));
       const level = levelFor(r.key, reading.value);
-      cell.className = "reading" + (level ? " " + level : "");
+      cell.className = "reading" + (level ? " " + level : "") + mark;
+      if (r.manual) {
+        const ts = reading.timestamp.endsWith("Z") ? reading.timestamp : reading.timestamp + "Z";
+        cell.title = `${r.manual}, nhập tay lúc ${new Date(ts).toLocaleString("vi-VN")}`;
+      }
     }
 
-    const active = Object.entries(pond.scenarios || {}).filter(([, s]) => s && minutesLeft(s.until) > 0);
-    refs.chips.replaceChildren(...(active.length ? active.map(([type, s]) => {
-      const meta = scenarioMeta(type) || { label: type, unit: "" };
-      const x = el("button", { type: "button", "aria-label": `Xoá ${meta.label}`, text: "×" });
-      x.addEventListener("click", () => act(x, () => api("DELETE", `/ponds/${pond._id}/scenarios/${type}`),
-        `${pond._id}: đã xoá ${meta.label}`));
-      return el("span", { class: "chip" }, [
-        `${meta.label} ${fmtOffset(s.offset, meta.unit)} · còn ${minutesLeft(s.until)} phút`, x,
-      ]);
-    }) : [el("span", { class: "muted", text: "Không có" })]));
-    refs.clear.hidden = active.length === 0;
+    const running = Object.entries(pond.conditions || {}).filter(([, s]) => s);
+    const runningTypes = new Set(running.map(([type]) => type));
+    const picked = [];
+    for (const [type, { box, label }] of Object.entries(refs.conds)) {
+      const on = runningTypes.has(type);
+      if (!box.disabled) box.checked = on; // leave a box alone while its request is in flight
+      if (on) picked.push(label);
+    }
+    refs.ddValue.textContent = picked.length ? picked.join(", ") : "Chọn điều kiện…";
+    refs.ddValue.classList.toggle("placeholder", picked.length === 0);
+    refs.clear.hidden = running.length === 0;
+
+    const hasChanges = Boolean(pond.changes && pond.changes.length);
+    refs.summary.replaceChildren(...(hasChanges
+      ? [
+          el("span", { class: "sub title", text: "Chỉ số đang thay đổi" }),
+          ...changeLines(pond.changes, true),
+          ...(pond.active || []).map((a) => el("span", { class: "sub", text: progressText(a) })),
+        ]
+      : [el("span", { class: "muted", text: "Chưa chọn điều kiện nào: các chỉ số ở mức bình thường." })]));
+    refs.summary.classList.toggle("on", hasChanges);
+
+    const remedyKey = (pond.remedies || []).join(",");
+    if (remedyKey !== refs.remedyKey) {
+      refs.remedyKey = remedyKey;
+      refs.remedies.hidden = !remedyKey;
+      refs.remedies.replaceChildren(
+        el("span", { class: "muted", text: "Xử lý:" }),
+        ...(pond.remedies || []).map((type) => {
+          const info = catalog.remedies.find((r) => r.type === type) || { label: type };
+          const btn = el("button", { class: "btn small", type: "button", text: info.label, title: info.description });
+          btn.addEventListener("click", () => act(btn, () => api("POST", `/ponds/${pond._id}/remedies/${type}`),
+            `${pond.name || pond._id}: ${info.label}`));
+          return btn;
+        }),
+      );
+    }
+
+    // Scenarios and the aerator flag set through the API directly (scripts, demo) still show in the status pill
+    const failed = Boolean(pond.pump && pond.pump.failed);
+    const legacy = Object.values(pond.scenarios || {}).some((s) => s && minutesLeft(s.until) > 0);
 
     if (incident) {
       refs.incident.hidden = false;
@@ -369,18 +501,53 @@
     }
 
     let pill = ["ok", "Bình thường"];
-    if (active.length || failed) pill = ["warn", failed ? "Quạt tắt" : "Đang chạy kịch bản"];
+    if (running.length) pill = ["warn", `${running.length} điều kiện`];
+    else if (failed || legacy) pill = ["warn", failed ? "Quạt tắt" : "Đang chạy kịch bản"];
     if (incident) pill = [incident.severity === "critical" ? "crit" : "warn", `Sự cố ${SEVERITIES[incident.severity] || incident.severity}`];
     refs.pill.className = "pill " + pill[0];
     refs.pill.textContent = pill[1];
     refs.card.classList.toggle("alert", Boolean(incident && incident.severity === "critical"));
+    refs.filterDot.className = "dot " + pill[0];
+    refs.filterBtn.title = `${pond.name || pond._id}: ${pill[1]}`;
   }
+
+  function buildFilterButton(pond, refs) {
+    const id = pond._id;
+    refs.filterDot = el("span", { class: "dot", "aria-hidden": "true" });
+    refs.filterBtn = el("button", { class: "fbtn", type: "button", "aria-pressed": "false" }, [refs.filterDot, pond.name || id]);
+    refs.filterBtn.addEventListener("click", () => {
+      if (selected.has(id)) selected.delete(id);
+      else selected.add(id);
+      applyFilter();
+    });
+    $("#filter").append(refs.filterBtn);
+  }
+
+  function applyFilter() {
+    selected = new Set([...selected].filter((id) => cards.has(id))); // drop unknown ids from an old link
+    const all = selected.size === 0;
+    $("#filter-all").setAttribute("aria-pressed", String(all));
+    for (const [id, refs] of cards) {
+      refs.card.hidden = !all && !selected.has(id);
+      refs.filterBtn.setAttribute("aria-pressed", String(selected.has(id)));
+    }
+    const url = new URL(location.href);
+    if (all) url.searchParams.delete(FILTER_PARAM);
+    else url.searchParams.set(FILTER_PARAM, [...selected].sort().join(","));
+    history.replaceState(null, "", url);
+  }
+
+  $("#filter-all").addEventListener("click", () => {
+    selected.clear();
+    applyFilter();
+  });
 
   async function refresh() {
     try {
-      const [ponds, readings, open, investigating, resolving] = await Promise.all([
+      const [ponds, readings, manual, open, investigating, resolving] = await Promise.all([
         api("GET", "/ponds"),
         api("GET", "/ponds/readings"),
+        api("GET", "/ponds/manual-readings"),
         api("GET", "/incidents?state=open"),
         api("GET", "/incidents?state=investigating"),
         api("GET", "/incidents?state=resolving"),
@@ -391,14 +558,19 @@
       const grid = $("#ponds");
       ponds.sort((a, b) => a._id.localeCompare(b._id));
       lastPonds = ponds;
+      let added = false;
       for (const pond of ponds) {
         if (!cards.has(pond._id)) {
           const refs = buildCard(pond);
+          buildFilterButton(pond, refs);
           cards.set(pond._id, refs);
           grid.append(refs.card);
+          added = true;
         }
-        updateCard(cards.get(pond._id), pond, readings[pond._id] || {}, incidents[pond._id]);
+        const pondReadings = { ...readings[pond._id], ...manual[pond._id] };
+        updateCard(cards.get(pond._id), pond, pondReadings, incidents[pond._id]);
       }
+      if (added) applyFilter();
       $("#health-dot").className = "dot ok";
       $("#health-text").textContent = `${ponds.length} ao`;
       $("#updated").textContent = `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN")}`;
@@ -410,9 +582,10 @@
 
   $("#reset-all").addEventListener("click", (ev) => {
     act(ev.currentTarget, () => Promise.all(lastPonds.flatMap((p) => [
+      api("DELETE", `/ponds/${p._id}/conditions`),
       api("DELETE", `/ponds/${p._id}/scenarios`),
       p.pump && p.pump.failed ? api("POST", `/ponds/${p._id}/pump/fail?failed=false`) : null,
-    ].filter(Boolean))), "Đã khôi phục tất cả ao: bật quạt, xoá kịch bản");
+    ].filter(Boolean))), "Đã khôi phục tất cả ao: tắt mọi điều kiện, bật quạt");
   });
 
   async function start() {
