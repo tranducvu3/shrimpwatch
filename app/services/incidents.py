@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from app.core.clock import utcnow
 from app.core.config import settings
+from app.core.datadog_links import incident_links
 from app.core.log import get_logger
 from app.core.telemetry import distribution, event, gauge, increment, set_span_tags
 from app.db.repositories import events as events_repo
@@ -279,6 +280,10 @@ def timeline(incident_id: str) -> dict:
     if row is None:
         raise IncidentNotFound(incident_id)
     set_span_tags(pond_id=row.get("pond_id"))
+    now = utcnow()
+    row["links"] = incident_links(
+        incident_id, row["pond_id"], row.get("created_at") or now, row.get("recovered_at") or now
+    )
     row["suggested_remedies"] = [
         {"remedy": r.value, "label": REMEDIES[r].label, "description": REMEDIES[r].description}
         for r in suggested_remedies(row.get("root_cause"))

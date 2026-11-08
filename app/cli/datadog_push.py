@@ -62,6 +62,8 @@ def _push(kind: str, path: Path):
         f"push {kind}",
         extra={"file": path.name, "id": existing, "status": resp.status_code, "body": resp.text[:500]},
     )
+    if kind == "dashboard" and resp.status_code < 400:
+        logger.info("dashboard pushed: set DD_DASHBOARD_ID in .env", extra={"dashboard_id": resp.json().get("id")})
     return resp.status_code, resp.json() if resp.status_code < 400 else resp.text
 
 

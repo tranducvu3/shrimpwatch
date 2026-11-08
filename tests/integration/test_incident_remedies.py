@@ -53,6 +53,8 @@ def test_timeline_shows_the_remedy_and_suggestions(client):
     events = [e["event"] for e in body["timeline"]]
     assert "remedy_applied" in events and events.count("pump_state_change") >= 2  # failed, then repaired
     assert [s["remedy"] for s in body["suggested_remedies"]] == ["repair_aerator"]
+    assert set(body["links"]) == {"dashboard", "logs", "traces", "events"}
+    assert f"%40pond%3A{POND}" in body["links"]["logs"]
 
 
 def test_remedy_on_a_recovered_incident_is_rejected(client):
