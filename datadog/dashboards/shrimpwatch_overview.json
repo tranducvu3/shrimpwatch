@@ -1121,7 +1121,7 @@
             "id": 702,
             "definition": {
               "type": "timeseries",
-              "title": "Thời gian một vòng kiểm tra của worker (giây) - giới hạn 30",
+              "title": "Thời gian một vòng kiểm tra của worker (giây) - cảnh báo trên 25, chạy mỗi 30",
               "title_size": "16",
               "title_align": "left",
               "legend_layout": "auto",

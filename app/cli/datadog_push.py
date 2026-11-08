@@ -44,7 +44,9 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
             resp.raise_for_status()
             matches = [m["id"] for m in resp.json() if m.get("query") == payload.get("query")]
     elif kind == "slo":
-        resp = httpx.get(f"{_base_url()}/slo", headers=_headers(), params={"query": payload["name"]}, timeout=30)
+        # All ShrimpWatch SLOs by tag, then an exact name match (name search is fuzzy with brackets and diacritics)
+        params = {"tags_query": "service:shrimpwatch", "limit": 1000}
+        resp = httpx.get(f"{_base_url()}/slo", headers=_headers(), params=params, timeout=30)
         resp.raise_for_status()
         matches = [s["id"] for s in resp.json().get("data") or [] if s.get("name") == payload["name"]]
     else:

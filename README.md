@@ -370,7 +370,7 @@ The worker also opens a warning incident, with no Datadog monitor, when the test
 
 | Monitor / SLO | Condition | Why |
 |---|---|---|
-| Sensor data stopped | no `shrimpwatch.ingest.records` for 5 minutes (also alerts on no data) | Without data no incident can open |
+| Sensor data stopped | no `shrimpwatch.ingest.records` for 5 minutes (`default_zero`, so silence counts as 0; no-data alert as a backup) | Without data no incident can open |
 | API error rate | APM `trace.fastapi.request.errors / hits` > 5% over 10 minutes (warning > 2%) | Lost sensor batches or operator actions |
 | Worker slow or stopped | `shrimpwatch.worker.cycle_seconds` (sent every cycle) > 25 s, or no data for 5 minutes | Incidents would open and close late, or not at all |
 | SLO: critical incidents detected within 2 minutes | `shrimpwatch.incident.detected{severity:critical,within_slo:true}` / all critical, 99% over 7 days ([datadog/slos/](datadog/slos/)) | The promise behind fast aerator detection |
