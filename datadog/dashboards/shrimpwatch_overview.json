@@ -374,7 +374,7 @@
               "title": "DO (mg/L) - cảnh báo dưới 4, nguy hiểm dưới 3",
               "title_size": "16",
               "title_align": "left",
-              "events": [{"q": "tags:service:shrimpwatch incident_event:*", "tags_execution": "and"}],
+              "events": [{"q": "tags:service:shrimpwatch incident_event:* $ao", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
@@ -405,7 +405,7 @@
               "title": "Công suất quạt nước (W) - dưới 50 W là quạt hỏng",
               "title_size": "16",
               "title_align": "left",
-              "events": [{"q": "tags:service:shrimpwatch incident_event:*", "tags_execution": "and"}],
+              "events": [{"q": "tags:service:shrimpwatch incident_event:* $ao", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
