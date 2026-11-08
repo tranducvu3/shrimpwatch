@@ -23,7 +23,7 @@
 | Repository | https://github.com/tranducvu3/shrimpwatch (public) |
 | Demo video | Pending: _link to be added before 23:59 31/10/2026_ |
 | Presentation slides | Pending: _link to be added before 23:59 31/10/2026_ |
-| Demonstrated incident | Pond 1 aerator fails → DO drops → a **CRITICAL `pump_failure`** incident opens → Investigate (Vector Search suggests past incidents) → Resolve → the worker closes the incident by itself once readings are stable. Secondary scenario: heavy rain pushes pond 3 salinity below 10 ppt. Details: [Demo scenario](#incident-demo-scenario-incident-lifecycle), [31/10 verification](#0-end-to-end-verification-on-31102026) |
+| Demonstrated incident | Pond 1 aerator fails → DO drops → a **CRITICAL `pump_failure`** incident opens → Investigate → Resolve → the worker closes the incident by itself once readings are stable. Secondary scenario: heavy rain pushes pond 3 salinity below 10 ppt. Details: [Demo scenario](#incident-demo-scenario-incident-lifecycle), [31/10 verification](#0-end-to-end-verification-on-31102026) |
 | Reuse & AI declaration | [Section 11](#declaration-of-reused-components-datasets--ai-tools) |
 
 ---
@@ -141,7 +141,7 @@ app/
   api/         FastAPI: main.py, schemas.py (request bodies), routers/ per resource
   worker/      loop.py (30s cycle) + pond_check.py (readings → rules → service)
   simulator/   pond_model.py (pond model), runner.py, api_client.py (only calls the HTTP API)
-  cli/         init_db, seed_incident_history, demo_incident, datadog_push  →  python -m app.cli.<name>
+  cli/         init_db, demo_incident, datadog_push  →  python -m app.cli.<name>
 ```
 
 ```
@@ -164,8 +164,8 @@ Database: **`shrimpwatch`** — 5 collections.
 |---|---|---|
 | `metrics` | **Time Series** | `timeField: timestamp`, `metaField: metadata`, `granularity: seconds`, `expireAfterSeconds: 604800` (7 days) |
 | `metrics_hourly` | Document | Hourly rollup: `min`/`max`/`avg`/`count` for each `(pond_id, metric, hour)`, 1-year TTL |
-| `incidents` | Document | Incidents: `severity`, `state`, `evidence`, `actions[]`, `root_cause`, `fingerprint` (6-dimensional vector, Atlas Vector Search index `incident_fingerprint`), `similar_incidents[]` |
-| `events` | Document | Event log: `incident_open`, `incident_escalated`, `incident_action`, `incident_recovered`, `incident_similar_matched`, `incident_imported`, `pump_state_change`, `scenario_start`, `scenario_clear`. Every incident event has `incident_id` at the top level |
+| `incidents` | Document | Incidents: `severity`, `state`, `evidence`, `actions[]`, `root_cause` |
+| `events` | Document | Event log: `incident_open`, `incident_escalated`, `incident_action`, `incident_recovered`, `pump_state_change`, `scenario_start`, `scenario_clear`. Every incident event has `incident_id` at the top level |
 | `ponds` | Document | Catalog of the 6 ponds, aerator status and the active simulation scenarios (`scenarios`) |
 
 **Structure of one telemetry record (Time Series form):**
@@ -200,29 +200,6 @@ The system is **write-light, read-heavy**: every 30 seconds there is only 1 `ins
 | **Incident timeline** `GET /incidents/{id}/timeline` | 1 aggregate: `$lookup` of the incident's events + the pond's aerator events before/during the incident, sorted with `$sortArray` — serves the *Investigate* step. |
 
 Run [scripts/step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) in mongosh to see which index is used, how many buckets were read and the average number of records per bucket.
-
-### Vector Search: Finding Similar Past Incidents
-
-When a technician moves an incident to **Investigating**, the system finds the **recovered** incidents whose water readings evolved most similarly, and shows how they were handled last time and how long it took.
-
-- **Fingerprint without an AI model:** each incident has a 6-dimensional vector normalized to `[0, 1]` from its `evidence`: DO drop rate, aerator power, minimum DO, ORP, NH₃, 24h pH swing ([incident_fingerprint.py](app/domain/incident_fingerprint.py)). No API key and no extra library needed.
-- **Atlas Vector Search index** `incident_fingerprint`: `similarity: euclidean`, `filter` on `state` → `$vectorSearch` only searches `recovered` incidents. Score = `1 / (1 + d²)`.
-- **Fallback:** a plain mongod (CI, local Docker Compose) has no `$vectorSearch` → the same score formula is computed with `$reduce` in an aggregation, limited to the 500 most recent incidents. The result states `mode: vector_search | aggregation_fallback`.
-- **Recording:** the top 3 suggestions are stored in `incidents.similar_incidents` and in an `incident_similar_matched` event (shown in the timeline).
-- **Datadog:** metric `shrimpwatch.incident.similarity_score` (tags `pond`, `mode`, `root_cause`), `shrimpwatch.incident.similarity_search`, span tags `similarity_mode` / `similarity_top_score`; shown in the last dashboard group (*Lịch sử sự cố và gợi ý xử lý*). The score only exists after a technician moves an incident to Investigating.
-
-| Open incident: aerator failure on pond-05 | Top score per history group |
-|---|---|
-| Aerator failure (`pump_failure`) | **0.998** |
-| Night-time power outage (`pump_failure`) | 0.972 |
-| Algae crash / excess NH₃ / heavy rain | 0.45 – 0.49 |
-
-```bash
-python -m app.cli.seed_incident_history          # load 15 synthetic historical incidents (idempotent)
-curl "localhost:8000/incidents/<id>/similar?k=3"   # top 3 similar incidents
-```
-
-> The index can only be created on MongoDB Atlas (M0 or higher) or the `mongodb/mongodb-atlas-local` image; `init_db` skips it on a plain mongod. A new index needs about 1 minute to become ready, and the API uses the fallback in the meantime.
 
 ---
 
@@ -262,7 +239,6 @@ docker compose ps
 
 ```powershell
 docker compose exec -T api python -m app.cli.init_db
-docker compose exec -T api python -m app.cli.seed_incident_history   # incident history for Vector Search
 ```
 
 This creates the **Time Series Collection + TTL index** and seeds the 6 ponds. When the `simulator` container starts, it backfills the missing historical data (up to **6 hours**, counted from the latest record) so the dashboard and monitors have baseline data to analyze right away; a restart does not overwrite existing data.
@@ -357,7 +333,7 @@ The simulator applies changes on its next send (30 seconds). **Restore all ponds
 
 | Screen | Path |
 |---|---|
-| Dashboard | Datadog → *Dashboards* → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng** (the dashboard name is in Vietnamese). Sections, top to bottom: **Tổng quan** (ponds with an open incident, data feed per minute, which pond had an incident in the last 24 hours); **Tình trạng từng ao** (one row per pond with the open incident flag and the latest value of all 12 metrics, test-kit metrics from the last 24 hours, colored green/amber/red by the thresholds in `app/core/config.py`, plus the `shrimpwatch` monitors currently in Alert or Warn); **Oxy và quạt nước** (DO, aerator power, DO change per 5 minutes as the "DO giảm nhanh" monitor sees it, ORP); **Môi trường nước** (temperature, pH, salinity, 24h pH swing); **Khí độc và chất thải** (NH₃, CO₂, TAN, nitrite, alkalinity); **Lịch sử sự cố và gợi ý xử lý** (incidents of the last 7 days as a pond-by-cause table with Vietnamese column names; a log of incidents opening and recovering; the similarity score of the closest old incident per pond and cause). Each pond keeps the same color in every chart, threshold lines match the monitor severity, sensor charts follow the time picker and test-kit charts show 24 hours |
+| Dashboard | Datadog → *Dashboards* → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng** (the dashboard name is in Vietnamese). Sections, top to bottom: **Tổng quan** (ponds with an open incident, data feed per minute, which pond had an incident in the last 24 hours); **Tình trạng từng ao** (one row per pond with the open incident flag and the latest value of all 12 metrics, test-kit metrics from the last 24 hours, colored green/amber/red by the thresholds in `app/core/config.py`, plus the `shrimpwatch` monitors currently in Alert or Warn); **Oxy và quạt nước** (DO, aerator power, DO change per 5 minutes as the "DO giảm nhanh" monitor sees it, ORP); **Môi trường nước** (temperature, pH, salinity, 24h pH swing); **Khí độc và chất thải** (NH₃, CO₂, TAN, nitrite, alkalinity); **Lịch sử sự cố** (incidents of the last 7 days as a pond-by-cause table with Vietnamese column names; a log of incidents opening and recovering). Each pond keeps the same color in every chart, threshold lines match the monitor severity, sensor charts follow the time picker and test-kit charts show 24 hours |
 | Monitor | Datadog → *Monitors* → *Manage Monitors* → filter by tag `shrimpwatch` |
 | Logs | Datadog → *Logs* → query `service:shrimpwatch` |
 | Traces | Datadog → *APM* → *Traces* → service `shrimpwatch` |
@@ -394,7 +370,7 @@ The core feature, showing MongoDB and Datadog working together.
 | Step | State | Action |
 |---|---|---|
 | 1. **Detect** | `open` | The worker detects an aerator failure (`pump_power` 5-minute average < 50W) → opens a **CRITICAL** incident, `root_cause = pump_failure` |
-| 2. **Investigate** | `investigating` | The technician checks the aerator's power supply and records an action note. **Vector Search** suggests the 3 most similar past incidents with how they were handled and how long recovery took |
+| 2. **Investigate** | `investigating` | The technician checks the aerator's power supply and records an action note |
 | 3. **Resolve** | `resolving` | Replace the parts, restore aerator power. The worker keeps tracking the incident: if the fault persists, the worker updates this same incident (no duplicate incident is opened) |
 | 4. **Recover** | `recovered` | The aerator runs again and DO is stable (5 minutes) → **the worker closes** the incident by itself from `open`/`investigating`/`resolving`. Every transition writes an event to `events` |
 
@@ -517,7 +493,6 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
 | Event-driven processing | Every incident state change is written to the `events` collection (keyed by `incident_id`) and rebuilt into a timeline via `GET /incidents/{id}/timeline` | [events.py](app/db/repositories/events.py) · [pipelines.py](app/db/pipelines.py) (`incident_timeline_pipeline`) |
-| **Atlas Vector Search** | `$vectorSearch` over each incident's water quality fingerprint → suggests handling steps from past incidents in the Investigate step (with an aggregation fallback) | [incident_fingerprint.py](app/domain/incident_fingerprint.py) · [pipelines.py](app/db/pipelines.py) (`similar_incidents_pipeline`) |
 | Change Streams / extensions | The data structure is ready for Change Streams integration for real-time notifications | [app/db/](app/db) |
 
 ### 6.2. Datadog — Observability & Alerting
@@ -552,7 +527,7 @@ pytest tests/unit              # unit tests only, no MongoDB needed
 - `tests/unit/`: water chemistry formulas, incident detection rules, incident lifecycle, simulator model, pipeline structure.
 - `tests/integration/`: run against a real MongoDB through the API and the worker.
 
-The integration tests cover: health check, collection seeding, Time Series + TTL configuration, sensor data ingestion, manual alkalinity/TAN/nitrite entry, the `$setWindowFields` pipeline, the pH swing pipeline, the CO₂ and NH₃ derivation formulas, DO/ORP dropping when an aerator fails, opening an incident on aerator failure and the 4-state lifecycle (including a `resolving` incident being closed by the worker), Vector Search and the control panel — **106 tests PASSED**, coverage 78.8%.
+The integration tests cover: health check, collection seeding, Time Series + TTL configuration, sensor data ingestion, manual alkalinity/TAN/nitrite entry, the `$setWindowFields` pipeline, the pH swing pipeline, the CO₂ and NH₃ derivation formulas, DO/ORP dropping when an aerator fails, opening an incident on aerator failure and the 4-state lifecycle (including a `resolving` incident being closed by the worker) and the control panel — **106 tests PASSED**, coverage 78.8%.
 
 > **Important:** the `setup_db` fixture calls `init_collections(force=True)` → it **deletes every collection** in the connected database. Do not run it while `.env` points at a MongoDB Atlas database that holds the reporting data.
 
@@ -577,7 +552,7 @@ Used as-is under each project's license, with no changes to their source code: F
 
 ### Data
 
-- **No real data or external datasets are used.** All sensor readings are generated by the simulator ([pond_model.py](app/simulator/pond_model.py)); the incident history used for Vector Search is synthetic data marked `notes.synthetic = true` ([seed_incident_history.py](app/cli/seed_incident_history.py)).
+- **No real data or external datasets are used.** All sensor readings are generated by the simulator ([pond_model.py](app/simulator/pond_model.py)).
 - The free NH₃ formula follows Emerson et al. (1975), *Aqueous ammonia equilibrium calculations*; CO₂ is derived from pH and alkalinity using the carbonate equilibrium. Operating thresholds (DO, pH, salinity, temperature) follow general recommendations for whiteleg shrimp farming.
 
 ### AI Tools
@@ -588,7 +563,7 @@ Used as-is under each project's license, with no changes to their source code: F
 | **GitHub Copilot code review** | Pull request review following [.github/copilot-instructions.md](.github/copilot-instructions.md) |
 | **DeepSeek** (GitHub Action) | Automated review on pull requests |
 
-The application **does not call any AI model at runtime**: the Vector Search fingerprint is a 6-dimensional vector computed by a formula from `evidence`. The team has read, checked and understood all AI-suggested code.
+The application **does not call any AI model at runtime**. The team has read, checked and understood all AI-suggested code.
 
 ---
 
