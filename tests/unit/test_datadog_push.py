@@ -139,6 +139,18 @@ def test_main_fails_when_the_configured_webhook_cannot_be_pushed(monkeypatch):
     monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
     monkeypatch.setattr(datadog_push, "_push_telegram_webhook", lambda hook: 403)
     pushed = []
-    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: pushed.append(telegram))
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: pushed.append(telegram) or (200, {}))
     assert datadog_push.main() == 1
     assert pushed and not any(pushed)  # everything else still pushed, without the handle
+
+
+def test_main_fails_when_datadog_rejects_a_file(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
+    monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(
+        datadog_push, "_push", lambda kind, path, telegram=False: (400 if path.name == "do_low.json" else 200, {})
+    )
+    assert datadog_push.main() == 1
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: (200, {}))
+    assert datadog_push.main() == 0

@@ -125,11 +125,16 @@ def main():
         logger.info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: no Telegram farmer alert")
     elif not telegram:
         logger.error("Telegram webhook push failed: monitors are pushed without the farmer alert handle")
+    failed = []
     for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
-            _push(kind, p, telegram)
-    # Telegram configured but not working is a failed push, even though everything else went through
-    return 1 if webhook is not None and not telegram else 0
+            status, _ = _push(kind, p, telegram)
+            if status >= 400:
+                failed.append(p.name)
+    if failed:
+        logger.error("some Datadog files were rejected", extra={"files": failed})
+    # Keep pushing the rest, but a rejected file (or Telegram configured but not working) is a failed run
+    return 1 if failed or (webhook is not None and not telegram) else 0
 
 
 if __name__ == "__main__":
