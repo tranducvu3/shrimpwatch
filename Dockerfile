@@ -16,4 +16,5 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 # Runs the API by default; compose overrides the command for the simulator and worker
-CMD ["ddtrace-run", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Graceful-shutdown timeout: open live streams (/stream/incidents) would otherwise hold a stop or restart forever
+CMD ["ddtrace-run", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "3"]

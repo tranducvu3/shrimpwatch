@@ -47,9 +47,11 @@ services:
     build: .
     container_name: shrimpwatch-api
     restart: unless-stopped
+    # An open live stream (/stream/incidents) never finishes by itself: without the timeout a reload or restart
+    # waits for every control panel tab to close
     command: >
       ddtrace-run uvicorn app.api.main:app
-      --host 0.0.0.0 --port 8000 --reload
+      --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 3
     depends_on:
       mongodb:
         condition: service_healthy
