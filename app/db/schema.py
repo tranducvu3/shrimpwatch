@@ -6,15 +6,12 @@ from typing import Any
 
 from pymongo.database import Database
 from pymongo.errors import OperationFailure
-from pymongo.operations import SearchIndexModel
 
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
 from app.db.mongo import get_db
 from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS
-from app.db.pipelines import INCIDENT_VECTOR_INDEX
-from app.domain.incident_fingerprint import DIMENSIONS
 from app.domain.ponds import pond_ids
 
 logger = get_logger("db.schema")
@@ -44,19 +41,10 @@ _EVENT_ROOT_CAUSE_FIELDS = ("root_cause", "from_root_cause", "to_root_cause")
 
 
 def migrate_root_causes(db: Database) -> int:
-    """Rename old root causes in incidents (also inside their similar_incidents) and events. Returns documents changed."""
+    """Rename old root causes in incidents and events. Returns documents changed."""
     changed = 0
     for old, new in LEGACY_ROOT_CAUSES.items():
         changed += db[INCIDENTS].update_many({"root_cause": old}, {"$set": {"root_cause": new}}).modified_count
-        changed += (
-            db[INCIDENTS]
-            .update_many(
-                {"similar_incidents.root_cause": old},
-                {"$set": {"similar_incidents.$[m].root_cause": new}},
-                array_filters=[{"m.root_cause": old}],
-            )
-            .modified_count
-        )
         for field in _EVENT_ROOT_CAUSE_FIELDS:
             changed += (
                 db[EVENTS].update_many({f"details.{field}": old}, {"$set": {f"details.{field}": new}}).modified_count
@@ -125,34 +113,21 @@ def _init_incidents(db: Database, force: bool) -> None:
     incidents.create_index([("created_at", -1)])
 
 
-def incident_vector_index_definition() -> dict[str, Any]:
-    return {
-        "fields": [
-            {"type": "vector", "path": "fingerprint", "numDimensions": DIMENSIONS, "similarity": "euclidean"},
-            {"type": "filter", "path": "state"},
-        ]
-    }
+# The similar-incident search (Atlas Vector Search on incidents.fingerprint) was removed.
+OBSOLETE_INCIDENT_SEARCH_INDEX = "incident_fingerprint"
+OBSOLETE_INCIDENT_FIELDS = ("fingerprint", "similar_incidents")
 
 
-def _init_incident_vector_index(db: Database) -> str:
-    """Atlas Vector Search index on incidents.fingerprint. Plain mongod does not support it -> skipped."""
+def remove_similar_incident_search(db: Database) -> int:
+    """Drop the old vector search index and unset its fields on incidents. Returns incidents changed. Idempotent."""
     incidents = db[INCIDENTS]
-    definition = incident_vector_index_definition()
     try:
-        existing = next(iter(incidents.list_search_indexes(INCIDENT_VECTOR_INDEX)), None)
-        if existing:
-            # Compare only "fields": Atlas may return extra keys -> avoids rebuilding the index on every init
-            if (existing.get("latestDefinition") or {}).get("fields") != definition["fields"]:
-                incidents.update_search_index(INCIDENT_VECTOR_INDEX, definition)
-                return "updated"
-            return "existed"
-        incidents.create_search_index(
-            SearchIndexModel(definition=definition, name=INCIDENT_VECTOR_INDEX, type="vectorSearch")
-        )
-        return "created"
-    except OperationFailure as e:
-        logger.warning("Vector search index unavailable, using aggregation fallback", extra={"err": str(e)})
-        return "unsupported"
+        if next(iter(incidents.list_search_indexes(OBSOLETE_INCIDENT_SEARCH_INDEX)), None):
+            incidents.drop_search_index(OBSOLETE_INCIDENT_SEARCH_INDEX)
+    except OperationFailure:
+        pass  # Plain mongod has no search indexes
+    query = {"$or": [{field: {"$exists": True}} for field in OBSOLETE_INCIDENT_FIELDS]}
+    return incidents.update_many(query, {"$unset": dict.fromkeys(OBSOLETE_INCIDENT_FIELDS, "")}).modified_count
 
 
 def _init_ponds(db: Database, force: bool) -> list[dict]:
@@ -222,7 +197,7 @@ def init_collections(force: bool = False) -> dict[str, Any]:
     result["metrics_hourly"] = "ready"
     _init_incidents(db, force)
     result["incidents"] = "ready"
-    result["incident_vector_index"] = _init_incident_vector_index(db)
+    result["similar_incident_fields_removed"] = remove_similar_incident_search(db)
     result["ponds"] = _init_ponds(db, force)
     _init_events(db, force)
     result["events"] = "ready"
