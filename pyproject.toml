@@ -1,0 +1,10 @@
+# Tool config only: dependencies live in requirements*.txt and ruff in ruff.toml.
+
+[tool.vulture]
+# Dead code check (CI "Dead code" step). Run locally with `vulture` from the repo root.
+paths = ["app", "tests", "scripts/ci/vulture_whitelist.py"]
+min_confidence = 60
+# Called by the framework, not by our code: FastAPI routes, pytest fixtures, Pydantic validators.
+ignore_decorators = ["@router.*", "@app.*", "@pytest.fixture", "@field_validator", "@model_validator"]
+# Pydantic config hook.
+ignore_names = ["model_config"]

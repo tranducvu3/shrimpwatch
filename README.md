@@ -552,7 +552,7 @@ Done during the build period (20/10 – 31/10/2026): moved to MongoDB Atlas; spl
 
 ### Open-Source Libraries & Components
 
-Used as-is under each project's license, with no changes to their source code: FastAPI, Uvicorn, Pydantic / pydantic-settings, PyMongo / Motor, dnspython, python-json-logger, datadog (DogStatsD), ddtrace, httpx, python-dotenv, pytest, ruff (see [requirements.txt](requirements.txt), [requirements-dev.txt](requirements-dev.txt)). Official Docker images: `mongo:7`, `gcr.io/datadoghq/agent:7.59.0`, `python:3.11-slim`. Swagger UI is served by FastAPI.
+Used as-is under each project's license, with no changes to their source code: FastAPI, Uvicorn, Pydantic / pydantic-settings, PyMongo / Motor, dnspython, python-json-logger, datadog (DogStatsD), ddtrace, httpx, python-dotenv, pytest, ruff, vulture (see [requirements.txt](requirements.txt), [requirements-dev.txt](requirements-dev.txt)). Official Docker images: `mongo:7`, `gcr.io/datadoghq/agent:7.59.0`, `python:3.11-slim`. Swagger UI is served by FastAPI.
 
 ### Data
 

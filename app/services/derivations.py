@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.log import get_logger
 from app.core.telemetry import gauge, increment
 from app.db.repositories import metrics as metrics_repo
-from app.domain.models import DeviceType, Source
+from app.domain.models import DeviceType, MetricType, Source
 from app.domain.water_chemistry import co2_mg_per_l, nh3_mg_per_l
 
 logger = get_logger("services.derivations")
@@ -82,7 +82,9 @@ def derive_and_record(pond_id: str, now: datetime) -> DerivedValues:
         nh3=derive_nh3_for_pond(pond_id, now),
         ph_swing=metrics_repo.ph_swing(pond_id),
     )
-    _record_if_present(pond_id, now, "co2", values.co2, "mg/L", settings.CO2_WARN, "CO2")
-    _record_if_present(pond_id, now, "nh3", values.nh3, "mg/L", settings.NH3_WARN, "NH3")
-    _record_if_present(pond_id, now, "ph_swing", values.ph_swing, "pH", settings.PH_SWING_WARN, "pH swing")
+    _record_if_present(pond_id, now, MetricType.CO2.value, values.co2, "mg/L", settings.CO2_WARN, "CO2")
+    _record_if_present(pond_id, now, MetricType.NH3.value, values.nh3, "mg/L", settings.NH3_WARN, "NH3")
+    _record_if_present(
+        pond_id, now, MetricType.PH_SWING.value, values.ph_swing, "pH", settings.PH_SWING_WARN, "pH swing"
+    )
     return values
