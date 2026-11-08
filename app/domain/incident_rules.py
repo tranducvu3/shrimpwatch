@@ -147,10 +147,11 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
         )
     minutes = minutes_to_do_critical(s.last_do, s.do_drop_rate, t.do_critical)
     if minutes is not None and minutes <= t.do_forecast_warn_min:
+        below_warn = f" (dưới ngưỡng cảnh báo {t.do_warn:g})" if s.min_do is not None and s.min_do < t.do_warn else ""
         return Finding(
             Severity.WARNING,
             "Cảnh báo: DO sắp xuống ngưỡng nguy hiểm",
-            f"DO {s.last_do:.2f} mg/L, giảm {s.do_drop_rate:.3f} mg/L/phút.{_forecast(s, t)}",
+            f"DO {s.last_do:.2f} mg/L{below_warn}, giảm {s.do_drop_rate:.3f} mg/L/phút.{_forecast(s, t)}",
             "do_out_of_range",
         )
     if s.min_do is not None and s.min_do < t.do_warn:

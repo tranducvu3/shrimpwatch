@@ -349,7 +349,7 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Temperature out of range | outside 26–32 °C | `temperature_out_of_range` (warning) |
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
-| DO forecast | Datadog linear `forecast()` of DO (reactive model, 1-day history) reaches ≤ 3 mg/L within the next hour | `do_out_of_range` (warning) when the worker's own forecast is ≤ 30 min |
+| DO forecast | Datadog linear `forecast()` of DO (reactive model, 1-day history) reaches ≤ 4 mg/L (warning) or ≤ 3 mg/L (critical) within the next hour | `do_out_of_range` (warning) when the worker's own forecast is ≤ 30 min |
 
 The worker also opens a warning incident, with no Datadog monitor, when ORP, NH₃, CO₂, TAN, nitrite or alkalinity cross their threshold: `orp_out_of_range`, `nh3_out_of_range`, `co2_out_of_range`, `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 

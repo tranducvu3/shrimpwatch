@@ -195,3 +195,8 @@ def test_distant_forecast_does_not_open_an_incident():
 def test_pump_failure_description_carries_the_forecast():
     finding = evaluate(replace(snap(avg_pump=0.0, drop_rate=0.1, min_do=6.5), last_do=6.5), T)
     assert finding.root_cause == "pump_failure" and "≈ 35 phút nữa" in finding.description
+
+
+def test_forecast_warning_says_when_do_is_already_below_the_warning_level():
+    finding = evaluate(replace(snap(drop_rate=0.04, min_do=3.8), last_do=3.8), T)
+    assert "dưới ngưỡng cảnh báo 4" in finding.description and "≈ 20 phút nữa" in finding.description
