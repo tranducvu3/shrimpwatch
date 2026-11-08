@@ -41,6 +41,19 @@ def _datadog_event(incident: dict, what: str, text: str, alert_type: str | None 
     )
 
 
+def _alert_text(pond_id: str, finding: Finding) -> str:
+    """Event text for an opened or escalated incident: what is wrong, what to do, where to look.
+
+    The Telegram farmer alert forwards it as is, so it is written for the farmer (Vietnamese, no jargon).
+    """
+    remedies = ", ".join(REMEDIES[r].label for r in suggested_remedies(finding.root_cause))
+    lines = [finding.description]
+    if remedies:
+        lines.append(f"Đề xuất xử lý: {remedies}.")
+    lines.append(f"Mở bảng điều khiển: {settings.PUBLIC_BASE_URL.rstrip('/')}/control?ao={pond_id}")
+    return "\n".join(lines)
+
+
 def _seconds(start: datetime, end: datetime) -> float:
     return round((end - start).total_seconds(), 1)
 
@@ -79,11 +92,7 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
             "incident.escalated",
             tags={"pond": existing["pond_id"], "severity": finding.severity.value, "root_cause": finding.root_cause},
         )
-        _datadog_event(
-            {**existing, **fields},
-            "incident_escalated",
-            f"{current} -> {finding.severity.value}. {finding.description}",
-        )
+        _datadog_event({**existing, **fields}, "incident_escalated", _alert_text(existing["pond_id"], finding))
     elif finding.root_cause == existing.get("root_cause"):
         # Same cause: refresh the description with the latest data
         fields["description"] = finding.description
@@ -156,7 +165,7 @@ def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str | N
         "incident.open", tags={"pond": pond_id, "severity": finding.severity.value, "root_cause": finding.root_cause}
     )
     _report_detection(doc)
-    _datadog_event(doc, "incident_open", finding.description)
+    _datadog_event(doc, "incident_open", _alert_text(pond_id, finding))
     logger.error(
         "incident opened",
         extra={

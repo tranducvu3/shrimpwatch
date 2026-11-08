@@ -14,6 +14,9 @@ logger = get_logger("datadog_push")
 
 ROOT = Path(__file__).resolve().parents[2]
 
+TELEGRAM_WEBHOOK = "shrimpwatch-telegram"
+NOTIFY_TELEGRAM_TAG = "notify:telegram"
+
 
 def _headers() -> dict[str, str]:
     return {
@@ -56,9 +59,47 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
     return matches[0] if matches else None
 
 
-def _push(kind: str, path: Path):
+def telegram_webhook() -> dict | None:
+    """Datadog webhook that forwards the alert text to the farmer's Telegram chat; None when Telegram is not set up.
+
+    The bot token is part of the URL: it lives in .env and in Datadog's webhook settings, never in the repo or logs.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+        return None
+    body = {"chat_id": settings.TELEGRAM_CHAT_ID, "text": "$TEXT_ONLY_MSG", "disable_web_page_preview": True}
+    return {
+        "name": TELEGRAM_WEBHOOK,
+        "url": f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+        "payload": json.dumps(body, ensure_ascii=False),
+        "encode_as": "json",
+    }
+
+
+def _push_telegram_webhook(webhook: dict) -> int:
+    """Create or update the webhook. Logs the status only: the response echoes the URL with the bot token."""
+    base = f"{_base_url()}/integration/webhooks/configuration/webhooks"
+    exists = httpx.get(f"{base}/{TELEGRAM_WEBHOOK}", headers=_headers(), timeout=30).status_code == 200
+    if exists:
+        resp = httpx.put(f"{base}/{TELEGRAM_WEBHOOK}", headers=_headers(), json=webhook, timeout=30)
+    else:
+        resp = httpx.post(base, headers=_headers(), json=webhook, timeout=30)
+    logger.info("push telegram webhook", extra={"status": resp.status_code, "updated": exists})
+    return resp.status_code
+
+
+def with_notify_handles(payload: dict, telegram: bool) -> dict:
+    """Add the @webhook handle to monitors tagged notify:telegram once the webhook exists (Datadog rejects unknown
+    handles); rebuilt from the JSON on every push, so removing the Telegram settings stops the alerts."""
+    if not telegram or NOTIFY_TELEGRAM_TAG not in payload.get("tags", []):
+        return payload
+    return {**payload, "message": f"{payload['message']}\n\n@webhook-{TELEGRAM_WEBHOOK}"}
+
+
+def _push(kind: str, path: Path, telegram: bool = False):
     """kind: 'dashboard', 'monitor' or 'slo' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if kind == "monitor":
+        payload = with_notify_handles(payload, telegram)
     existing = _existing_id(kind, payload)
     if existing is None:
         resp = httpx.post(f"{_base_url()}/{kind}", headers=_headers(), json=payload, timeout=30)
@@ -77,9 +118,14 @@ def main():
     if not settings.DD_API_KEY or not settings.DD_APP_KEY:
         logger.error("DD_API_KEY/DD_APP_KEY are not set in .env")
         return 1
+    # The webhook must exist before a monitor can notify it
+    webhook = telegram_webhook()
+    telegram = webhook is not None and _push_telegram_webhook(webhook) < 400
+    if webhook is None:
+        logger.info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: no Telegram farmer alert")
     for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
-            _push(kind, p)
+            _push(kind, p, telegram)
     return 0
 
 

@@ -26,7 +26,9 @@ def sent(monkeypatch):
     monkeypatch.setattr(
         incident_service, "increment", lambda name, value=1, tags=None: calls["increment"].append((name, tags))
     )
-    monkeypatch.setattr(incident_service, "event", lambda title, text, **kw: calls["event"].append((title, kw)))
+    monkeypatch.setattr(
+        incident_service, "event", lambda title, text, **kw: calls["event"].append((title, {**kw, "text": text}))
+    )
     return calls
 
 
@@ -110,3 +112,15 @@ def test_escalation_is_sent_as_an_event(sent):
     incident_service.open_or_update(pond, CRITICAL, IncidentEvidence())
     title, kw = sent["event"][-1]
     assert "incident_escalated" in title and kw["tags"]["root_cause"] == "pump_failure"
+
+
+def test_open_event_text_tells_the_farmer_what_to_do(sent, monkeypatch):
+    monkeypatch.setattr(incident_service.settings, "PUBLIC_BASE_URL", "https://farm.example/")
+    incident_service.open_or_update("pond-98", CRITICAL, IncidentEvidence())
+    title, kw = sent["event"][0]
+    assert "pond-98" in title
+    assert kw["text"].splitlines() == [
+        "0 W",
+        "Đề xuất xử lý: Sửa quạt nước.",
+        "Mở bảng điều khiển: https://farm.example/control?ao=pond-98",
+    ]

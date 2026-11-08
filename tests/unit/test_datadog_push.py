@@ -83,3 +83,39 @@ def test_every_datadog_file_is_valid_json_with_a_name():
     for folder, key in (("monitors", "name"), ("slos", "name"), ("dashboards", "title")):
         for path in (datadog_push.ROOT / "datadog" / folder).glob("*.json"):
             assert json.loads(path.read_text(encoding="utf-8"))[key].startswith(("[ShrimpWatch]", "ShrimpWatch")), path
+
+
+def test_telegram_webhook_needs_token_and_chat(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
+    assert datadog_push.telegram_webhook() is None
+
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
+    hook = datadog_push.telegram_webhook()
+    assert hook["url"] == "https://api.telegram.org/bot123:secret/sendMessage"
+    assert json.loads(hook["payload"]) == {
+        "chat_id": "12345",
+        "text": "$TEXT_ONLY_MSG",
+        "disable_web_page_preview": True,
+    }
+
+
+def test_webhook_push_never_logs_the_token(monkeypatch):
+    logged = []
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
+    echo = _Resp({"url": "https://api.telegram.org/bot123:secret/sendMessage"})
+    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp({}, status=404))
+    monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **_kw: echo)
+    monkeypatch.setattr(datadog_push.logger, "info", lambda msg, extra=None: logged.append((msg, extra)))
+
+    assert datadog_push._push_telegram_webhook(datadog_push.telegram_webhook()) == 200
+    assert "secret" not in json.dumps(logged)
+
+
+def test_telegram_handle_is_added_only_to_tagged_monitors_when_configured():
+    tagged = {"message": "m", "tags": ["shrimpwatch", "notify:telegram"]}
+    other = {"message": "m", "tags": ["shrimpwatch"]}
+    assert datadog_push.with_notify_handles(tagged, telegram=True)["message"] == "m\n\n@webhook-shrimpwatch-telegram"
+    assert datadog_push.with_notify_handles(tagged, telegram=False) == tagged
+    assert datadog_push.with_notify_handles(other, telegram=True) == other
