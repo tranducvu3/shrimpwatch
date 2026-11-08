@@ -1,4 +1,4 @@
-"""Nhan ban ghi telemetry (sensor/manual), luu vao Time Series va day gauge len Datadog."""
+"""Accept telemetry records (sensor/manual), store them in the Time Series and send gauges to Datadog."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def ingest_records(records: list[MetricRecord]) -> dict:
         logger.error("ingest insert_many failed", extra={"err": str(e)})
         raise IngestError(f"mongo insert failed: {e}") from e
 
-    # Du lieu tre/backfill nam ngoai cua so rollup 1 gio cua worker -> tu rollup cac gio no cham toi.
+    # Late/backfilled data falls outside the worker's 1-hour rollup window -> roll up the hours it touches here.
     timestamps = [to_naive_utc(r.timestamp) for r in records]
     if min(timestamps) < utcnow() - timedelta(hours=1):
         metrics_repo.run_hourly_rollup(min(timestamps), max(timestamps))
@@ -56,7 +56,7 @@ def ingest_records(records: list[MetricRecord]) -> dict:
 def ingest_manual(
     metric: MetricType, farm_id: str, pond_id: str, value: float, timestamp: datetime, tester_id: str
 ) -> dict:
-    """Ket qua test-kit cua ky thuat vien (do kiem, TAN, nitrite)."""
+    """A technician's test-kit results (alkalinity, TAN, nitrite)."""
     if metric not in MANUAL_METRIC_UNITS:
         raise NotAManualMetric(f"metric must be one of {[m.value for m in MANUAL_METRIC_UNITS]}")
     set_span_tags(pond_id=pond_id, device_type=DeviceType.MANUAL.value, metric=metric.value)

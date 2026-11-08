@@ -56,7 +56,7 @@ CD (`.github/workflows/cd.yml`) runs after CI succeeds on a push to `main`: it b
 
 ## Conventions
 
-- Code comments are Vietnamese without diacritics (`# Toc do sut DO ...`); identifiers and log messages are English.
+- Code comments, docstrings, identifiers and log messages are English.
 - Datetimes are naive UTC (`app.core.clock.utcnow()`, `to_naive_utc`). Do not mix in timezone-aware values.
 - Telemetry goes into `metrics` through `pack_ts_doc` (`app/db/repositories/metrics.py`): fields that identify a series live under `metadata`,
   the reading is `value`, time is `timestamp`. Hourly rollups live in `metrics_hourly`.
@@ -93,5 +93,5 @@ Treat these as high priority (P1):
 
 Do not flag:
 
-- Vietnamese comments, or the hackathon demo defaults that `SECURITY.md` lists as known.
+- The hackathon demo defaults that `SECURITY.md` lists as known.
 - Style issues that ruff already enforces.

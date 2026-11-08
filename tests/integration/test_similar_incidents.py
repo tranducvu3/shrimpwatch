@@ -20,13 +20,13 @@ PUMP_EVIDENCE = IncidentEvidence(
 
 @pytest.fixture
 def history():
-    # Chi xoa lich su tong hop (hist-*), khong dung toi du lieu cua test khac
+    # Delete only the synthetic history (hist-*), never data from other tests
     hist = {"$regex": "^hist-"}
     incidents_collection().delete_many({"_id": hist})
     events_collection().delete_many({"incident_id": hist})
     items = build_history()
     assert incident_service.import_history(items) == len(items)
-    # Lan 2 khong nap trung
+    # Second run does not load duplicates
     assert incident_service.import_history(items) == 0
     return items
 

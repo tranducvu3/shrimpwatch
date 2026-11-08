@@ -1,4 +1,4 @@
-"""Day dashboard va monitor trong thu muc datadog/ len Datadog API (cap nhat theo ten neu da co)."""
+"""Push the dashboards and monitors in datadog/ to the Datadog API (update by name if they already exist)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _base_url() -> str:
 
 
 def _existing_id(kind: str, payload: dict) -> str | int | None:
-    """Tim ban da co cung ten (monitor: name, dashboard: title) de cap nhat thay vi tao trung."""
+    """Find an existing one with the same name (monitor: name, dashboard: title) to update instead of creating a duplicate."""
     if kind == "monitor":
         resp = httpx.get(f"{_base_url()}/monitor", headers=_headers(), params={"name": payload["name"]}, timeout=30)
         resp.raise_for_status()
@@ -42,7 +42,7 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
 
 
 def _push(kind: str, path: Path):
-    """kind: 'dashboard' hoac 'monitor' (ten endpoint /api/v1/<kind>). Co roi thi PUT, chua co thi POST."""
+    """kind: 'dashboard' or 'monitor' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     existing = _existing_id(kind, payload)
     if existing is None:

@@ -4,7 +4,7 @@ from app.domain.water_chemistry import co2_mg_per_l, nh3_fraction, nh3_mg_per_l
 
 
 def test_co2_matches_reference_value():
-    # pH 7.9, do kiem 170 mg CaCO3/L -> ~4.2 mg/L
+    # pH 7.9, alkalinity 170 mg CaCO3/L -> ~4.2 mg/L
     assert co2_mg_per_l(170.0, 7.9) == pytest.approx(4.2, abs=0.1)
 
 
@@ -13,7 +13,7 @@ def test_co2_rises_as_ph_falls():
 
 
 def test_nh3_fraction_at_ph8_30c():
-    # Emerson 1975: ~7.5% TAN o dang NH3 o pH 8, 30 do C
+    # Emerson 1975: ~7.5% of TAN is NH3 at pH 8, 30 deg C
     assert nh3_fraction(8.0, 30.0) == pytest.approx(0.075, abs=0.01)
 
 

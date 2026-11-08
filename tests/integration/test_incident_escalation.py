@@ -11,7 +11,7 @@ CRITICAL = Finding(Severity.CRITICAL, "Quat hong", "0 W", "pump_failure")
 
 
 def _clear_active():
-    # Dong su co dang mo (neu co) qua service thay vi xoa du lieu
+    # Close the active incident (if any) through the service instead of deleting data
     incident_service.auto_recover(POND)
 
 
@@ -64,11 +64,11 @@ def test_resolving_incident_stays_active_until_worker_recovers_it():
     incident_id = incident_service.open_or_update(POND, CRITICAL, IncidentEvidence(min_do=4.5))
     incident_service.transition(incident_id, IncidentState.RESOLVING, "Thay tu quat")
 
-    # Loi van con trong luc dang xu ly: cap nhat su co cu, khong mo su co trung
+    # Fault persists while resolving: update the existing incident, do not open a duplicate
     assert incident_service.open_or_update(POND, CRITICAL, IncidentEvidence(min_do=4.0)) == incident_id
     assert incidents_collection().count_documents({"pond_id": POND, "state": {"$ne": "recovered"}}) == 1
 
-    # Ao on dinh: worker dong chinh su co dang Resolving
+    # Pond stable: the worker closes that same Resolving incident
     assert incident_service.auto_recover(POND) == incident_id
     assert incidents_collection().find_one({"_id": incident_id})["state"] == "recovered"
     assert events_collection().count_documents({"incident_id": incident_id, "event": "incident_recovered"}) == 1
@@ -77,7 +77,7 @@ def test_resolving_incident_stays_active_until_worker_recovers_it():
 def test_transition_without_action_still_records_event():
     _clear_active()
     incident_id = incident_service.open_or_update(POND, WARNING, IncidentEvidence())
-    incident_service.transition(incident_id, IncidentState.RECOVERED)  # dong bao dong gia, khong ghi chu
+    incident_service.transition(incident_id, IncidentState.RECOVERED)  # close a false alarm, no note
 
     event = events_collection().find_one({"incident_id": incident_id, "event": "incident_action"})
     assert event["details"] == {"from_state": "open", "state": "recovered"}

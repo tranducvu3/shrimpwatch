@@ -16,7 +16,7 @@ def list_ponds():
 
 @router.get("/readings")
 def live_readings(window_min: int = Query(default=10, ge=1, le=pond_service.MAX_READINGS_WINDOW_MIN)):
-    """Gia tri cam bien moi nhat moi ao trong `window_min` phut gan day."""
+    """Latest sensor value per pond within the last `window_min` minutes."""
     return pond_service.live_readings(timedelta(minutes=window_min))
 
 

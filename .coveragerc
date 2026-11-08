@@ -2,6 +2,6 @@
 source = app
 
 [report]
-# San hien tai ~65%: PR lam giam coverage xuong duoi muc nay se fail.
+# Current floor ~65%: a PR that drops coverage below this level fails.
 fail_under = 64
 skip_empty = true

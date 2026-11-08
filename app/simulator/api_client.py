@@ -1,4 +1,4 @@
-"""HTTP client toi ShrimpWatch API, dung cho simulator va kich ban demo."""
+"""HTTP client for the ShrimpWatch API, used by the simulator and the demo script."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class ShrimpWatchClient:
         return f"{self.base_url}{path}"
 
     def pond_states(self) -> dict[str, dict]:
-        """pond_id -> document ao (quat hong, kich ban). Loi mang tra ve {} (coi nhu ao binh thuong)."""
+        """pond_id -> pond document (pump failure, scenarios). A network error returns {} (treated as normal ponds)."""
         try:
             r = httpx.get(self._url("/ponds"), timeout=5.0)
             r.raise_for_status()
@@ -30,7 +30,7 @@ class ShrimpWatchClient:
             return {}
 
     def latest_reading_time(self, window_min: int) -> datetime | None:
-        """Thoi diem ban ghi cam bien moi nhat (moi ao, moi chi so) trong `window_min` phut; None neu chua co."""
+        """Time of the latest sensor record (any pond, any metric) within `window_min` minutes; None if there is none."""
         r = httpx.get(self._url("/ponds/readings"), params={"window_min": window_min}, timeout=30.0)
         r.raise_for_status()
         stamps = [m["timestamp"] for metrics in r.json().values() for m in metrics.values()]

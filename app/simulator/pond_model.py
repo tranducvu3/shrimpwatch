@@ -1,4 +1,4 @@
-"""Mo hinh vat ly 1 ao: nhiet do/pH/DO theo chu ky ngay dem, DO + ORP sut khi quat hong."""
+"""Physical model of 1 pond: temperature/pH/DO follow a day-night cycle; DO + ORP drop when the pump fails."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ class PondSimulator:
         self._rng = random.Random(seed + sum(ord(c) for c in pond_id))
         self._temp_base = 28.5
         self._do_base = 5.8
-        # pH dinh ngay = base + 0.30 = 8.35: con 0.15 duoi nguong PH_WARN_HIGH, khong bao dong gia moi dem
+        # Daily pH peak = base + 0.30 = 8.35: 0.15 below PH_WARN_HIGH, so no false alarm every night
         self._ph_base = 8.05
         self._do_last = self._do_base
         self._do_last_ts = utcnow()
@@ -45,16 +45,16 @@ class PondSimulator:
         temp = self._temp_base + temp_amp * 3.0 + offsets.get(ScenarioType.TEMPERATURE, 0.0) + self._rng.gauss(0, 0.15)
 
         ph_amp = diurnal_amplitude(hf, phase_offset_hours=12)
-        # Bien do ngay 0.30 + nhieu cam bien nho: bien do pH 24h cua ao khoe < PH_SWING_WARN (0.5), khong canh bao gia
+        # Daily swing 0.30 + small sensor noise: a healthy pond's 24h pH swing < PH_SWING_WARN (0.5), no false alert
         ph = self._ph_base + ph_amp * 0.30 + offsets.get(ScenarioType.PH, 0.0) + self._rng.gauss(0, 0.02)
 
-        # Kich ban DO doi baseline: DO bi keo dan ve muc moi (hang so thoi gian ~10 phut), khong nhay tuc thi
+        # DO scenario shifts the baseline: DO is pulled gradually to the new level (time constant ~10 min), no instant jump
         do_amp = diurnal_amplitude(hf, phase_offset_hours=18)
         do_baseline = self._do_base + do_amp * 0.8 + offsets.get(ScenarioType.DO, 0.0)
 
         delta_min = max(0.1, (now - self._do_last_ts).total_seconds() / 60.0)
         if pump_failed:
-            # Khong co quat: tom + vi sinh tieu thu oxy, DO giam deu, khong keo ve baseline
+            # No aerator: shrimp + microbes consume oxygen, DO falls steadily, not pulled back to baseline
             drift = 0.0
             aeration = -0.1 + self._rng.gauss(0, 0.005)
         else:
@@ -64,7 +64,7 @@ class PondSimulator:
         self._do_last = do
         self._do_last_ts = now
 
-        # ORP giam theo DO: day ao thieu oxy -> phan huy ky khi, nguy co H2S
+        # ORP falls with DO: oxygen-poor pond bottom -> anaerobic decomposition, H2S risk
         orp_target = 60.0 * (do - 3.0) + 120.0
         self._orp_last += (orp_target - self._orp_last) * min(1.0, delta_min / 5.0)
         orp = self._orp_last + self._rng.gauss(0, 4)

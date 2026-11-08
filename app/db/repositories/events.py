@@ -1,4 +1,4 @@
-"""Nhat ky su kien (`events`): moi thay doi quat/su co deu ghi 1 dong."""
+"""Event log (`events`): every pump/incident change writes 1 row."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Kiem tra 1 ao: thu thap so lieu -> ap quy tac (domain) -> mo/cap nhat/dong su co (service)."""
+"""Check 1 pond: gather data -> apply rules (domain) -> open/update/close the incident (service)."""
 
 from __future__ import annotations
 

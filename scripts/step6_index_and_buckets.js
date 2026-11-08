@@ -1,5 +1,5 @@
-// Buoc 6: chung minh truy van cua worker dung index ghep + bucket noi bo cua Time Series
-// Explain cua Time Series long trong stages[].$cursor -> tim theo ten khoa tren chuoi JSON
+// Step 6: prove the worker query uses the compound index + the Time Series internal buckets
+// Time Series explain output is nested in stages[].$cursor -> search key names in the JSON string
 function findKey(obj, key) {
   const m = JSON.stringify(obj).match(new RegExp(`"${key}":"?([^",}]+)`));
   return m ? m[1] : undefined;

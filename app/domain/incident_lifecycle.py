@@ -1,9 +1,9 @@
-"""Vong doi su co: Open -> Investigating -> Resolving -> Recovered."""
+"""Incident lifecycle: Open -> Investigating -> Resolving -> Recovered."""
 
 from app.domain.models import IncidentState, Severity
 
-# Su co "dang mo": worker cap nhat su co nay thay vi mo su co moi, va tu dong chuyen sang Recovered khi ao on dinh.
-# Resolving van la dang mo: ky thuat vien da xu ly nhung chi so lieu moi xac nhan duoc hoi phuc.
+# "Active" incidents: the worker updates this incident instead of opening a new one, and moves it to Recovered once the pond is stable.
+# Resolving is still active: the technician has acted, but only new data can confirm recovery.
 ACTIVE_STATES = (IncidentState.OPEN, IncidentState.INVESTIGATING, IncidentState.RESOLVING)
 
 _NEXT: dict[IncidentState, set[IncidentState]] = {
@@ -19,7 +19,7 @@ class InvalidTransition(ValueError):
 
 
 def can_transition(current: str, target: IncidentState) -> bool:
-    """Giu nguyen trang thai (chi ghi them hanh dong) luon hop le; Recovered la trang thai cuoi."""
+    """Staying in the same state (only adding an action note) is always valid; Recovered is final."""
     try:
         state = IncidentState(current)
     except ValueError:
@@ -31,7 +31,7 @@ _SEVERITY_RANK = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
 
 
 def is_escalation(current: str, new: Severity) -> bool:
-    """Muc moi nghiem trong hon muc hien tai? Su co chi nang muc, khong ha; muc la coi nhu thap nhat."""
+    """Is the new severity higher than the current one? Incidents only escalate, never downgrade; an unknown severity counts as the lowest."""
     try:
         current_rank = _SEVERITY_RANK[Severity(current)]
     except ValueError:

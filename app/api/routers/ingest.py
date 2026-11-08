@@ -17,7 +17,7 @@ def ingest_batch(body: BatchIngestRequest) -> dict:
 
 @router.post("/manual/{metric}", status_code=202)
 def ingest_manual(metric: MetricType, body: ManualInput) -> dict:
-    """Ket qua test-kit: alkalinity, tan, nitrite."""
+    """Test-kit results: alkalinity, tan, nitrite."""
     try:
         return ingest_service.ingest_manual(
             metric, body.farm_id, body.pond_id, body.value, body.timestamp, body.tester_id

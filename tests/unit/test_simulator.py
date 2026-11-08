@@ -52,10 +52,10 @@ def test_offsets_shift_temperature_ph_and_salinity():
 
 
 def test_do_offset_pulls_do_down_while_pump_runs():
-    # Cung seed, cung moc thoi gian: chi khac do lech DO -> so sanh khong phu thuoc gio trong ngay
+    # Same seed, same start time: only the DO offset differs -> the comparison does not depend on time of day
     normal, low = PondSimulator("pond-04"), PondSimulator("pond-04")
     t = utcnow()
-    for i in range(61):  # 30 phut, hang so thoi gian ~10 phut
+    for i in range(61):  # 30 minutes, time constant ~10 minutes
         ts = t + timedelta(seconds=30 * i)
         base = _values(normal.step(ts, pump_failed=False))
         last = _values(low.step(ts, pump_failed=False, offsets={ScenarioType.DO: -3.5}))
@@ -66,7 +66,7 @@ def test_do_offset_pulls_do_down_while_pump_runs():
 
 @pytest.mark.parametrize("pond_id", [f"pond-0{i}" for i in range(1, 7)])
 def test_healthy_pond_ph_swing_stays_below_warning(pond_id):
-    # 24h, 30 giay/lan nhu simulator: ao khoe khong duoc kich hoat canh bao bien do pH
+    # 24h at one reading per 30 s like the simulator: a healthy pond must not trigger the pH swing alert
     sim = PondSimulator(pond_id)
     start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     ph = [
@@ -99,11 +99,11 @@ def test_warm_up_sends_only_gap_but_warms_model_state():
     now = utcnow()
     warmed = {"pond-01": PondSimulator("pond-01", seed=0)}
     records = warm_up(warmed, now, send_from=now - timedelta(minutes=2))
-    # Chi gui ~2 phut cuoi (5 buoc x so chi so), khong gui lai 6h
+    # Send only the last ~2 minutes (5 steps x number of metrics), not the whole 6h again
     assert 0 < len(records) <= 5 * len(PondSimulator("pond-01").step(now, pump_failed=False))
     assert all(datetime.fromisoformat(r["timestamp"]) >= now - timedelta(minutes=2) for r in records)
 
-    # Mo hinh da chay qua 6h nen buoc ke tiep lien mach voi chuoi cu (khong nhay ve muc DO ban dau)
+    # The model has run through the 6h, so the next step continues the old series (no jump back to the initial DO)
     cold = PondSimulator("pond-01", seed=0)
     warm_up({"pond-01": cold}, now, send_from=None)
     assert cold._do_last == warmed["pond-01"]._do_last

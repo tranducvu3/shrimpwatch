@@ -1,6 +1,6 @@
-"""Nap lich su su co da hoi phuc (du lieu tong hop) de Vector Search co su co cu de so khop.
+"""Load a history of recovered incidents (synthetic data) so Vector Search has past incidents to match.
 
-Chay lai nhieu lan van an toan: id co dinh, su co da co thi bo qua.
+Safe to run repeatedly: ids are fixed and existing incidents are skipped.
     python -m app.cli.seed_incident_history
 """
 

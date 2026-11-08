@@ -1,4 +1,4 @@
-"""Ket noi MongoDB va truy cap tung collection theo ten."""
+"""MongoDB connection and access to each collection by name."""
 
 from pymongo import MongoClient
 from pymongo.collection import Collection

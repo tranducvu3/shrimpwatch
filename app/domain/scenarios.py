@@ -1,7 +1,8 @@
-"""Kich ban mo phong bat thuong: lech chi so moi truong so voi baseline trong mot khoang thoi gian.
+"""Anomaly simulation scenarios: offset an environmental metric from its baseline for a period of time.
 
-Ham thuan: API ghi kich ban vao document ao, simulator doc lai va cong do lech vao chi so cam bien.
-Tat quat dung co `pump.failed` rieng (POST /ponds/{id}/pump/fail), khong nam o day.
+Pure functions: the API writes the scenario into the pond document, the simulator reads it back and adds the
+offset to the sensor reading. Stopping the aerator uses the separate `pump.failed` flag
+(POST /ponds/{id}/pump/fail) and is not handled here.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ class ScenarioLimit:
     label: str
 
 
-# Bien do lech cho phep: du lon de vuot nguong canh bao, khong lon den muc phi vat ly.
+# Allowed offset range: large enough to cross alert thresholds, not so large it becomes unphysical.
 SCENARIO_LIMITS: dict[ScenarioType, ScenarioLimit] = {
     ScenarioType.DO: ScenarioLimit(-5.0, 2.0, "mg/L", "Oxy hòa tan (DO)"),
     ScenarioType.TEMPERATURE: ScenarioLimit(-6.0, 6.0, "C", "Nhiệt độ"),
@@ -53,12 +54,12 @@ def validate_offset(scenario: ScenarioType, offset: float) -> None:
 
 
 def build_scenario(offset: float, duration_min: int, now: datetime) -> dict[str, Any]:
-    """Document luu trong `ponds.scenarios.<type>`."""
+    """Document stored in `ponds.scenarios.<type>`."""
     return {"offset": offset, "started_at": now, "until": now + timedelta(minutes=duration_min)}
 
 
 def _as_datetime(value: Any) -> datetime | None:
-    # API tra JSON nen simulator nhan chuoi ISO; trong service la datetime
+    # The API returns JSON, so the simulator gets an ISO string; inside the service it is a datetime
     if isinstance(value, datetime):
         return to_naive_utc(value)
     if isinstance(value, str):
@@ -70,7 +71,7 @@ def _as_datetime(value: Any) -> datetime | None:
 
 
 def active_offsets(scenarios: dict[str, Any] | None, now: datetime) -> dict[ScenarioType, float]:
-    """Do lech dang hieu luc tai `now`; kich ban het han hoac sai dinh dang bi bo qua."""
+    """Offsets in effect at `now`; expired or malformed scenarios are ignored."""
     result: dict[ScenarioType, float] = {}
     for key, doc in (scenarios or {}).items():
         try:

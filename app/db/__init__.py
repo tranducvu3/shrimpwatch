@@ -1,1 +1,1 @@
-"""Tang truy cap MongoDB: ket noi, schema, pipeline aggregation va repository theo collection."""
+"""MongoDB access layer: connection, schema, aggregation pipelines and one repository per collection."""

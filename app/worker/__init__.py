@@ -1,1 +1,1 @@
-"""Worker nen: moi chu ky rollup theo gio, tinh cua so DO cho ca trai, roi kiem tra tung ao."""
+"""Background worker: each cycle runs the hourly rollup, computes the DO window for the whole farm, then checks each pond."""

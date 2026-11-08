@@ -21,7 +21,7 @@ def run_worker() -> None:
     init_metrics()
     logger.info("worker starting")
     ponds = pond_ids()
-    # Lan dau: backfill toan bo khoang TTL; sau do chi tinh lai gio truoc + gio hien tai.
+    # First run: backfill the whole TTL range; after that only recompute the previous + current hour.
     rollup_since = utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
     last_rollup = 0.0
     while True:

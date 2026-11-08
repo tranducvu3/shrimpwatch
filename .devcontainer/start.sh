@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Khoi dong stack trong Codespace. Chay lai an toan (postStartCommand chay moi lan codespace bat len).
+# Start the stack in a Codespace. Safe to re-run (postStartCommand runs every time the codespace starts).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# .env bi git-ignore: tao lai tu .env.example moi lan khoi dong, roi ghi de bang Codespaces secret hien tai,
-# de secret bi xoa hoac doi key khong de lai gia tri cu trong .env
+# .env is git-ignored: recreate it from .env.example on every start, then overwrite with the current Codespaces secrets,
+# so a deleted or renamed secret does not leave a stale value in .env
 cp .env.example .env
 set_env() {
   local key=$1 value=$2
@@ -19,14 +19,14 @@ set_env DD_APP_KEY "${DD_APP_KEY:-}"
 set_env DD_SITE "${DD_SITE:-}"
 set_env DD_ENV codespaces
 
-# Docker-in-docker co the chua san sang ngay khi codespace vua bat
+# Docker-in-docker may not be ready right after the codespace starts
 for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
 
 if [ -n "${DD_API_KEY:-}" ]; then
   set_env DD_TRACE_ENABLED true
-  services=""   # tat ca, gom Datadog Agent
+  services=""   # everything, including the Datadog Agent
 else
-  # Khong co Agent: tat trace va gui metric ve localhost (giong CI) de khong phai doi DNS
+  # No Agent: disable tracing and send metrics to localhost (like CI) to avoid waiting on DNS
   echo "DD_API_KEY not set: starting without the Datadog Agent"
   export COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml
   set_env DD_TRACE_ENABLED false

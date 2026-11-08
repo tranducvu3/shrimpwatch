@@ -35,8 +35,8 @@ services:
       DD_AGENT_HOST: datadog-agent
       DD_TRACE_AGENT_PORT: 8126
       DD_DOGSTATSD_PORT: 8125
-      # Tich hop fastapi da boc APIRoute.handle; bat them starlette thi Route.handle bi boc 2 lan
-      # -> resource APM lap duong dan ("GET /incidents/incidents")
+      # The fastapi integration already wraps APIRoute.handle; enabling starlette too wraps Route.handle twice
+      # -> APM resource names repeat the path ("GET /incidents/incidents")
       DD_PATCH_MODULES: "starlette:false"
       MONGODB_URI: ${MONGODB_URI:-mongodb://shrimp_app:shrimp_pass@mongodb:27017/shrimpwatch?authSource=shrimpwatch}
     ports:

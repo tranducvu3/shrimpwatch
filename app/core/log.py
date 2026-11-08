@@ -1,4 +1,4 @@
-"""Log JSON ra stdout, moi dong mang trace_id/span_id de Datadog noi log voi trace."""
+"""JSON logs to stdout; each line carries trace_id/span_id so Datadog can link logs to traces."""
 
 import logging
 import sys

@@ -1,6 +1,6 @@
-"""Kich ban demo vong doi su co: quat ao pond-03 hong -> oxy sut -> dieu tra -> sua -> hoi phuc.
+"""Incident lifecycle demo: pond-03 aerator fails -> oxygen drops -> investigate -> fix -> recover.
 
-Chi goi HTTP API, giong thao tac cua ky thuat vien that.
+Only calls the HTTP API, like a real technician would.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _log_investigation(incident: dict) -> None:
 
 
 def _log_similar(api: ShrimpWatchClient, incident_id: str) -> None:
-    """Vector Search: su co cu giong nhat va cach da xu ly, goi y cho ky thuat vien."""
+    """Vector Search: the most similar past incidents and how they were handled, as hints for the technician."""
     result = api.similar_incidents(incident_id)
     logger.info(f"=== SỰ CỐ TƯƠNG TỰ ({result.get('mode')}) ===")
     for m in result.get("matches", []):

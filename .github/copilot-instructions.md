@@ -7,7 +7,7 @@ only this file. Keep the two in sync.
 ## Code review
 
 Prioritize correctness and data safety over style. Ruff (line length 120) already enforces style; do not
-comment on formatting. Code comments are Vietnamese without diacritics on purpose; do not flag them.
+comment on formatting.
 
 Flag as important:
 

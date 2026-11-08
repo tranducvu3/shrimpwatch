@@ -9,7 +9,7 @@ def list_all() -> list[dict]:
 
 
 def set_pump_failed(pond_id: str, failed: bool) -> bool:
-    """Tra ve False neu khong co ao nay."""
+    """Returns False if the pond does not exist."""
     res = ponds_collection().update_one(
         {"_id": pond_id},
         {"$set": {"pump.failed": failed, "pump.failed_since": utcnow() if failed else None}},
@@ -18,13 +18,13 @@ def set_pump_failed(pond_id: str, failed: bool) -> bool:
 
 
 def set_scenario(pond_id: str, scenario: str, doc: dict) -> bool:
-    """Ghi de kich ban cung loai (moi loai toi da 1 kich ban moi ao). False neu khong co ao."""
+    """Overwrite the scenario of the same type (at most 1 per type per pond). False if the pond does not exist."""
     res = ponds_collection().update_one({"_id": pond_id}, {"$set": {f"scenarios.{scenario}": doc}})
     return res.matched_count > 0
 
 
 def clear_scenarios(pond_id: str, scenario: str | None = None) -> bool:
-    """Xoa 1 loai kich ban, hoac tat ca neu scenario=None. False neu khong co ao."""
+    """Remove one scenario type, or all of them if scenario=None. False if the pond does not exist."""
     field = f"scenarios.{scenario}" if scenario else "scenarios"
     res = ponds_collection().update_one({"_id": pond_id}, {"$unset": {field: ""}})
     return res.matched_count > 0

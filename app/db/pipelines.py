@@ -1,4 +1,4 @@
-"""Cac pipeline aggregation. Ham thuan: chi dung list stage, khong chay query."""
+"""Aggregation pipelines. Pure functions: they only build the stage list and never run a query."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from app.db.mongo import EVENTS, METRICS_HOURLY
 def compute_do_drop_rate_pipeline(
     pond_ids: list[str], window_sec: int = 300, now: datetime | None = None
 ) -> list[dict[str, Any]]:
-    """Toc do sut DO cua nhieu ao trong 1 lan aggregate.
+    """DO drop rate for many ponds in a single aggregate.
 
-    Cua so theo thoi gian (range + unit), khong theo so ban ghi: cam bien rot goi
-    thi cua so van dung 5 phut, khong keo dai ra.
+    The window is time-based (range + unit), not record-based: if a sensor drops packets
+    the window is still exactly 5 minutes and does not stretch.
     """
     now = now or utcnow()
     window = {"range": [-window_sec, 0], "unit": "second"}
@@ -34,7 +34,7 @@ def compute_do_drop_rate_pipeline(
                 "partitionBy": "$metadata.pond_id",
                 "sortBy": {"timestamp": 1},
                 "output": {
-                    # mg/L moi phut; am khi DO giam
+                    # mg/L per minute; negative when DO falls
                     "do_rate": {"$derivative": {"input": "$value", "unit": "minute"}, "window": window},
                     "first_do": {"$first": "$value", "window": window},
                     "window_start_ts": {"$first": "$timestamp", "window": window},
@@ -42,7 +42,7 @@ def compute_do_drop_rate_pipeline(
                 },
             }
         },
-        # Moi ao chi giu diem moi nhat: do la ket qua cua cua so 5 phut ket thuc "bay gio".
+        # Keep only the latest point per pond: that is the result of the 5-minute window ending "now".
         {"$sort": {"timestamp": -1}},
         {"$group": {"_id": "$metadata.pond_id", "latest": {"$first": "$$ROOT"}}},
         {"$replaceWith": "$latest"},
@@ -57,7 +57,7 @@ def compute_do_drop_rate_pipeline(
                 "min_do": 1,
                 "do_drop_mg_per_l": {"$subtract": ["$first_do", "$value"]},
                 "delta_minutes": {"$divide": [{"$subtract": ["$timestamp", "$window_start_ts"]}, 60000.0]},
-                # $derivative tra ve null khi cua so chi co 1 diem
+                # $derivative returns null when the window has only 1 point
                 "do_drop_rate_mg_per_l_per_min": {"$ifNull": [{"$multiply": ["$do_rate", -1]}, 0.0]},
             }
         },
@@ -65,10 +65,10 @@ def compute_do_drop_rate_pipeline(
 
 
 def rollup_hourly_pipeline(since: datetime, until: datetime | None = None) -> list[dict[str, Any]]:
-    """Gop du lieu tho thanh min/max/avg theo gio va $merge vao metrics_hourly.
+    """Roll raw data up into hourly min/max/avg and $merge into metrics_hourly.
 
-    Tinh lai tron ven cac gio tu `since` (den het gio chua `until`) nen whenMatched=replace
-    la dung (idempotent).
+    Recomputes whole hours from `since` (through the end of the hour containing `until`), so
+    whenMatched=replace is correct (idempotent).
     """
     time_range: dict[str, datetime] = {"$gte": since.replace(minute=0, second=0, microsecond=0)}
     if until is not None:
@@ -119,7 +119,7 @@ def rollup_hourly_pipeline(since: datetime, until: datetime | None = None) -> li
 
 
 def compute_ph_swing_pipeline(pond_id: str, hours: int = 24, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Bien do pH 24h doc tu metrics_hourly (~24 dong) thay vi ~2.880 diem tho."""
+    """24h pH swing read from metrics_hourly (~24 rows) instead of ~2,880 raw points."""
     since = ((now or utcnow()) - timedelta(hours=hours)).replace(minute=0, second=0, microsecond=0)
     return [
         {"$match": {"pond_id": pond_id, "metric": "ph", "source": "sensor", "hour": {"$gte": since}}},
@@ -145,7 +145,7 @@ def compute_ph_swing_pipeline(pond_id: str, hours: int = 24, now: datetime | Non
 
 
 def incident_timeline_pipeline(incident_id: str, lead_minutes: int = 30) -> list[dict[str, Any]]:
-    """Su co + toan bo event cua no + su kien quat cua ao truoc/trong luc su co."""
+    """The incident + all its events + the pond's pump events before/during the incident."""
     return [
         {"$match": {"_id": incident_id}},
         {
@@ -202,7 +202,7 @@ SIMILAR_SCAN_LIMIT = 500
 
 
 def _similar_incident_output() -> list[dict[str, Any]]:
-    """Cac truong tra ve cho 1 su co tuong tu, kem thoi gian hoi phuc va hanh dong da lam."""
+    """Fields returned for 1 similar incident, with its recovery time and the actions taken."""
     return [
         {
             "$project": {
@@ -214,7 +214,7 @@ def _similar_incident_output() -> list[dict[str, Any]]:
                 "score": 1,
                 "evidence": 1,
                 "actions": "$actions.action",
-                # Recovered la trang thai cuoi -> updated_at la luc hoi phuc
+                # Recovered is the final state -> updated_at is the recovery time
                 "recovery_minutes": {
                     "$dateDiff": {"startDate": "$created_at", "endDate": "$updated_at", "unit": "minute"}
                 },
@@ -226,7 +226,7 @@ def _similar_incident_output() -> list[dict[str, Any]]:
 def similar_incidents_pipeline(
     vector: list[float], exclude_id: str | None = None, k: int = 3, num_candidates: int = 100
 ) -> list[dict[str, Any]]:
-    """Atlas Vector Search: k su co da hoi phuc co fingerprint gan nhat (euclidean)."""
+    """Atlas Vector Search: the k recovered incidents with the nearest fingerprint (euclidean)."""
     pipeline: list[dict[str, Any]] = [
         {
             "$vectorSearch": {
@@ -234,7 +234,7 @@ def similar_incidents_pipeline(
                 "path": "fingerprint",
                 "queryVector": vector,
                 "numCandidates": max(num_candidates, k + 1),
-                # +1 vi co the trung chinh su co dang hoi
+                # +1 because the queried incident itself may match
                 "limit": k + 1,
                 "filter": {"state": "recovered"},
             }
@@ -250,9 +250,9 @@ def similar_incidents_pipeline(
 def similar_incidents_fallback_pipeline(
     vector: list[float], exclude_id: str | None = None, k: int = 3, scan_limit: int = SIMILAR_SCAN_LIMIT
 ) -> list[dict[str, Any]]:
-    """Khi khong co Atlas Search (mongod thuong, CI): tinh cung diem 1/(1+d^2) bang aggregation.
+    """Without Atlas Search (plain mongod, CI): compute the same 1/(1+d^2) score with aggregation.
 
-    Gioi han scan_limit su co gan nhat de truy van luon co bien.
+    Limited to the scan_limit most recent incidents so the query is always bounded.
     """
     match: dict[str, Any] = {"state": "recovered", "fingerprint": {"$size": len(vector)}}
     if exclude_id:
@@ -291,9 +291,9 @@ def similar_incidents_fallback_pipeline(
 
 
 def latest_readings_pipeline(pond_ids: list[str], metrics: list[str], since: datetime) -> list[dict[str, Any]]:
-    """Gia tri moi nhat cua tung (ao, chi so) ke tu `since`, cho bang dieu khien.
+    """Latest value of each (pond, metric) since `since`, for the control panel.
 
-    Loc pond_id + metric + timestamp khop index pond_metric_ts; `since` gioi han so ban ghi quet.
+    Filtering on pond_id + metric + timestamp matches the pond_metric_ts index; `since` bounds the records scanned.
     """
     return [
         {
