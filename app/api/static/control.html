@@ -741,8 +741,8 @@
       case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
       case "condition_start": return ["Bắt đầu điều kiện", labelIn(catalog.conditions, d.condition), true];
       case "condition_clear": return ["Kết thúc điều kiện", d.condition === "all" ? "tất cả" : labelIn(catalog.conditions, d.condition), true];
-      case "scenario_start": return ["Bắt đầu kịch bản", d.scenario, true];
-      case "scenario_clear": return ["Kết thúc kịch bản", d.scenario, true];
+      case "scenario_start": return ["Bắt đầu kịch bản", METRIC[d.scenario] || d.scenario, true];
+      case "scenario_clear": return ["Kết thúc kịch bản", d.scenario === "all" ? "tất cả" : METRIC[d.scenario] || d.scenario, true];
       case "remedy_applied": return ["Xử lý", labelIn(catalog.remedies, d.remedy), true];
       default: return [e.event, ""];
     }
