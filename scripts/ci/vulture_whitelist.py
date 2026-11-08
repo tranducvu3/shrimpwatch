@@ -6,7 +6,7 @@ serialization, by the environment); otherwise delete the dead code.
 
 from app.core.config import Settings
 from app.core.log import TraceIdFilter
-from app.domain.models import IncidentEvidence, MetricType
+from app.domain.models import IncidentEvidence
 
 # Settings read from the environment / .env: documented config surface, also set in docker-compose.yml.
 Settings.DD_TRACE_AGENT_PORT
@@ -17,9 +17,6 @@ Settings.NITRITE_WARN
 
 # Picked up by the JSON log formatter as a log field.
 TraceIdFilter.service
-
-# Stored as the "ph_swing" metric string by services/derivations.py.
-MetricType.PH_SWING
 
 # Pydantic fields: written to incidents.evidence in MongoDB and read by the fingerprint features.
 IncidentEvidence.do_drop_rate_mg_per_l_per_min
