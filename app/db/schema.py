@@ -19,6 +19,7 @@ logger = get_logger("db.schema")
 
 METRICS_POND_METRIC_TS_INDEX = "pond_metric_ts"
 ONE_ACTIVE_INCIDENT_INDEX = "one_active_incident_per_pond"
+DUPLICATE_KEY = 11000
 _OBSOLETE_METRIC_INDEXES = [
     "metadata.pond_id_1_timestamp_-1",
     "metadata.metric_1_timestamp_-1",
@@ -122,8 +123,11 @@ def _init_incidents(db: Database, force: bool) -> None:
             partialFilterExpression={"state": {"$in": [s.value for s in ACTIVE_STATES]}},
         )
     except OperationFailure as e:
-        # Old data with 2 active incidents for a pond: keep starting, the service still updates the existing one
-        logger.error("one-active-incident index not created", extra={"err": str(e)})
+        if e.code != DUPLICATE_KEY:
+            raise
+        # Old data with 2 active incidents for a pond: keep starting (the service still updates the existing one),
+        # but say so loudly, the invariant is not enforced until those incidents are closed
+        logger.error("one-active-incident index not created: a pond has 2 active incidents", extra={"err": str(e)})
 
 
 # The similar-incident search (Atlas Vector Search on incidents.fingerprint) was removed.

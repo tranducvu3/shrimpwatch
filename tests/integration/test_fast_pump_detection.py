@@ -96,3 +96,46 @@ def test_database_rejects_a_second_active_incident_for_a_pond():
         incidents_collection().insert_one({"_id": "inc-dup-2", "state": "investigating", **base})
     # Recovered incidents do not count
     incidents_collection().insert_one({"_id": "inc-dup-3", "state": "recovered", **base})
+
+
+def _miss_first_read(monkeypatch):
+    """Simulate a race: the first find_active misses the incident another writer just opened."""
+    from app.db.repositories import incidents as incidents_repo
+
+    real = incidents_repo.find_active
+    calls = {"n": 0}
+
+    def find_active(pond_id):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real(pond_id)
+
+    monkeypatch.setattr(incidents_repo, "find_active", find_active)
+
+
+def test_ingest_losing_a_race_to_the_worker_keeps_the_worker_incident(monkeypatch):
+    """The worker opens the pond's incident between the ingest check's read and its insert."""
+    pond = "pond-87"
+    worker = Finding(Severity.CRITICAL, "Quat hong", "worker: 0 W, DO 6.1", "pump_failure")
+    worker_id = incident_service.open_or_update(pond, worker, IncidentEvidence(min_do=6.1))
+    _miss_first_read(monkeypatch)
+
+    ingest = Finding(Severity.CRITICAL, "Quat hong", "ingest: 2 zero readings", "pump_failure")
+    assert incident_service.open_or_escalate(pond, ingest, IncidentEvidence()) is None
+
+    [inc] = _active(pond)
+    assert inc["_id"] == worker_id
+    assert (inc["description"], inc["evidence"]["min_do"]) == ("worker: 0 W, DO 6.1", 6.1)
+    assert events_collection().count_documents({"pond_id": pond, "event": "incident_open"}) == 1
+
+
+def test_worker_losing_a_race_updates_the_existing_incident(monkeypatch):
+    pond = "pond-89"
+    first_id = incident_service.open_or_escalate(
+        pond, Finding(Severity.CRITICAL, "Quat", "ingest", "pump_failure"), IncidentEvidence()
+    )
+    _miss_first_read(monkeypatch)
+
+    worker = Finding(Severity.CRITICAL, "Quat", "worker", "pump_failure")
+    assert incident_service.open_or_update(pond, worker, IncidentEvidence(min_do=5.9)) == first_id
+    [inc] = _active(pond)
+    assert inc["evidence"]["min_do"] == 5.9

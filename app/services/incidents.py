@@ -59,26 +59,39 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
 
 def open_or_update(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str:
     """Update the pond's active incident; open a new one if there is none."""
-    existing = incidents_repo.find_active(pond_id)
-    if existing:
-        return _update_active(existing, finding, evidence)
-    return _open(pond_id, finding, evidence)
+    # Twice at most: if another writer opens the pond's incident between our read and insert, update that one
+    for _ in range(2):
+        existing = incidents_repo.find_active(pond_id)
+        if existing:
+            return _update_active(existing, finding, evidence)
+        incident_id = _open(pond_id, finding, evidence)
+        if incident_id:
+            return incident_id
+    raise RuntimeError(f"could not open or update an incident for {pond_id}")
 
 
 def open_or_escalate(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str | None:
     """Open an incident, or escalate the active one; leave an equally or more severe active incident untouched.
 
-    For the fast ingest check: it must not overwrite the worker's fuller evidence every batch.
+    For the fast ingest check: it must not overwrite the worker's fuller evidence every batch, nor when it loses a
+    race with the worker.
     """
-    existing = incidents_repo.find_active(pond_id)
-    if existing is None:
-        return _open(pond_id, finding, evidence)
-    if is_escalation(existing.get("severity"), finding.severity):
-        return _update_active(existing, finding, evidence)
+    for _ in range(2):
+        existing = incidents_repo.find_active(pond_id)
+        if existing:
+            return (
+                _update_active(existing, finding, evidence)
+                if is_escalation(existing.get("severity"), finding.severity)
+                else None
+            )
+        incident_id = _open(pond_id, finding, evidence)
+        if incident_id:
+            return incident_id
     return None
 
 
-def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str:
+def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str | None:
+    """Insert a new incident; None if the pond already has an active one (unique index one_active_incident_per_pond)."""
     incident_id = f"inc-{uuid.uuid4().hex[:10]}"
     incident = Incident(
         id=incident_id,
@@ -91,8 +104,7 @@ def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str:
         root_cause=finding.root_cause,
     )
     if not incidents_repo.insert(incident.model_dump(by_alias=True)):
-        # Another writer (ingest check or worker) opened the pond's incident a moment ago: update that one
-        return open_or_update(pond_id, finding, evidence)
+        return None
     events_repo.record(
         "incident_open",
         pond_id,
