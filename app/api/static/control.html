@@ -241,6 +241,7 @@
   <div class="meta">
     <span><span id="health-dot" class="dot"></span><span id="health-text">Đang kết nối…</span></span>
     <span id="updated"></span>
+    <span id="live" hidden title="Sự cố cập nhật ngay qua MongoDB Change Streams"><span class="dot ok"></span>Trực tiếp</span>
   </div>
   <div class="spacer"></div>
   <button class="btn danger" id="reset-all" type="button">Khôi phục tất cả ao</button>
@@ -875,6 +876,21 @@
     }
     await refresh();
     setInterval(refresh, POLL_MS);
+    connectLive();
+  }
+
+  // Incident changes are pushed by the API (MongoDB Change Streams -> server-sent events): refresh at once instead
+  // of waiting for the next poll. Polling keeps running for the sensor readings and as the fallback.
+  function connectLive() {
+    if (!window.EventSource) return;
+    const source = new EventSource("/stream/incidents");
+    let pending = null;
+    source.onopen = () => { $("#live").hidden = false; };
+    source.onerror = () => { $("#live").hidden = true; }; // the browser retries by itself; 503 = no replica set
+    source.onmessage = () => {
+      clearTimeout(pending);
+      pending = setTimeout(refresh, 300); // one refresh for a burst (incident + event written together)
+    };
   }
   start();
 })();

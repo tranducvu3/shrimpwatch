@@ -12,12 +12,35 @@ services:
     volumes:
       - mongodb_data:/data/db
       - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-    command: [ "--wiredTigerCacheSizeGB", "1.5" ]
+    # Single-node replica set: MongoDB Change Streams (the control panel's live incident updates) need one.
+    # With auth on, replica set members need a key file; generate it at start (only this one node uses it).
+    entrypoint:
+      - bash
+      - -c
+      - |
+        head -c 756 /dev/urandom | base64 | tr -d '\n' > /tmp/mongo-keyfile
+        chmod 400 /tmp/mongo-keyfile && chown mongodb:mongodb /tmp/mongo-keyfile
+        exec docker-entrypoint.sh "$$@"
+      - --
+    command: [ "mongod", "--replSet", "rs0", "--keyFile", "/tmp/mongo-keyfile", "--bind_ip_all", "--wiredTigerCacheSizeGB", "1.5" ]
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      # Initiates the replica set on first start (and on an existing data volume from before the replica set)
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - -u
+        - admin
+        - -p
+        - admin_pass
+        - --authenticationDatabase
+        - admin
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }"
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 20
+      start_period: 10s
 
   api:
     build: .

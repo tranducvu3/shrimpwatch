@@ -294,6 +294,7 @@ Go to [http://localhost:8000/docs](http://localhost:8000/docs):
 | `DELETE /ponds/{pond_id}/conditions[/{condition}]` | Stops one or all conditions of a pond |
 | `GET /ponds/scenarios/catalog` | Conditions (with ramp and duration) and the metrics each one changes, severities, remedies, scenario offset limits, alert thresholds |
 | `GET /control` | Simulator control panel (see section 5.2) |
+| `GET /stream/incidents` | Server-sent events from a MongoDB Change Stream on `incidents` and `events` (503 when MongoDB is not a replica set) |
 | `GET /incidents?state=open` | Queries incidents by state |
 | `PATCH /incidents/{id}?state=...&action=...` | Updates the incident lifecycle |
 | `POST /incidents/{id}/remedies/{remedy}?note=...` | Applies a remedy to an incident (`repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock`): recorded as an action with an `incident_action` event, the incident moves to `resolving`, and on the simulated farm the cause ends (for `repair_aerator` also the aerator flag set by `/pump/fail`). Recovery is left to the worker, from new readings |
@@ -336,7 +337,7 @@ The simulator applies changes on its next send (30 seconds). **Restore all ponds
 ### 5.3. Browsing Raw Data with MongoDB Compass
 
 - **Atlas (Cloud):** paste the `mongodb+srv://...` string into Compass → database `shrimpwatch`.
-- **Local Docker:** `mongodb://shrimp_app:shrimp_pass@localhost:27017/shrimpwatch?authSource=shrimpwatch`
+- **Local Docker:** `mongodb://shrimp_app:shrimp_pass@localhost:27017/shrimpwatch?authSource=shrimpwatch&directConnection=true` (the container is a single-node replica set whose member is named `mongodb:27017`, so connect directly from the host)
 
 ### 5.4. Monitoring in Datadog
 
@@ -515,7 +516,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
 | Event-driven processing | Every incident state change is written to the `events` collection (keyed by `incident_id`) and rebuilt into a timeline via `GET /incidents/{id}/timeline` | [events.py](app/db/repositories/events.py) · [pipelines.py](app/db/pipelines.py) (`incident_timeline_pipeline`) |
-| Change Streams / extensions | The data structure is ready for Change Streams integration for real-time notifications | [app/db/](app/db) |
+| Change Streams | `GET /stream/incidents` watches `incidents` and `events` with a MongoDB Change Stream and pushes each change to the control panel as a server-sent event, so a new incident or state change shows at once (*Trực tiếp* in the header). Local Compose and CI run MongoDB as a single-node replica set; Atlas already is one. Time series collections do not support change streams, so readings are still polled | [changes.py](app/db/repositories/changes.py) · [incident_stream.py](app/services/incident_stream.py) |
 
 ### 6.2. Datadog — Observability & Alerting
 

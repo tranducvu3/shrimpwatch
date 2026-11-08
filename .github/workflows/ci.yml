@@ -41,16 +41,6 @@ jobs:
     name: Tests (MongoDB 7)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1})'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       # Test fixture drops collections: always a throwaway DB, never Atlas.
       MONGODB_URI: mongodb://localhost:27017
@@ -64,6 +54,18 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements*.txt
+
+      # Single-node replica set (Change Streams need one). A service container cannot take mongod arguments.
+      - name: Start MongoDB 7 replica set
+        run: |
+          docker run -d --name mongodb -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for _ in $(seq 1 30); do
+            state=$(docker exec mongodb mongosh --quiet --eval "try { rs.status().members[0].stateStr } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}); 'INITIATED' }" 2>/dev/null || true)
+            echo "replica set: ${state:-starting}"
+            [ "$state" = "PRIMARY" ] && exit 0
+            sleep 2
+          done
+          exit 1
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
