@@ -33,3 +33,8 @@ Incident.id
 Incident.created_at
 Incident.updated_at
 Incident.actions
+
+# Pydantic fields: incident timings stored on the incidents document, shown in the control panel's incident detail.
+Incident.detection_delay_sec
+Incident.acknowledged_at
+Incident.recovered_at

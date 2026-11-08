@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Consecutive pump_status = 0 readings that mean the aerator has stopped (checked at ingest and by the worker)
     PUMP_STOPPED_READINGS: int = 2
     DO_RECOVERY_MARGIN: float = 0.5
+    # Detection SLO: a critical incident opens within this many seconds of the fault
+    DETECTION_SLO_SEC: int = 120
+    # How far back an injected fault (aerator failure, condition, scenario) can explain a new incident
+    FAULT_LOOKBACK_SEC: int = 2 * 3600
 
 
 settings = Settings()

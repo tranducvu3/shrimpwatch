@@ -97,3 +97,8 @@ class Incident(BaseModel):
     root_cause: str | None = None
     evidence: IncidentEvidence = IncidentEvidence()
     actions: list[dict] = []
+    # Timings: fault start (simulation only, None for real sensors), first operator action, data-confirmed recovery
+    fault_started_at: datetime | None = None
+    detection_delay_sec: float | None = None
+    acknowledged_at: datetime | None = None
+    recovered_at: datetime | None = None
