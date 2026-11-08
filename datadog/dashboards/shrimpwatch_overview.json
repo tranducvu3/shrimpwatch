@@ -787,37 +787,61 @@
                       "name": "c1",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:do_anomaly_drop,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause IN (do_out_of_range,do_low,do_critical,do_anomaly_drop),$trang_trai,$ao} by {pond}.as_count()"
                     },
                     {
                       "name": "c2",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:do_critical,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause:temperature_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
                     },
                     {
                       "name": "c3",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:do_low,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause:ph_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
                     },
                     {
                       "name": "c4",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:temperature_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause IN (salinity_out_of_range,salinity_low),$trang_trai,$ao} by {pond}.as_count()"
                     },
                     {
                       "name": "c5",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:ph_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause:nh3_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
                     },
                     {
                       "name": "c6",
                       "data_source": "metrics",
                       "aggregator": "sum",
-                      "query": "sum:shrimpwatch.incident.open{root_cause:salinity_low,$trang_trai,$ao} by {pond}.as_count()"
+                      "query": "sum:shrimpwatch.incident.open{root_cause:co2_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                    },
+                    {
+                      "name": "c7",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.open{root_cause:tan_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                    },
+                    {
+                      "name": "c8",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.open{root_cause:nitrite_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                    },
+                    {
+                      "name": "c9",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.open{root_cause:orp_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
+                    },
+                    {
+                      "name": "c10",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.open{root_cause:alkalinity_out_of_range,$trang_trai,$ao} by {pond}.as_count()"
                     }
                   ],
                   "formulas": [
@@ -831,27 +855,43 @@
                     },
                     {
                       "formula": "c1",
-                      "alias": "DO giảm nhanh"
+                      "alias": "DO"
                     },
                     {
                       "formula": "c2",
-                      "alias": "DO nguy hiểm"
-                    },
-                    {
-                      "formula": "c3",
-                      "alias": "DO thấp"
-                    },
-                    {
-                      "formula": "c4",
                       "alias": "Nhiệt độ"
                     },
                     {
-                      "formula": "c5",
+                      "formula": "c3",
                       "alias": "pH"
                     },
                     {
-                      "formula": "c6",
+                      "formula": "c4",
                       "alias": "Độ mặn"
+                    },
+                    {
+                      "formula": "c5",
+                      "alias": "NH3"
+                    },
+                    {
+                      "formula": "c6",
+                      "alias": "CO2"
+                    },
+                    {
+                      "formula": "c7",
+                      "alias": "TAN"
+                    },
+                    {
+                      "formula": "c8",
+                      "alias": "Nitrite"
+                    },
+                    {
+                      "formula": "c9",
+                      "alias": "ORP"
+                    },
+                    {
+                      "formula": "c10",
+                      "alias": "Độ kiềm"
                     }
                   ]
                 }
@@ -956,37 +996,61 @@
                       "name": "c1",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:do_anomaly_drop,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause IN (do_out_of_range,do_low,do_critical,do_anomaly_drop),$trang_trai,$ao} by {pond}"
                     },
                     {
                       "name": "c2",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:do_critical,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:temperature_out_of_range,$trang_trai,$ao} by {pond}"
                     },
                     {
                       "name": "c3",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:do_low,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:ph_out_of_range,$trang_trai,$ao} by {pond}"
                     },
                     {
                       "name": "c4",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:temperature_out_of_range,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause IN (salinity_out_of_range,salinity_low),$trang_trai,$ao} by {pond}"
                     },
                     {
                       "name": "c5",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:ph_out_of_range,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:nh3_out_of_range,$trang_trai,$ao} by {pond}"
                     },
                     {
                       "name": "c6",
                       "data_source": "metrics",
                       "aggregator": "max",
-                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:salinity_low,$trang_trai,$ao} by {pond}"
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:co2_out_of_range,$trang_trai,$ao} by {pond}"
+                    },
+                    {
+                      "name": "c7",
+                      "data_source": "metrics",
+                      "aggregator": "max",
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:tan_out_of_range,$trang_trai,$ao} by {pond}"
+                    },
+                    {
+                      "name": "c8",
+                      "data_source": "metrics",
+                      "aggregator": "max",
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:nitrite_out_of_range,$trang_trai,$ao} by {pond}"
+                    },
+                    {
+                      "name": "c9",
+                      "data_source": "metrics",
+                      "aggregator": "max",
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:orp_out_of_range,$trang_trai,$ao} by {pond}"
+                    },
+                    {
+                      "name": "c10",
+                      "data_source": "metrics",
+                      "aggregator": "max",
+                      "query": "max:shrimpwatch.incident.similarity_score{root_cause:alkalinity_out_of_range,$trang_trai,$ao} by {pond}"
                     }
                   ],
                   "formulas": [
@@ -1012,7 +1076,7 @@
                     },
                     {
                       "formula": "c1",
-                      "alias": "DO giảm nhanh",
+                      "alias": "DO",
                       "conditional_formats": [
                         {
                           "comparator": ">=",
@@ -1028,38 +1092,6 @@
                     },
                     {
                       "formula": "c2",
-                      "alias": "DO nguy hiểm",
-                      "conditional_formats": [
-                        {
-                          "comparator": ">=",
-                          "value": 0.8,
-                          "palette": "white_on_green"
-                        },
-                        {
-                          "comparator": "<",
-                          "value": 0.8,
-                          "palette": "white_on_yellow"
-                        }
-                      ]
-                    },
-                    {
-                      "formula": "c3",
-                      "alias": "DO thấp",
-                      "conditional_formats": [
-                        {
-                          "comparator": ">=",
-                          "value": 0.8,
-                          "palette": "white_on_green"
-                        },
-                        {
-                          "comparator": "<",
-                          "value": 0.8,
-                          "palette": "white_on_yellow"
-                        }
-                      ]
-                    },
-                    {
-                      "formula": "c4",
                       "alias": "Nhiệt độ",
                       "conditional_formats": [
                         {
@@ -1075,7 +1107,7 @@
                       ]
                     },
                     {
-                      "formula": "c5",
+                      "formula": "c3",
                       "alias": "pH",
                       "conditional_formats": [
                         {
@@ -1091,8 +1123,104 @@
                       ]
                     },
                     {
-                      "formula": "c6",
+                      "formula": "c4",
                       "alias": "Độ mặn",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c5",
+                      "alias": "NH3",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c6",
+                      "alias": "CO2",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c7",
+                      "alias": "TAN",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c8",
+                      "alias": "Nitrite",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c9",
+                      "alias": "ORP",
+                      "conditional_formats": [
+                        {
+                          "comparator": ">=",
+                          "value": 0.8,
+                          "palette": "white_on_green"
+                        },
+                        {
+                          "comparator": "<",
+                          "value": 0.8,
+                          "palette": "white_on_yellow"
+                        }
+                      ]
+                    },
+                    {
+                      "formula": "c10",
+                      "alias": "Độ kiềm",
                       "conditional_formats": [
                         {
                           "comparator": ">=",

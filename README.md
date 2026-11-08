@@ -367,11 +367,13 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Monitor | Condition (5-minute average, by `pond`) | Matching worker incident |
 |---|---|---|
 | Aerator failure | `pump_power` < 50 W | `pump_failure` (critical) |
-| Fast DO drop | DO down > 0.25 mg/L compared with 5 minutes earlier | `do_anomaly_drop` (warning) |
-| Low DO | DO < 4 (warning), < 3 (critical) | `do_low`, `do_critical` |
+| Fast DO drop | DO down > 0.25 mg/L compared with 5 minutes earlier | `do_out_of_range` (warning) |
+| Low DO | DO < 4 (warning), < 3 (critical) | `do_out_of_range` (warning or critical) |
 | Temperature out of range | outside 26–32 °C | `temperature_out_of_range` (warning) |
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
-| Low salinity | < 10 ppt | `salinity_low` (warning) |
+| Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
+
+The worker also opens a warning incident, with no Datadog monitor, when ORP, NH₃, CO₂, TAN, nitrite or alkalinity cross their threshold: `orp_out_of_range`, `nh3_out_of_range`, `co2_out_of_range`, `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 
 Monitors evaluate a **full 5-minute** average and Datadog receives data a few tens of seconds late, so when demoing an aerator failure keep the aerator off for **at least 8 minutes** before the `pump_power < 50 W` monitor switches to Alert (the worker opens the incident earlier, based on the MongoDB data).
 
@@ -424,8 +426,8 @@ The action notes above are the Vietnamese strings that `demo_incident` sends: "C
 | Time (UTC) | Event | Source |
 |---|---|---|
 | 11:59:08 | Turn off the pond 1 aerator, start the **Heavy rain** scenario on pond 3 (salinity −7 ppt) | Control panel |
-| 12:01:27 | `warning / do_anomaly_drop` incident opened for pond 1 (DO falling 0.07 mg/L/minute) | Worker → `incidents`, `events` |
-| 12:02:27 | `warning / salinity_low` incident opened for pond 3 (5-minute average salinity 7.78 ppt) | Worker |
+| 12:01:27 | `warning / do_out_of_range` incident opened for pond 1 (DO falling 0.07 mg/L/minute) | Worker → `incidents`, `events` |
+| 12:02:27 | `warning / salinity_out_of_range` incident opened for pond 3 (5-minute average salinity 7.78 ppt) | Worker |
 | 12:03:24 | **Low salinity** monitor goes *Triggered* on `pond:pond-03` | Datadog |
 | 12:03:56 | **The same** pond 1 incident is escalated to `critical / pump_failure` (5-minute average power 0 W), with an `incident_escalated` event — no duplicate incident opened | Worker |
 | 12:04:59 | **Fast DO drop** monitor goes *Triggered* on `pond:pond-01` | Datadog |

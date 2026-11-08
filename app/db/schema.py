@@ -27,6 +27,43 @@ _OBSOLETE_METRIC_INDEXES = [
 ]
 
 
+# Root causes renamed to one `<metric>_out_of_range` per metric: old name -> new name
+LEGACY_ROOT_CAUSES = {
+    "do_anomaly_drop": "do_out_of_range",
+    "do_critical": "do_out_of_range",
+    "do_low": "do_out_of_range",
+    "salinity_low": "salinity_out_of_range",
+    "nh3_high": "nh3_out_of_range",
+    "nitrite_high": "nitrite_out_of_range",
+    "tan_high": "tan_out_of_range",
+    "co2_high": "co2_out_of_range",
+    "orp_low": "orp_out_of_range",
+    "alkalinity_low": "alkalinity_out_of_range",
+}
+_EVENT_ROOT_CAUSE_FIELDS = ("root_cause", "from_root_cause", "to_root_cause")
+
+
+def migrate_root_causes(db: Database) -> int:
+    """Rename old root causes in incidents (also inside their similar_incidents) and events. Returns documents changed."""
+    changed = 0
+    for old, new in LEGACY_ROOT_CAUSES.items():
+        changed += db[INCIDENTS].update_many({"root_cause": old}, {"$set": {"root_cause": new}}).modified_count
+        changed += (
+            db[INCIDENTS]
+            .update_many(
+                {"similar_incidents.root_cause": old},
+                {"$set": {"similar_incidents.$[m].root_cause": new}},
+                array_filters=[{"m.root_cause": old}],
+            )
+            .modified_count
+        )
+        for field in _EVENT_ROOT_CAUSE_FIELDS:
+            changed += (
+                db[EVENTS].update_many({f"details.{field}": old}, {"$set": {f"details.{field}": new}}).modified_count
+            )
+    return changed
+
+
 def _ensure_collection(db: Database, name: str, force: bool, **options: Any) -> bool:
     """Create the collection if missing (force: drop and recreate). Returns True if it was created."""
     exists = name in db.list_collection_names()
@@ -189,6 +226,7 @@ def init_collections(force: bool = False) -> dict[str, Any]:
     result["ponds"] = _init_ponds(db, force)
     _init_events(db, force)
     result["events"] = "ready"
+    result["root_causes_migrated"] = migrate_root_causes(db)
     result["collection_infos"] = describe_collections(db)
     logger.info("Collections initialized", extra={"ctx": result})
     return result

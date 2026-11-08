@@ -6,7 +6,7 @@ from app.services import incidents as incident_service
 
 POND = "pond-02"
 
-WARNING = Finding(Severity.WARNING, "Oxy giam nhanh", "rate 0.08", "do_anomaly_drop")
+WARNING = Finding(Severity.WARNING, "Oxy giam nhanh", "rate 0.08", "do_out_of_range")
 CRITICAL = Finding(Severity.CRITICAL, "Quat hong", "0 W", "pump_failure")
 
 
@@ -26,7 +26,7 @@ def test_incident_escalates_and_records_event():
     assert event["details"] == {
         "from_severity": "warning",
         "to_severity": "critical",
-        "from_root_cause": "do_anomaly_drop",
+        "from_root_cause": "do_out_of_range",
         "to_root_cause": "pump_failure",
     }
 

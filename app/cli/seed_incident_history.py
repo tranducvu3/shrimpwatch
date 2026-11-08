@@ -65,7 +65,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         "algae",
-        "do_anomaly_drop",
+        "do_out_of_range",
         Severity.WARNING,
         "Cảnh báo: Oxy giảm nhanh bất thường",
         "Tảo tàn: quạt chạy bình thường nhưng DO và ORP giảm, biên độ pH lớn.",
@@ -79,7 +79,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         "ammonia",
-        "do_low",
+        "do_out_of_range",
         Severity.WARNING,
         "WARNING: DO dưới ngưỡng cảnh báo",
         "Dư thức ăn: NH3 cao, DO thấp dần, quạt chạy bình thường.",
@@ -93,7 +93,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         "rain",
-        "do_low",
+        "do_out_of_range",
         Severity.WARNING,
         "WARNING: DO dưới ngưỡng cảnh báo",
         "Mưa lớn: phân tầng nước, pH dao động mạnh.",

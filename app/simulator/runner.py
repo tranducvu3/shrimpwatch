@@ -67,7 +67,7 @@ def backfill_start(now: datetime, latest: datetime | None) -> datetime:
 def warm_up(sims: dict[str, PondSimulator], now: datetime, send_from: datetime | None) -> list[dict]:
     """Run the model through the whole 6h window so its state (DO, ORP, salinity) continues the existing series,
     and return only records from `send_from` (None: send nothing). Without this step DO restarts at its
-    initial level, out of line with the old series -> the worker wrongly opens a do_anomaly_drop incident."""
+    initial level, out of line with the old series -> the worker wrongly opens a DO incident."""
     records: list[dict] = []
     t = now - timedelta(hours=BACKFILL_HOURS)
     while t <= now:
