@@ -473,7 +473,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 
 ### 4. Automated Tests
 
-**106 tests PASSED** (unit + integration on a local MongoDB 7), coverage **78.8%** (CI floor 64%), `ruff` clean — 31/10/2026. The record of the first run (9 tests, 07/10) is kept in [screenshots_pytest.txt](screenshots_pytest.txt).
+**106 tests PASSED** (unit + integration on a local MongoDB 7), coverage **78.8%** (CI floor 64%), `ruff` clean — 31/10/2026.
 
 ---
 
