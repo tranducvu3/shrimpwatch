@@ -1,9 +1,0 @@
-﻿services:
-  mongodb:
-    volumes:
-      - ./scripts:/scripts:ro
-  datadog-agent:
-    ports:
-      - "5000:5000"
-    environment:
-      DD_ALLOW_NON_LOCAL_TRAFFIC: "true"

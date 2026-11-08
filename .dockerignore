@@ -17,5 +17,4 @@ htmlcov
 # Not needed at runtime: tests (compose mounts ./tests when needed), proof screenshots, docs
 tests
 assets_proof
-screenshots_pytest.txt
 *.md
