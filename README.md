@@ -67,6 +67,7 @@ Data groups collected:
 | `nitrite` | mg/L | manual | NO₂⁻ causes oxygen deficiency in shrimp blood | > 1 mg/L |
 | `nh3` | mg/L | derived | Toxic fraction of ammonia: `TAN × 1/(1+10^(pKa−pH))`, `pKa = 0.09018 + 2729.92/T(K)` (Emerson 1975) | > 0.1 mg/L |
 | `ph_swing` | pH | derived | pH range over 24h (pipeline `$match → $group → $project`) | > 0.5 |
+| `do.minutes_to_critical` | minutes | worker gauge | **DO forecast**: minutes until DO reaches 3 mg/L if it keeps falling at the `$derivative` rate of the last 5 minutes (`(last DO − 3) / drop rate`). Added to the incident description ("Dự báo ≈ 18 phút nữa DO < 3 mg/L") and to `incidents.evidence.minutes_to_do_critical` | ≤ 30 min |
 
 When the aerator fails, DO falls by ~0.1 mg/L/minute and ORP follows. An incident's `incidents.evidence` now also carries `last_orp_mv`, `nh3_mg_per_l` and `ph_swing_24h`, so technicians see the water quality context right in the Investigate step. On the Datadog dashboard, ORP sits next to DO and aerator power in *Oxy và quạt nước*, and NH₃, TAN, nitrite and the pH swing are in the water and waste sections.
 
@@ -348,6 +349,7 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Temperature out of range | outside 26–32 °C | `temperature_out_of_range` (warning) |
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
+| DO forecast | Datadog linear `forecast()` of DO (reactive model, 1-day history) reaches ≤ 3 mg/L within the next hour | `do_out_of_range` (warning) when the worker's own forecast is ≤ 30 min |
 
 The worker also opens a warning incident, with no Datadog monitor, when ORP, NH₃, CO₂, TAN, nitrite or alkalinity cross their threshold: `orp_out_of_range`, `nh3_out_of_range`, `co2_out_of_range`, `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 

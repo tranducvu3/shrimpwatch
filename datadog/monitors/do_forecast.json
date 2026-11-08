@@ -1,0 +1,23 @@
+{
+  "name": "[ShrimpWatch] WARNING: DO forecast to fall below 3 mg/L within 1 hour · Dự báo DO xuống dưới 3 mg/L trong 1 giờ",
+  "type": "query alert",
+  "query": "min(next_1h):forecast(avg:shrimpwatch.metric.do{source:sensor} by {pond}, 'linear', 1, interval='5m', history='1d', model='reactive') <= 3",
+  "message": "## 📉 DO in pond {{pond.name}} is forecast to fall below 3 mg/L within the next hour\n\nDatadog's linear forecast of the DO trend crosses 3 mg/L. The worker computes the same thing from MongoDB (`$derivative` over 5 minutes): see `minutes_to_do_critical` in the incident evidence and the *Phút đến khi DO < 3* chart.\n\nAct before it happens: check the aerator, cut feed, prepare the backup aerator.\n\n---\n**Tiếng Việt**\n\n## 📉 Dự báo DO ao {{pond.name}} xuống dưới 3 mg/L trong 1 giờ tới\n\nDự báo tuyến tính của Datadog cho thấy DO sẽ chạm 3 mg/L. Worker tính cùng điều này từ MongoDB (`$derivative` trong 5 phút): xem `minutes_to_do_critical` trong bằng chứng sự cố và biểu đồ *Phút đến khi DO < 3*.\n\nXử lý trước khi xảy ra: kiểm tra quạt, ngừng cho ăn, chuẩn bị quạt dự phòng.",
+  "tags": [
+    "shrimpwatch",
+    "metric:do",
+    "sev:warning"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3.0
+    },
+    "threshold_windows": {
+      "trigger_window": "last_15m",
+      "recovery_window": "last_15m"
+    },
+    "renotify_interval": 30,
+    "notify_no_data": false,
+    "include_tags": true
+  }
+}

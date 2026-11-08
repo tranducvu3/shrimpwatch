@@ -2,7 +2,14 @@ from dataclasses import replace
 
 import pytest
 
-from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered, pump_stopped
+from app.domain.incident_rules import (
+    PondSnapshot,
+    Thresholds,
+    evaluate,
+    has_recovered,
+    minutes_to_do_critical,
+    pump_stopped,
+)
 from app.domain.models import Severity
 
 T = Thresholds(
@@ -162,3 +169,29 @@ def test_stopped_aerator_without_any_power_data_is_critical():
 
 def test_no_recovery_while_aerator_is_stopped():
     assert has_recovered(replace(snap(avg_pump=1200.0, min_do=7.0), pump_stopped=True), T) is False
+
+
+@pytest.mark.parametrize(
+    "last_do, rate, expected",
+    [(7.0, 0.1, 40.0), (3.5, 0.05, 10.0), (6.0, 0.0, None), (6.0, -0.02, None), (2.8, 0.1, None), (None, 0.1, None)],
+)
+def test_minutes_to_do_critical(last_do, rate, expected):
+    result = minutes_to_do_critical(last_do, rate, do_critical=3.0)
+    assert result == pytest.approx(expected) if expected is not None else result is None
+
+
+def test_forecast_close_to_critical_opens_a_warning():
+    # Falls slower than the drop-rate rule (0.05) and DO is still above 4, but 3 mg/L is 25 minutes away
+    s = replace(snap(drop_rate=0.04, min_do=4.0), last_do=4.0)
+    finding = evaluate(s, T)
+    assert (finding.severity, finding.root_cause) == (Severity.WARNING, "do_out_of_range")
+    assert "≈ 25 phút nữa DO < 3 mg/L" in finding.description
+
+
+def test_distant_forecast_does_not_open_an_incident():
+    assert evaluate(replace(snap(drop_rate=0.01, min_do=6.0), last_do=6.0), T) is None
+
+
+def test_pump_failure_description_carries_the_forecast():
+    finding = evaluate(replace(snap(avg_pump=0.0, drop_rate=0.1, min_do=6.5), last_do=6.5), T)
+    assert finding.root_cause == "pump_failure" and "≈ 35 phút nữa" in finding.description

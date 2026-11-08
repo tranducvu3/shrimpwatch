@@ -7,9 +7,16 @@ from datetime import timedelta
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
-from app.core.telemetry import set_span_tags
+from app.core.telemetry import gauge, set_span_tags
 from app.db.repositories import metrics as metrics_repo
-from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered, pump_stopped
+from app.domain.incident_rules import (
+    PondSnapshot,
+    Thresholds,
+    evaluate,
+    has_recovered,
+    minutes_to_do_critical,
+    pump_stopped,
+)
 from app.domain.models import DeviceType, IncidentEvidence, Source
 from app.services import derivations
 from app.services import incidents as incident_service
@@ -17,6 +24,8 @@ from app.services import incidents as incident_service
 logger = get_logger("worker")
 
 RECENT = timedelta(minutes=5)
+# Forecasts further out are sensor noise on a flat DO curve: not worth a point on the chart
+FORECAST_HORIZON_MIN = 240
 
 
 def load_do_windows(pond_ids: list[str]) -> dict[str, dict]:
@@ -49,6 +58,7 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         avg_pump_watts=metrics_repo.average_value(pond_id, "pump_power", now - RECENT),
         do_drop_rate=do_row.get("do_drop_rate_mg_per_l_per_min"),
         min_do=do_row.get("min_do"),
+        last_do=do_row.get("last_do"),
         avg_temperature=metrics_repo.average_value(pond_id, "temperature", now - RECENT),
         avg_ph=metrics_repo.average_value(pond_id, "ph", now - RECENT),
         avg_salinity=metrics_repo.average_value(pond_id, "salinity", now - RECENT),
@@ -64,6 +74,9 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         ),
     )
     thresholds = Thresholds.from_settings()
+    minutes_left = minutes_to_do_critical(snapshot.last_do, snapshot.do_drop_rate, thresholds.do_critical)
+    if minutes_left is not None and minutes_left <= FORECAST_HORIZON_MIN:
+        gauge("do.minutes_to_critical", round(minutes_left, 1), tags={"pond": pond_id})
 
     finding = evaluate(snapshot, thresholds)
     if finding:
@@ -74,6 +87,7 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
             last_orp_mv=last_orp,
             nh3_mg_per_l=derived.nh3,
             ph_swing_24h=derived.ph_swing,
+            minutes_to_do_critical=minutes_left,
             do_window_sec=settings.DO_WINDOW_SEC,
             notes={
                 "timestamp": now.isoformat(),

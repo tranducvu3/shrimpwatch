@@ -27,6 +27,8 @@ class PondSnapshot:
     alkalinity: float | None = None
     # The aerator reported "off" in each of its last readings (see pump_stopped): faster than the 5-minute power average
     pump_stopped: bool = False
+    # Latest DO of the 5-minute window, for the forecast
+    last_do: float | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,8 @@ class Thresholds:
     tan_warn: float
     nitrite_warn: float
     alkalinity_warn_low: float
+    # Warn when DO is forecast to reach do_critical within this many minutes
+    do_forecast_warn_min: float = 30.0
 
     @classmethod
     def from_settings(cls) -> Thresholds:
@@ -69,6 +73,7 @@ class Thresholds:
             tan_warn=settings.TAN_WARN,
             nitrite_warn=settings.NITRITE_WARN,
             alkalinity_warn_low=settings.ALK_WARN,
+            do_forecast_warn_min=settings.DO_FORECAST_WARN_MIN,
         )
 
 
@@ -93,6 +98,22 @@ def pump_failed(s: PondSnapshot, t: Thresholds) -> bool:
     return s.pump_stopped or (s.avg_pump_watts is not None and s.avg_pump_watts < t.pump_failed_max_watts)
 
 
+def minutes_to_do_critical(last_do: float | None, drop_rate: float | None, do_critical: float) -> float | None:
+    """Minutes until DO reaches `do_critical` if it keeps falling at `drop_rate` (mg/L/min, positive = falling).
+
+    A straight-line forecast from the $derivative of the last 5 minutes: None when DO is not falling or is
+    already critical, so it only answers "how long do we have to act?".
+    """
+    if last_do is None or drop_rate is None or drop_rate <= 0 or last_do <= do_critical:
+        return None
+    return (last_do - do_critical) / drop_rate
+
+
+def _forecast(s: PondSnapshot, t: Thresholds) -> str:
+    minutes = minutes_to_do_critical(s.last_do, s.do_drop_rate, t.do_critical)
+    return "" if minutes is None else f" Dự báo ≈ {minutes:.0f} phút nữa DO < {t.do_critical:g} mg/L."
+
+
 def _fmt(value: float | None, spec: str) -> str:
     return "n/a" if value is None else format(value, spec)
 
@@ -106,14 +127,15 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
             Severity.CRITICAL,
             "SỰ CỐ: Quạt nước hỏng → oxy sụt",
             f"Quạt ao {s.pond_id} đã dừng. Công suất trung bình 5 phút gần nhất: {_fmt(s.avg_pump_watts, '.1f')} W. "
-            f"DO drop rate: {_fmt(s.do_drop_rate, '.4f')} mg/L/phút, min DO: {s.min_do}",
+            f"DO drop rate: {_fmt(s.do_drop_rate, '.4f')} mg/L/phút, min DO: {s.min_do}.{_forecast(s, t)}",
             "pump_failure",
         )
     if s.do_drop_rate is not None and s.do_drop_rate >= t.do_drop_rate_warn and not failed:
         return Finding(
             Severity.WARNING,
             "Cảnh báo: Oxy giảm nhanh bất thường",
-            f"Tốc độ giảm DO {s.do_drop_rate:.3f} mg/L/phút (> ngưỡng {t.do_drop_rate_warn}). Cần điều tra.",
+            f"Tốc độ giảm DO {s.do_drop_rate:.3f} mg/L/phút (> ngưỡng {t.do_drop_rate_warn}). Cần điều tra."
+            f"{_forecast(s, t)}",
             "do_out_of_range",
         )
     if s.min_do is not None and s.min_do < t.do_critical:
@@ -123,11 +145,19 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
             f"Min DO = {s.min_do:.3f} mg/L < {t.do_critical}",
             "do_out_of_range",
         )
+    minutes = minutes_to_do_critical(s.last_do, s.do_drop_rate, t.do_critical)
+    if minutes is not None and minutes <= t.do_forecast_warn_min:
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: DO sắp xuống ngưỡng nguy hiểm",
+            f"DO {s.last_do:.2f} mg/L, giảm {s.do_drop_rate:.3f} mg/L/phút.{_forecast(s, t)}",
+            "do_out_of_range",
+        )
     if s.min_do is not None and s.min_do < t.do_warn:
         return Finding(
             Severity.WARNING,
             "WARNING: DO dưới ngưỡng cảnh báo",
-            f"Min DO = {s.min_do:.3f} mg/L < {t.do_warn}",
+            f"Min DO = {s.min_do:.3f} mg/L < {t.do_warn}.{_forecast(s, t)}",
             "do_out_of_range",
         )
     return _environment_finding(s, t) or _water_quality_finding(s, t)

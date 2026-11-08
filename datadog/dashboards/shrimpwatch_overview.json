@@ -481,10 +481,39 @@
               "markers": [{"value": "y = 100", "display_type": "warning dashed", "label": "ORP cảnh báo 100 mV"}]
             },
             "layout": {"x": 6, "y": 2, "width": 6, "height": 2}
+          },
+          {
+            "id": 206,
+            "definition": {
+              "type": "timeseries",
+              "title": "Phút đến khi DO < 3 mg/L (dự báo từ tốc độ giảm DO) - cảnh báo dưới 30 phút",
+              "title_size": "16",
+              "title_align": "left",
+              "show_legend": true,
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [{"formula": "query1"}],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "min:shrimpwatch.do.minutes_to_critical{$trang_trai,$ao} by {pond}.rollup(min,30)"
+                    }
+                  ],
+                  "style": {"palette": "classic"},
+                  "display_type": "line"
+                }
+              ],
+              "markers": [{"value": "y = 30", "display_type": "warning dashed", "label": "Còn 30 phút"}],
+              "yaxis": {"min": "0", "include_zero": true}
+            },
+            "layout": {"x": 0, "y": 4, "width": 12, "height": 2}
           }
         ]
       },
-      "layout": {"x": 0, "y": 10, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 10, "width": 12, "height": 7}
     },
     {
       "id": 3,
@@ -609,7 +638,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 15, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 17, "width": 12, "height": 5}
     },
     {
       "id": 4,
@@ -754,7 +783,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 20, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 22, "width": 12, "height": 5}
     },
     {
       "id": 5,
@@ -1040,7 +1069,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 25, "width": 12, "height": 9}
+      "layout": {"x": 0, "y": 27, "width": 12, "height": 9}
     }
   ]
 }
