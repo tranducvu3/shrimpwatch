@@ -8,7 +8,7 @@ from ddtrace import tracer
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
-from app.core.telemetry import init_metrics
+from app.core.telemetry import gauge, init_metrics
 from app.db.repositories import metrics as metrics_repo
 from app.domain.ponds import pond_ids
 from app.services import incidents as incident_service
@@ -54,4 +54,7 @@ def run_worker() -> None:
         except Exception as e:
             logger.error("report active incidents failed", extra={"err": str(e)})
 
-        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - (time.time() - t0)))
+        elapsed = time.time() - t0
+        # Heartbeat and load: a monitor alerts when the cycle gets slow or the metric stops (worker down)
+        gauge("worker.cycle_seconds", round(elapsed, 2))
+        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - elapsed))

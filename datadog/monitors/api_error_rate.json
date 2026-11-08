@@ -1,0 +1,14 @@
+{
+  "name": "[ShrimpWatch] WARNING: API error rate above 5% · Tỉ lệ lỗi API trên 5%",
+  "type": "query alert",
+  "query": "sum(last_10m):sum:trace.fastapi.request.errors{service:shrimpwatch}.as_count() / sum:trace.fastapi.request.hits{service:shrimpwatch}.as_count() > 0.05",
+  "message": "## ⚠️ API errors: {{value}} of requests failed\n\nMore than 5% of API requests failed in the last 10 minutes (APM trace metrics). Sensor batches or operator actions may be lost.\n\nOpen APM → service `shrimpwatch` → Errors, and the logs with `service:shrimpwatch status:error`.\n\n---\n**Tiếng Việt**\n\n## ⚠️ Lỗi API: {{value}} yêu cầu thất bại\n\nHơn 5% yêu cầu tới API lỗi trong 10 phút (APM trace metrics). Dữ liệu cảm biến hoặc thao tác của người vận hành có thể bị mất.\n\nMở APM → service `shrimpwatch` → Errors, và log `service:shrimpwatch status:error`.",
+  "tags": ["shrimpwatch", "component:api", "sev:warning"],
+  "options": {
+    "thresholds": {"critical": 0.05, "warning": 0.02},
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

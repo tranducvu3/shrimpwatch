@@ -1,0 +1,14 @@
+{
+  "name": "[ShrimpWatch] WARNING: ORP below 100 mV · ORP dưới 100 mV",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:shrimpwatch.metric.orp{*} by {pond} < 100",
+  "message": "## ⚠️ ORP below 100 mV in pond {{pond.name}}: {{value}}\n\nThe pond bottom is short of oxygen: anaerobic decay, H₂S risk. Check the aerator and clean the bottom.\n\nMatches the worker's `orp_out_of_range` incident: open it in the control panel (*Sự cố*) for the evidence and suggested remedies.\n\n---\n**Tiếng Việt**\n\n## ⚠️ ORP dưới 100 mV ở ao {{pond.name}}: {{value}}\n\nĐáy ao thiếu oxy: phân huỷ yếm khí, nguy cơ H₂S. Kiểm tra quạt và hút bùn đáy.\n\nĐối chiếu sự cố `orp_out_of_range` của worker: mở trong bảng điều khiển (*Sự cố*) để xem bằng chứng và cách xử lý đề xuất.",
+  "tags": ["shrimpwatch", "metric:orp", "sev:warning"],
+  "options": {
+    "thresholds": {"critical": 100},
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

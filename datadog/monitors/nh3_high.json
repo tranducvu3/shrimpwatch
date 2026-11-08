@@ -1,0 +1,14 @@
+{
+  "name": "[ShrimpWatch] WARNING: Toxic NH3 above 0.1 mg/L · NH₃ độc trên 0.1 mg/L",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:shrimpwatch.metric.nh3{*} by {pond} > 0.1",
+  "message": "## ⚠️ Toxic NH3 above 0.1 mg/L in pond {{pond.name}}: {{value}}\n\nFree ammonia (derived from TAN, pH and temperature) is toxic to shrimp gills. Cut feed, clean the bottom, check pH.\n\nMatches the worker's `nh3_out_of_range` incident: open it in the control panel (*Sự cố*) for the evidence and suggested remedies.\n\n---\n**Tiếng Việt**\n\n## ⚠️ NH₃ độc trên 0.1 mg/L ở ao {{pond.name}}: {{value}}\n\nAmoniac tự do (tính từ TAN, pH, nhiệt độ) gây hại mang tôm. Ngừng cho ăn, hút bùn đáy, kiểm tra pH.\n\nĐối chiếu sự cố `nh3_out_of_range` của worker: mở trong bảng điều khiển (*Sự cố*) để xem bằng chứng và cách xử lý đề xuất.",
+  "tags": ["shrimpwatch", "metric:nh3", "sev:warning"],
+  "options": {
+    "thresholds": {"critical": 0.1},
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

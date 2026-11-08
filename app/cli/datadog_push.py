@@ -1,4 +1,4 @@
-"""Push the dashboards and monitors in datadog/ to the Datadog API (update by name if they already exist)."""
+"""Push the dashboards, monitors and SLOs in datadog/ to the Datadog API (update by name if they already exist)."""
 
 from __future__ import annotations
 
@@ -43,6 +43,10 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
             )
             resp.raise_for_status()
             matches = [m["id"] for m in resp.json() if m.get("query") == payload.get("query")]
+    elif kind == "slo":
+        resp = httpx.get(f"{_base_url()}/slo", headers=_headers(), params={"query": payload["name"]}, timeout=30)
+        resp.raise_for_status()
+        matches = [s["id"] for s in resp.json().get("data") or [] if s.get("name") == payload["name"]]
     else:
         resp = httpx.get(f"{_base_url()}/dashboard", headers=_headers(), timeout=30)
         resp.raise_for_status()
@@ -51,7 +55,7 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
 
 
 def _push(kind: str, path: Path):
-    """kind: 'dashboard' or 'monitor' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
+    """kind: 'dashboard', 'monitor' or 'slo' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     existing = _existing_id(kind, payload)
     if existing is None:
@@ -71,7 +75,7 @@ def main():
     if not settings.DD_API_KEY or not settings.DD_APP_KEY:
         logger.error("DD_API_KEY/DD_APP_KEY are not set in .env")
         return 1
-    for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors")):
+    for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
             _push(kind, p)
     return 0

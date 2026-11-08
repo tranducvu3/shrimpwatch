@@ -1,0 +1,14 @@
+{
+  "name": "[ShrimpWatch] WARNING: Dissolved CO2 above 10 mg/L · CO₂ hoà tan trên 10 mg/L",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:shrimpwatch.metric.co2{*} by {pond} > 10",
+  "message": "## ⚠️ Dissolved CO2 above 10 mg/L in pond {{pond.name}}: {{value}}\n\nHigh CO₂ (derived from pH and alkalinity) makes it harder for shrimp to take up oxygen. Aerate, cut feed, check the stocking density.\n\nMatches the worker's `co2_out_of_range` incident: open it in the control panel (*Sự cố*) for the evidence and suggested remedies.\n\n---\n**Tiếng Việt**\n\n## ⚠️ CO₂ hoà tan trên 10 mg/L ở ao {{pond.name}}: {{value}}\n\nCO₂ cao (tính từ pH và độ kiềm) làm tôm khó hấp thu oxy. Tăng sục khí, ngừng cho ăn, xem lại mật độ nuôi.\n\nĐối chiếu sự cố `co2_out_of_range` của worker: mở trong bảng điều khiển (*Sự cố*) để xem bằng chứng và cách xử lý đề xuất.",
+  "tags": ["shrimpwatch", "metric:co2", "sev:warning"],
+  "options": {
+    "thresholds": {"critical": 10},
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}
