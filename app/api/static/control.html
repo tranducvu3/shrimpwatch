@@ -628,7 +628,8 @@
   let incidentList = [];
   let openIncidentId = null;
 
-  const toDate = (ts) => new Date(ts.endsWith("Z") ? ts : ts + "Z");
+  // The API sends naive UTC ("2026-11-08T12:00:00"); accept an explicit Z or offset too
+  const toDate = (ts) => new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(ts) ? ts : ts + "Z");
   const hhmm = (ts) => toDate(ts).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
   function fmtDuration(sec) {
@@ -822,7 +823,7 @@
         api("GET", "/incidents?state=open"),
         api("GET", "/incidents?state=investigating"),
         api("GET", "/incidents?state=resolving"),
-        api("GET", "/incidents?state=recovered"),
+        api("GET", "/incidents?state=recovered&limit=10"),
       ]);
       const incidents = {};
       for (const i of [...open, ...investigating, ...resolving]) incidents[i.pond_id] = i;

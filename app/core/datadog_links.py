@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
+from app.core.clock import to_naive_utc
 from app.core.config import settings
 
 # Show a little context before the incident opened and after its last change
@@ -20,7 +21,8 @@ def app_base_url(site: str | None = None) -> str:
 
 
 def _ms(ts: datetime) -> int:
-    return int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    """Epoch milliseconds; naive values are UTC (the app convention), aware ones are converted."""
+    return int(to_naive_utc(ts).replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def incident_links(incident_id: str, pond_id: str, start: datetime, end: datetime) -> dict[str, str]:

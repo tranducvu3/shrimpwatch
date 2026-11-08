@@ -10,8 +10,9 @@ router = APIRouter(prefix="/incidents", tags=["incidents"])
 
 
 @router.get("")
-def list_incidents(state: IncidentState | None = None):
-    return incident_service.list_incidents(state)
+def list_incidents(state: IncidentState | None = None, limit: int = Query(50, ge=1, le=200)):
+    """Newest first (index state + created_at)."""
+    return incident_service.list_incidents(state, limit)
 
 
 @router.get("/{incident_id}/timeline")

@@ -30,3 +30,14 @@ def test_dashboard_link_falls_back_to_the_list(monkeypatch):
     monkeypatch.setattr(datadog_links.settings, "DD_DASHBOARD_ID", "")
     links = incident_links("inc-1", "pond-03", datetime(2026, 11, 8, 12, 0), datetime(2026, 11, 8, 12, 0))
     assert urlparse(links["dashboard"]).path == "/dashboard/lists"
+
+
+def test_aware_datetimes_are_converted_not_relabelled():
+    from datetime import timedelta
+
+    naive = incident_links("i", "pond-01", datetime(2026, 11, 8, 12, 0), datetime(2026, 11, 8, 12, 0))
+    vn = timezone(timedelta(hours=7))
+    aware = incident_links(
+        "i", "pond-01", datetime(2026, 11, 8, 19, 0, tzinfo=vn), datetime(2026, 11, 8, 19, 0, tzinfo=vn)
+    )
+    assert naive["logs"] == aware["logs"]

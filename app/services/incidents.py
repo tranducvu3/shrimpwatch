@@ -271,8 +271,8 @@ def report_active(pond_ids: list[str]) -> None:
         gauge("incident.active", 1 if pid in active else 0, tags={"pond": pid})
 
 
-def list_incidents(state: IncidentState | None = None) -> list[dict]:
-    return incidents_repo.list_recent(state)
+def list_incidents(state: IncidentState | None = None, limit: int = 50) -> list[dict]:
+    return incidents_repo.list_recent(state, limit)
 
 
 def timeline(incident_id: str) -> dict:

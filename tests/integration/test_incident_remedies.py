@@ -99,3 +99,8 @@ def test_timeline_of_an_active_incident_includes_pond_events_after_its_last_upda
     )
     events = [e["event"] for e in client.get(f"/incidents/{incident_id}/timeline").json()["timeline"]]
     assert "remedy_applied" in events
+
+
+def test_incident_list_is_limited(client):
+    assert client.get("/incidents", params={"limit": 0}).status_code == 422
+    assert len(client.get("/incidents", params={"limit": 1}).json()) <= 1
