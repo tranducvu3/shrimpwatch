@@ -225,6 +225,7 @@ Open `.env` and fill in the values:
 | `DD_API_KEY` | Datadog API key | Datadog → *Organization Settings* → *API Keys* |
 | `DD_APP_KEY` | Datadog application key | Datadog → *Organization Settings* → *Application Keys* |
 | `DD_SITE` | Datadog site domain | `datadoghq.com` (US1 region) |
+| `DD_NOTIFY_EMAILS` | *(Optional)* Emails that get incident alerts, comma separated | Your team, e.g. `ops@example.com,vet@example.com` |
 
 ### Step 2: Start the System
 
@@ -348,6 +349,10 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Temperature out of range | outside 26–32 °C | `temperature_out_of_range` (warning) |
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
+
+One more monitor, **Incident open in a pond**, watches the worker itself instead of a sensor: it alerts while `shrimpwatch.incident.active` is 1 for a pond (any cause, any severity) and recovers when the worker closes the incident.
+
+**Email alerts.** Datadog can email any address, including people without a Datadog account. Put the addresses in `DD_NOTIFY_EMAILS` in `.env` and run `python -m app.cli.datadog_push` (or `make push-dashboards`, after `docker compose up -d api` so the container reads the new `.env`). The push adds them as `@email` handles to every monitor tagged `notify:email` (only the incident monitor by default), so each address gets one email when a pond opens an incident, a reminder every hour while it stays open, and one when it recovers. The addresses stay in `.env` and never go into the JSON in this public repo; remove an address and push again to stop its emails. To get emails for a sensor monitor as well, add the `notify:email` tag to its JSON.
 
 The worker also opens a warning incident, with no Datadog monitor, when ORP, NH₃, CO₂, TAN, nitrite or alkalinity cross their threshold: `orp_out_of_range`, `nh3_out_of_range`, `co2_out_of_range`, `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 

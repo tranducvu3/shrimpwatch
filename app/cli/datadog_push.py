@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,9 @@ from app.core.log import get_logger
 logger = get_logger("datadog_push")
 
 ROOT = Path(__file__).resolve().parents[2]
+
+NOTIFY_EMAIL_TAG = "notify:email"
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 def _headers() -> dict[str, str]:
@@ -50,9 +54,38 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
     return matches[0] if matches else None
 
 
+def _notify_handles() -> list[str]:
+    """Datadog `@email` handles from DD_NOTIFY_EMAILS (comma separated). Entries that are not an email are skipped."""
+    handles = []
+    for entry in settings.DD_NOTIFY_EMAILS.split(","):
+        email = entry.strip()
+        if not email:
+            continue
+        if not _EMAIL.fullmatch(email):
+            logger.warning("skipping DD_NOTIFY_EMAILS entry that is not an email", extra={"entry": email})
+            continue
+        handles.append(f"@{email}")
+    return handles
+
+
+def _with_recipients(payload: dict) -> dict:
+    """Append the email handles to a monitor tagged notify:email, so the addresses stay in .env, not in the repo.
+
+    The message is rebuilt from the JSON on every push, so removing an address and pushing again stops its emails.
+    """
+    if NOTIFY_EMAIL_TAG not in payload.get("tags", []):
+        return payload
+    handles = _notify_handles()
+    if not handles:
+        return payload
+    return {**payload, "message": f"{payload['message']}\n\nNotify: {' '.join(handles)}"}
+
+
 def _push(kind: str, path: Path):
     """kind: 'dashboard' or 'monitor' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if kind == "monitor":
+        payload = _with_recipients(payload)
     existing = _existing_id(kind, payload)
     if existing is None:
         resp = httpx.post(f"{_base_url()}/{kind}", headers=_headers(), json=payload, timeout=30)

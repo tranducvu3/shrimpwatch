@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     DD_SITE: str = "datadoghq.com"
     DD_ENV: str = "development"
     DD_SERVICE: str = "shrimpwatch"
+    # Comma-separated emails that datadog_push adds to monitors tagged notify:email (kept out of the public JSON)
+    DD_NOTIFY_EMAILS: str = ""
 
     DD_AGENT_HOST: str = "localhost"
     DD_TRACE_AGENT_PORT: int = 8126

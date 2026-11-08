@@ -1,0 +1,20 @@
+{
+  "name": "[ShrimpWatch] Incident open in a pond · Ao đang có sự cố",
+  "type": "metric alert",
+  "query": "max(last_2m):max:shrimpwatch.incident.active{*} by {pond} >= 1",
+  "message": "{{#is_alert}}## 🚨 Incident open in pond {{pond.name}}\n\nThe worker opened an incident for pond {{pond.name}} (gauge `shrimpwatch.incident.active` = 1). Check:\n- Cause and severity: `GET /incidents?state=open` (`root_cause`, `severity`, `evidence`)\n- The pond's row in the ShrimpWatch dashboard and the sensor monitors in Alert or Warn\n- Worker logs: `service:shrimpwatch pond:{{pond.name}} \"incident opened\"`\n\nYou will get another email when the incident recovers.{{/is_alert}}{{#is_recovery}}## ✅ Incident in pond {{pond.name}} recovered\n\nThe pond no longer has an open incident.{{/is_recovery}}\n\n---\n**Tiếng Việt**\n\n{{#is_alert}}## 🚨 Ao {{pond.name}} đang có sự cố\n\nWorker đã mở sự cố cho ao {{pond.name}} (gauge `shrimpwatch.incident.active` = 1). Kiểm tra:\n- Nguyên nhân và mức độ: `GET /incidents?state=open` (`root_cause`, `severity`, `evidence`)\n- Dòng của ao trên dashboard ShrimpWatch và các monitor cảm biến đang Alert hoặc Warn\n- Log worker: `service:shrimpwatch pond:{{pond.name}} \"incident opened\"`\n\nBạn sẽ nhận thêm một email khi sự cố hồi phục.{{/is_alert}}{{#is_recovery}}## ✅ Sự cố ao {{pond.name}} đã hồi phục\n\nAo không còn sự cố đang mở.{{/is_recovery}}",
+  "tags": [
+    "shrimpwatch",
+    "metric:incident.active",
+    "notify:email"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 1.0
+    },
+    "notify_no_data": false,
+    "renotify_interval": 60,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}
