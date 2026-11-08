@@ -397,8 +397,8 @@ The incident document stores the same timings: `fault_started_at`, `detection_de
 
 **Farmer alert on Telegram.** When an incident opens or escalates, the farmer gets a Telegram message, routed through Datadog so Datadog stays the one place that decides who is told:
 
-1. The incident service sends a Datadog Event whose text is written for the farmer: what is wrong (with the DO forecast when DO is falling), the suggested remedy and a link to the pond in the control panel (`PUBLIC_BASE_URL`).
-2. The event monitor *Farmer alert* ([farmer_alert_telegram.json](datadog/monitors/farmer_alert_telegram.json)) fires on `incident_open` / `incident_escalated` events, one alert per pond.
+1. The incident service sends a Datadog Event whose text is written for the farmer: the severity (or *cảnh báo → nghiêm trọng* on an escalation), what is wrong (with the DO forecast when DO is falling), the suggested remedy and, when `PUBLIC_BASE_URL` is set to an address the farmer's phone can reach, a link to the pond in the control panel.
+2. Two event monitors, *Farmer alert: incident opened* and *…escalated* ([farmer_alert_open.json](datadog/monitors/farmer_alert_open.json), [farmer_alert_escalated.json](datadog/monitors/farmer_alert_escalated.json)), fire per pond; they are separate so an escalation a few minutes after the opening still notifies.
 3. It notifies the Datadog webhook `shrimpwatch-telegram`, which posts the message to the Telegram Bot API.
 
 Set it up: create a bot with @BotFather, send it a message, read your chat id from `https://api.telegram.org/bot<token>/getUpdates`, put `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`, then run `python -m app.cli.datadog_push`. It creates or updates the webhook first and only then adds `@webhook-shrimpwatch-telegram` to monitors tagged `notify:telegram`, so the bot token stays in `.env` and in Datadog's webhook settings, never in the repo or the logs. Zalo would need a verified Official Account, so the demo uses Telegram.

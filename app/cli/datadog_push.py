@@ -92,7 +92,7 @@ def with_notify_handles(payload: dict, telegram: bool) -> dict:
     handles); rebuilt from the JSON on every push, so removing the Telegram settings stops the alerts."""
     if not telegram or NOTIFY_TELEGRAM_TAG not in payload.get("tags", []):
         return payload
-    return {**payload, "message": f"{payload['message']}\n\n@webhook-{TELEGRAM_WEBHOOK}"}
+    return {**payload, "message": f"{payload.get('message', '')}\n\n@webhook-{TELEGRAM_WEBHOOK}"}
 
 
 def _push(kind: str, path: Path, telegram: bool = False):
@@ -123,10 +123,13 @@ def main():
     telegram = webhook is not None and _push_telegram_webhook(webhook) < 400
     if webhook is None:
         logger.info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: no Telegram farmer alert")
+    elif not telegram:
+        logger.error("Telegram webhook push failed: monitors are pushed without the farmer alert handle")
     for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
             _push(kind, p, telegram)
-    return 0
+    # Telegram configured but not working is a failed push, even though everything else went through
+    return 1 if webhook is not None and not telegram else 0
 
 
 if __name__ == "__main__":

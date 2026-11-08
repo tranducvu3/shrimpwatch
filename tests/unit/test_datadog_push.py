@@ -119,3 +119,26 @@ def test_telegram_handle_is_added_only_to_tagged_monitors_when_configured():
     assert datadog_push.with_notify_handles(tagged, telegram=True)["message"] == "m\n\n@webhook-shrimpwatch-telegram"
     assert datadog_push.with_notify_handles(tagged, telegram=False) == tagged
     assert datadog_push.with_notify_handles(other, telegram=True) == other
+
+
+def test_farmer_alert_monitors_match_the_event_tags_the_service_sends():
+    """The incident service tags Events with incident_event:<what> and pond (app/services/incidents.py)."""
+    for what, name in (
+        ("incident_open", "farmer_alert_open.json"),
+        ("incident_escalated", "farmer_alert_escalated.json"),
+    ):
+        monitor = json.loads((datadog_push.ROOT / "datadog" / "monitors" / name).read_text(encoding="utf-8"))
+        assert f"service:shrimpwatch incident_event:{what}" in monitor["query"]
+        assert '.by("pond")' in monitor["query"] and "notify:telegram" in monitor["tags"]
+
+
+def test_main_fails_when_the_configured_webhook_cannot_be_pushed(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
+    monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
+    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
+    monkeypatch.setattr(datadog_push, "_push_telegram_webhook", lambda hook: 403)
+    pushed = []
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: pushed.append(telegram))
+    assert datadog_push.main() == 1
+    assert pushed and not any(pushed)  # everything else still pushed, without the handle

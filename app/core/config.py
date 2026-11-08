@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # Farmer alert: datadog_push creates a Datadog webhook to this Telegram bot/chat (kept in .env, never in the repo)
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
-    # Where the farmer opens the control panel from the alert
-    PUBLIC_BASE_URL: str = "http://localhost:8000"
+    # Where the farmer opens the control panel from the alert (a URL their phone can reach); empty = no link
+    PUBLIC_BASE_URL: str = ""
 
     DD_AGENT_HOST: str = "localhost"
     DD_TRACE_AGENT_PORT: int = 8126

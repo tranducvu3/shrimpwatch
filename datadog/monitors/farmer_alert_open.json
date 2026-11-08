@@ -1,0 +1,8 @@
+{
+  "name": "[ShrimpWatch] Farmer alert: incident opened · Báo cho chủ ao: sự cố mới",
+  "type": "event-v2 alert",
+  "query": "events(\"service:shrimpwatch incident_event:incident_open\").rollup(\"count\").by(\"pond\").last(\"5m\") > 0",
+  "message": "🚨 {{event.title}}\n\n{{event.text}}",
+  "tags": ["shrimpwatch", "notify:telegram", "sev:critical"],
+  "options": {"thresholds": {"critical": 0}, "notify_no_data": false, "include_tags": false, "renotify_interval": 0}
+}
