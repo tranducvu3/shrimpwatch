@@ -39,7 +39,7 @@
 6. [Incident Demo Scenario (Incident Lifecycle)](#incident-demo-scenario-incident-lifecycle)
 7. [Verification Results (Real Data)](#verification-results-real-data)
 8. [Mapping to the Organizers' Technical Requirements](#mapping-to-the-organizers-technical-requirements)
-9. [Evidence Catalog & Screenshot Guide](#evidence-catalog--screenshot-guide)
+9. [Evidence Catalog](#evidence-catalog)
 10. [Automated Tests](#automated-tests)
 11. [Declaration of Reused Components, Datasets & AI Tools](#declaration-of-reused-components-datasets--ai-tools)
 
@@ -520,7 +520,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 
 ---
 
-## Evidence Catalog & Screenshot Guide
+## Evidence Catalog
 
 All screenshots are stored in the **`assets_proof/`** folder with exactly the file names below.
 
@@ -541,81 +541,6 @@ All screenshots are stored in the **`assets_proof/`** folder with exactly the fi
 | 13 | `13_mongodb_atlas_cluster.png` | MongoDB Atlas cluster (Cloud, M0 tier) up and running |
 | 14 | `14_mongodb_atlas_data.png` | Sensor data from the 6 ponds flowing live into Atlas |
 | 15 | `15_control_panel_incident.png` | Control panel on 31/10: pond 1 with a critical incident (aerator at 0 W, being resolved), pond 3 with a salinity warning at 7.8 ppt |
-
-### How to Capture Each Screenshot
-
-**1. `01_mongo_timeseries_ttl.txt` — Time Series + TTL** (a copy read directly from Atlas already exists; you can take extra screenshots with the steps below)
-1. Atlas → **Database** → cluster0 → **Browse Collections** → the **`>_` (Open MongoDB Shell)** button.
-2. Paste the entire content of [scripts/step4_check_ts_ttl_ponds.js](scripts/step4_check_ts_ttl_ponds.js) and press Enter.
-3. Capture the printed output: `timeseries.timeField`, `metaField`, `granularity` and `expireAfterSeconds TTL : 604800 (~ 7 ngày)` (7 days).
-
-**2. `02_pytest_9_xanh.png` — Tests**
-1. Run: `make test` (runs against the `shrimpwatch_test` database in the local MongoDB container, never touches Atlas)
-2. Capture the `9 passed` line.
-> **Warning:** the test suite calls `init_collections(force=True)`, so it **wipes every collection** in the connected database. `make test` already overrides `MONGODB_URI`/`MONGODB_DB` to point at the local MongoDB; do not run `pytest` directly while `.env` points at Atlas.
-
-> **CI (GitHub Actions):** every PR and every push to `main` runs 3 jobs — `Lint (ruff)` (= `make lint`), `Tests (MongoDB 7)` with a minimum coverage of 64% ([.coveragerc](.coveragerc)), and `Compose smoke test` (brings up the real stack and checks that data flows into `metrics` / `metrics_hourly`). See [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-**3. `03_agent_status.png` — Datadog Agent**
-```powershell
-docker compose exec -T datadog-agent agent status
-```
-Capture the top of the report (Agent version, Running Checks, `http_check`).
-
-**4. `04_swagger_ui_incidents.png` — Incident Management**
-1. Open [http://localhost:8000/docs](http://localhost:8000/docs).
-2. Expand the `GET /incidents` endpoint → **Try it out** → **Execute**.
-3. Capture the Response area showing the list of incidents.
-
-**5. `05_mongodb_event_log.png` — Event Log**
-1. Atlas → **Browse Collections** → `shrimpwatch` → `events`.
-2. Sort by `timestamp` descending (Sort desc).
-3. Capture a few `incident_open` / `incident_action` / `incident_recovered` documents.
-
-**6. `06_mongodb_document_incident.png` — Incident document**
-1. Atlas → `shrimpwatch` → `incidents`.
-2. Filter `_id` = `inc-477e03104c` (or the latest incident with `severity: critical`).
-3. Expand the `evidence` field (contains `do_drop_rate_mg_per_l_per_min`) and the `actions` array (4 steps), then capture.
-> Run `docker compose exec -T api python -m app.cli.demo_incident` first so that `actions` has all 4 steps.
-
-**7–9. `07_datadog_dashboard*.png` — Dashboard**
-1. Datadog → **Dashboards** → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng**.
-2. Set the time range to **Past 4 Hours**, variables `pond = *`, `device_type = *`.
-3. Scroll and capture in turn:
-   - **Part 1:** the *Tổng quan hệ thống* (system overview) group (4 KPI tiles: Open incidents, Recovered, Aerator failures, Records ingested/minute).
-   - **Part 2:** the *Chỉ số theo dõi từng ao* (per-pond metrics) group (Temperature, DO, pH).
-   - **Part 3:** the *Độ kiềm (nhập tay), CO2 (tính toán) và quạt nước* (alkalinity, CO2 and aerators) group (with the per-pond DO heatmap).
-
-**10. `08_datadog_monitor_alert.png` — Red alert**
-1. Datadog → **Monitors** → **Manage Monitors** → filter by tag `shrimpwatch`.
-2. Open the monitor **[ShrimpWatch] CRITICAL: Quạt nước hỏng (Pump failure)** (ID `334608203`) and check its current status.
-3. If the monitor is `OK`, trigger a real alert again with the command below, then wait **6–7 minutes** (5-minute alert window + 90 seconds of `evaluation_delay`):
-   ```powershell
-   docker compose exec -T api python -c "import httpx;print(httpx.post('http://localhost:8000/ponds/pond-05/pump/fail',params={'failed':'true'}).json())"
-   ```
-   The worker then also opens a new CRITICAL incident for pond 5 → more data for the `06_mongodb_document_incident.png` screenshot.
-4. Capture the red status area + the `pump_power` value chart + the monitor's message.
-5. When done, restore the aerator: `POST /ponds/pond-05/pump/fail?failed=false`.
-
-**11. `09_datadog_correlation_log_trace_metric.png` — Log ↔ Trace ↔ Metric**
-1. Datadog → **Logs** → query: `service:shrimpwatch`
-2. Open a log whose `trace_id` is not `0` (for example an `ingested batch` or `DO window computed` line).
-3. In the detail panel, click the **Trace** tab (or the *Trace* icon next to `dd.trace_id`) to jump to APM.
-4. Capture both layers: the log list + the opened trace panel.
-> To cross-check the metric: open **Metrics → Explorer**, query `shrimpwatch.metric.do` and capture it too.
-
-**12. `ShrimpWatch_Lifecycle.mp4` — Video**
-1. Start screen recording.
-2. Run `docker compose exec -T api python -m app.cli.demo_incident` (the log shows all 4 steps).
-3. Open the Datadog Monitor tab and Atlas → `incidents` side by side to see the state change in real time.
-
-**13. `13_mongodb_atlas_cluster.png` — Atlas cluster**
-1. Atlas → **Database** → cluster list.
-2. Capture the **cluster0** card with the **M0 / Free** tier label, the region and the *Connect* button.
-
-**14. `14_mongodb_atlas_data.png` — Data in the cloud**
-1. Atlas → **Browse Collections** → `shrimpwatch` → `metrics`.
-2. Capture the list of the latest documents (with a `timestamp` a few seconds old and `metadata.pond_id` for all 6 ponds).
 
 ---
 
