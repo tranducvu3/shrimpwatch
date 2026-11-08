@@ -14,6 +14,7 @@ Settings.FARM_NAME
 # Thresholds for manual test-kit metrics, shown as markers on the Datadog dashboard.
 Settings.ALK_WARN
 Settings.NITRITE_WARN
+Settings.TAN_WARN
 
 # Picked up by the JSON log formatter as a log field.
 TraceIdFilter.service

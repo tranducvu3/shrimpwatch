@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.schemas import ScenarioRequest
+from app.domain.conditions import ConditionType, Remedy, Severity
 from app.domain.scenarios import InvalidScenario, ScenarioType
 from app.services import ponds as pond_service
 
@@ -18,6 +19,12 @@ def list_ponds():
 def live_readings(window_min: int = Query(default=10, ge=1, le=pond_service.MAX_READINGS_WINDOW_MIN)):
     """Latest sensor value per pond within the last `window_min` minutes."""
     return pond_service.live_readings(timedelta(minutes=window_min))
+
+
+@router.get("/manual-readings")
+def manual_readings():
+    """Latest test-kit value (alkalinity, TAN, nitrite) per pond within the last 24 hours."""
+    return pond_service.manual_readings()
 
 
 @router.get("/scenarios/catalog")
@@ -61,3 +68,42 @@ def clear_scenario(pond_id: str, scenario: ScenarioType):
     except pond_service.PondNotFound as e:
         raise HTTPException(404, "pond not found") from e
     return {"pond_id": pond_id, "cleared": scenario.value}
+
+
+@router.post("/{pond_id}/conditions/{condition}")
+def start_condition(pond_id: str, condition: ConditionType, severity: Severity = Severity.MEDIUM):
+    """Turn on a pond condition (heavy rain, overfeeding...) at a severity. Its effect builds up gradually and it
+    stays on until it is cleared (liming and water exchange fade out by themselves)."""
+    try:
+        doc = pond_service.start_condition(pond_id, condition, severity)
+    except pond_service.PondNotFound as e:
+        raise HTTPException(404, "pond not found") from e
+    return {"pond_id": pond_id, "condition": condition.value, **doc}
+
+
+@router.delete("/{pond_id}/conditions")
+def clear_all_conditions(pond_id: str):
+    try:
+        pond_service.clear_conditions(pond_id)
+    except pond_service.PondNotFound as e:
+        raise HTTPException(404, "pond not found") from e
+    return {"pond_id": pond_id, "cleared": "all"}
+
+
+@router.delete("/{pond_id}/conditions/{condition}")
+def clear_condition(pond_id: str, condition: ConditionType):
+    try:
+        pond_service.clear_conditions(pond_id, condition)
+    except pond_service.PondNotFound as e:
+        raise HTTPException(404, "pond not found") from e
+    return {"pond_id": pond_id, "cleared": condition.value}
+
+
+@router.post("/{pond_id}/remedies/{remedy}")
+def apply_remedy(pond_id: str, remedy: Remedy):
+    """A farmer's fix (repair the aerator, clean the bottom...): ends the conditions it solves."""
+    try:
+        cleared = pond_service.apply_remedy(pond_id, remedy)
+    except pond_service.PondNotFound as e:
+        raise HTTPException(404, "pond not found") from e
+    return {"pond_id": pond_id, "remedy": remedy.value, "cleared": cleared}

@@ -63,12 +63,12 @@ Data groups collected:
 |---|---|---|---|---|
 | `salinity` | ppt | sensor | Salinity drops after heavy rain → shrimp go into shock, molting goes wrong | < 10 ppt |
 | `orp` | mV | sensor | A proxy for the pond bottom: ORP falls together with DO when the aerator fails → anaerobic decomposition, H₂S risk | < 100 mV |
-| `tan` | mg/L | manual | Total ammonia from the test kit, input for the NH₃ calculation | — |
+| `tan` | mg/L | manual | Total ammonia from the test kit, input for the NH₃ calculation. Warning at 1 mg/L: below the ≈1.45 mg/L juvenile safe level reported for *L. vannamei*, above the stricter limits for larvae/postlarvae (0.4–0.8 mg/L); NH₃ stays the toxicity check | > 1 mg/L |
 | `nitrite` | mg/L | manual | NO₂⁻ causes oxygen deficiency in shrimp blood | > 1 mg/L |
 | `nh3` | mg/L | derived | Toxic fraction of ammonia: `TAN × 1/(1+10^(pKa−pH))`, `pKa = 0.09018 + 2729.92/T(K)` (Emerson 1975) | > 0.1 mg/L |
 | `ph_swing` | pH | derived | pH range over 24h (pipeline `$match → $group → $project`) | > 0.5 |
 
-When the aerator fails, DO falls by ~0.1 mg/L/minute and ORP follows. An incident's `incidents.evidence` now also carries `last_orp_mv`, `nh3_mg_per_l` and `ph_swing_24h`, so technicians see the water quality context right in the Investigate step. The new metrics are in the last group of the Datadog dashboard.
+When the aerator fails, DO falls by ~0.1 mg/L/minute and ORP follows. An incident's `incidents.evidence` now also carries `last_orp_mv`, `nh3_mg_per_l` and `ph_swing_24h`, so technicians see the water quality context right in the Investigate step. On the Datadog dashboard, ORP sits next to DO and aerator power in *Oxy và quạt nước*, and NH₃, TAN, nitrite and the pH swing are in the water and waste sections.
 
 **Technical highlights:**
 - A MongoDB **Time Series Collection** with `expireAfterSeconds` (7-day TTL) is the single store for telemetry.
@@ -209,7 +209,7 @@ When a technician moves an incident to **Investigating**, the system finds the *
 - **Atlas Vector Search index** `incident_fingerprint`: `similarity: euclidean`, `filter` on `state` → `$vectorSearch` only searches `recovered` incidents. Score = `1 / (1 + d²)`.
 - **Fallback:** a plain mongod (CI, local Docker Compose) has no `$vectorSearch` → the same score formula is computed with `$reduce` in an aggregation, limited to the 500 most recent incidents. The result states `mode: vector_search | aggregation_fallback`.
 - **Recording:** the top 3 suggestions are stored in `incidents.similar_incidents` and in an `incident_similar_matched` event (shown in the timeline).
-- **Datadog:** metric `shrimpwatch.incident.similarity_score` (tags `pond`, `mode`, `root_cause`), `shrimpwatch.incident.similarity_search`, span tags `similarity_mode` / `similarity_top_score`; the last widget group in the dashboard.
+- **Datadog:** metric `shrimpwatch.incident.similarity_score` (tags `pond`, `mode`, `root_cause`), `shrimpwatch.incident.similarity_search`, span tags `similarity_mode` / `similarity_top_score`; shown in the last dashboard group (*Lịch sử sự cố và gợi ý xử lý*). The score only exists after a technician moves an incident to Investigating.
 
 | Open incident: aerator failure on pond-05 | Top score per history group |
 |---|---|
@@ -309,9 +309,13 @@ Go to [http://localhost:8000/docs](http://localhost:8000/docs):
 | `GET /ponds` | List of the 6 ponds + aerator status |
 | `POST /ponds/{pond_id}/pump/fail?failed=true` | Marks an aerator as failed / restores it |
 | `GET /ponds/readings?window_min=10` | Latest sensor values of each pond within the last `window_min` minutes (default 10, max 360) |
+| `GET /ponds/manual-readings` | Latest test-kit reading per pond and metric within the last 24 hours (control panel) |
 | `POST /ponds/{pond_id}/scenarios` | Starts a metric-offset scenario: `{"scenario": "do\|temperature\|ph\|salinity", "offset": -3, "duration_min": 15}` |
 | `DELETE /ponds/{pond_id}/scenarios[/{scenario}]` | Stops one or all scenarios of a pond |
-| `GET /ponds/scenarios/catalog` | Offset limits of each scenario and the alert thresholds |
+| `POST /ponds/{pond_id}/conditions/{condition}` | Turns on a condition until it is stopped: `heavy_rain`, `hot_sun`, `overfeeding`, `algae_bloom`, `aerator_failure`, `cloudy`, `high_density`, `water_exchange`, `algae_crash`, `dirty_bottom`, `salinity_rise`, `liming` (several can run at once). `?severity=light\|medium\|severe` (default `medium`) scales the offsets by 0.5 / 1 / 1.5. The effect builds up over the condition's ramp (5 to 30 min, aerator failure at once); liming and water exchange are one-off actions that fade out and end by themselves |
+| `POST /ponds/{pond_id}/remedies/{remedy}` | A farmer's fix that ends the conditions it solves: `repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock` |
+| `DELETE /ponds/{pond_id}/conditions[/{condition}]` | Stops one or all conditions of a pond |
+| `GET /ponds/scenarios/catalog` | Conditions (with ramp and duration) and the metrics each one changes, severities, remedies, scenario offset limits, alert thresholds |
 | `GET /control` | Simulator control panel (see section 5.2) |
 | `GET /incidents?state=open` | Queries incidents by state |
 | `PATCH /incidents/{id}?state=...&action=...` | Updates the incident lifecycle |
@@ -325,11 +329,24 @@ curl http://localhost:8000/healthz
 
 Open [http://localhost:8000/control](http://localhost:8000/control) to create abnormal behavior for each pond without calling the API by hand:
 
-- **Aerator power**: turns an aerator on/off (uses `POST /ponds/{id}/pump/fail`) → `pump_power` goes to 0 W, DO and ORP drop, and the worker opens a `pump_failure` incident.
-- **Environment scenarios**: offsets DO, temperature, pH or salinity from normal levels for 5–120 minutes. Quick buttons are available: *Low oxygen*, *Heat wave*, *pH spike*, *Heavy rain*.
-- The page refreshes every 5 seconds: latest metrics (highlighted when over a threshold), running scenarios, open incidents.
+- **Conditions**: each pond has a dropdown of real-world situations; tick any number. Each option lists the metrics it raises (*Tăng*) and lowers (*Giảm*); when several run together their effects add up. The affected readings get an outline and a summary under the dropdown shows the combined change, with amounts. A condition stays on until you untick it (or press *Bỏ chọn tất cả*).
 
-The simulator applies changes on its next send (30 seconds). Scenarios expire by themselves; **Restore all ponds** turns the aerators back on and clears every scenario. The API has no authentication, so do not expose port 8000 to the Internet.
+  | Condition | Changes directly | Knock-on |
+  |---|---|---|
+  | Heavy rain (*Mưa lớn*) | salinity −6 ppt, temperature −2 °C, pH −0.4, alkalinity −30 | NH₃ ↓, CO₂ ↑ |
+  | Hot sun (*Nắng nóng*) | temperature +4 °C, DO −1, pH +0.3 | ORP ↓, NH₃ ↑, CO₂ ↓ |
+  | Overfeeding (*Cho ăn dư*) | DO −1.5, pH −0.2, TAN +1.2, nitrite +0.6 | ORP ↓, NH₃ ↑, CO₂ ↑ |
+  | Algae bloom (*Tảo nở hoa*) | pH +0.6, DO +1 | ORP ↑, NH₃ ↑, CO₂ ↓ |
+  | Aerator failure (*Quạt nước hỏng*) | aerator stops: power 0 W, DO falls steadily | ORP ↓ |
+  | Cloudy weather (*Trời âm u*) | DO −1.5, pH −0.3, temperature −1 °C | ORP ↓, NH₃ ↓, CO₂ ↑ |
+  | High stocking density (*Mật độ nuôi cao*) | DO −1.5, pH −0.15, TAN +0.6, nitrite +0.2 | ORP ↓, NH₃ ↑, CO₂ ↑ |
+  | Water exchange (*Thay nước*) | DO +0.5, temperature −1 °C, TAN −0.3, nitrite −0.15, alkalinity −15 | ORP ↑, NH₃ ↓, CO₂ ↓ |
+
+  DO and ORP move gradually (about 20 minutes); alkalinity, TAN and nitrite are re-tested on the simulator's next send whenever a condition starts or stops, so their change shows right away. Offsets live in `app/domain/conditions.py`.
+- **Pond filter** (header): show only the ponds you pick; each button carries the pond's status dot (green normal, amber warning, red incident). The selection is kept in the URL (`/control?ao=pond-01,pond-03`), so it survives a reload and can be shared. **Restore all ponds** still applies to every pond.
+- The page refreshes every 5 seconds: latest sensor and derived metrics from the last 10 minutes, the latest test-kit readings (alkalinity, TAN, nitrite) from the last 24 hours (hover for when they were entered), highlighted when over a threshold, plus running conditions and open incidents.
+
+The simulator applies changes on its next send (30 seconds). **Restore all ponds** clears every condition and scenario and turns the aerators back on. The per-metric scenario and aerator endpoints below are still available for scripts (`make demo` uses them). The API has no authentication, so do not expose port 8000 to the Internet.
 
 ### 5.3. Browsing Raw Data with MongoDB Compass
 
@@ -340,7 +357,7 @@ The simulator applies changes on its next send (30 seconds). Scenarios expire by
 
 | Screen | Path |
 |---|---|
-| Dashboard | Datadog → *Dashboards* → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng** (the dashboard name is in Vietnamese) |
+| Dashboard | Datadog → *Dashboards* → **ShrimpWatch - Giám sát chất lượng nước Ao nuôi tôm thẻ chân trắng** (the dashboard name is in Vietnamese). Sections, top to bottom: **Tổng quan** (ponds with an open incident, data feed per minute, which pond had an incident in the last 24 hours); **Tình trạng từng ao** (one row per pond with the open incident flag and the latest value of all 12 metrics, test-kit metrics from the last 24 hours, colored green/amber/red by the thresholds in `app/core/config.py`, plus the `shrimpwatch` monitors currently in Alert or Warn); **Oxy và quạt nước** (DO, aerator power, DO change per 5 minutes as the "DO giảm nhanh" monitor sees it, ORP); **Môi trường nước** (temperature, pH, salinity, 24h pH swing); **Khí độc và chất thải** (NH₃, CO₂, TAN, nitrite, alkalinity); **Lịch sử sự cố và gợi ý xử lý** (incidents of the last 7 days as a pond-by-cause table with Vietnamese column names; a log of incidents opening and recovering; the similarity score of the closest old incident per pond and cause). Each pond keeps the same color in every chart, threshold lines match the monitor severity, sensor charts follow the time picker and test-kit charts show 24 hours |
 | Monitor | Datadog → *Monitors* → *Manage Monitors* → filter by tag `shrimpwatch` |
 | Logs | Datadog → *Logs* → query `service:shrimpwatch` |
 | Traces | Datadog → *APM* → *Traces* → service `shrimpwatch` |
@@ -505,7 +522,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 
 | # | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|---|
-| 1 | **At least 1 dashboard** | Health overview dashboard for the 6 ponds: incident KPIs, temperature, DO, pH, alkalinity, CO₂, aerator power, heatmap | [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
+| 1 | **At least 1 dashboard** | Health overview dashboard for the 6 ponds: incident KPIs, a per-pond status table with the firing monitors, temperature, DO, pH, alkalinity, CO₂, aerator power, heatmap | [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
 | 2 | **At least 1 monitor/alert** | **CRITICAL** monitor when an aerator fails (`pump_power < 50W`) and **WARNING** when oxygen drops abnormally | [pump_failure_critical.json](datadog/monitors/pump_failure_critical.json) |
 | 3 | **Additional capabilities** | Metrics (DogStatsD), Log Management, APM and Distributed Tracing integrated together | [telemetry.py](app/core/telemetry.py) · [log.py](app/core/log.py) |
 | 4 | **Connected Metrics/Logs/Traces** | Every log carries `dd.trace_id`; spans are tagged with `pond`, `device_type` → investigate from the alert down to the line of code | [log.py](app/core/log.py) |
