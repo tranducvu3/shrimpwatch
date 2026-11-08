@@ -251,10 +251,10 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     incident = incidents_repo.get(incident_id)
     if not incident:
         raise IncidentNotFound(incident_id)
-    ensure_transition(incident.get("state"), IncidentState.RESOLVING)
-    cleared = pond_service.apply_remedy(incident["pond_id"], remedy)
     label = REMEDIES[remedy].label
+    # Record on the incident first: if it was closed meanwhile this raises (409) before the farm is changed
     transition(incident_id, IncidentState.RESOLVING, f"{label}: {note}" if note else label, remedy=remedy)
+    cleared = pond_service.apply_remedy(incident["pond_id"], remedy)
     return {
         "incident_id": incident_id,
         "remedy": remedy.value,

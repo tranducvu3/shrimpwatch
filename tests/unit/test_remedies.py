@@ -18,3 +18,14 @@ def test_causes_without_a_matching_remedy_suggest_nothing():
 
 def test_every_suggested_remedy_exists():
     assert {r for remedies in _BY_ROOT_CAUSE.values() for r in remedies} <= set(REMEDIES)
+
+
+def test_mapped_root_causes_are_ones_the_rules_emit():
+    """A renamed root cause in the rules must not silently drop its suggestions."""
+    import inspect
+    import re
+
+    from app.domain import incident_rules
+
+    emitted = set(re.findall(r'"(pump_failure|\w+_out_of_range)"', inspect.getsource(incident_rules)))
+    assert set(_BY_ROOT_CAUSE) <= emitted

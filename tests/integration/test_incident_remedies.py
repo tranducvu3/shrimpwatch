@@ -65,3 +65,15 @@ def test_unknown_incident_and_remedy(client):
     assert client.post("/incidents/inc-missing/remedies/cut_feed").status_code == 404
     incident_id = _open_pump_incident(client)
     assert client.post(f"/incidents/{incident_id}/remedies/pray").status_code == 422
+
+
+def test_a_second_remedy_on_a_resolving_incident_is_recorded(client):
+    incident_service.auto_recover(POND)
+    waste = Finding(Severity.WARNING, "NH3 cao", "0.2 mg/L", "nh3_out_of_range")
+    incident_id = incident_service.open_or_update(POND, waste, IncidentEvidence())
+    assert client.post(f"/incidents/{incident_id}/remedies/cut_feed").status_code == 200
+    assert client.post(f"/incidents/{incident_id}/remedies/clean_bottom").status_code == 200
+
+    inc = incidents_collection().find_one({"_id": incident_id})
+    assert inc["state"] == "resolving"
+    assert [a["action"] for a in inc["actions"]] == ["Ngừng cho ăn", "Hút bùn đáy"]

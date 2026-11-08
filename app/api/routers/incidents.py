@@ -38,7 +38,9 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = Query(None
     """Apply a remedy to an incident: recorded as an action, the incident moves to Resolving."""
     try:
         return incident_service.apply_remedy(incident_id, remedy, note)
-    except (incident_service.IncidentNotFound, pond_service.PondNotFound) as e:
+    except incident_service.IncidentNotFound as e:
         raise HTTPException(404, "incident not found") from e
+    except pond_service.PondNotFound as e:
+        raise HTTPException(404, "pond of the incident not found") from e
     except InvalidTransition as e:
         raise HTTPException(409, str(e)) from e
