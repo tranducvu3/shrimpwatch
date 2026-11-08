@@ -39,9 +39,8 @@
 6. [Incident Demo Scenario (Incident Lifecycle)](#incident-demo-scenario-incident-lifecycle)
 7. [Verification Results (Real Data)](#verification-results-real-data)
 8. [Mapping to the Organizers' Technical Requirements](#mapping-to-the-organizers-technical-requirements)
-9. [Evidence Catalog](#evidence-catalog)
-10. [Automated Tests](#automated-tests)
-11. [Declaration of Reused Components, Datasets & AI Tools](#declaration-of-reused-components-datasets--ai-tools)
+9. [Automated Tests](#automated-tests)
+10. [Declaration of Reused Components, Datasets & AI Tools](#declaration-of-reused-components-datasets--ai-tools)
 
 ---
 
@@ -483,20 +482,20 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 
 #### Required (6/6 criteria)
 
-| # | Organizers' requirement | How ShrimpWatch meets it | Evidence (source code / screenshots) |
+| # | Organizers' requirement | How ShrimpWatch meets it | Evidence (source code) |
 |---|---|---|---|
-| 1 | **PRIMARY platform** | All sensor data, incidents and operating history are stored on **MongoDB Atlas (Cloud)** | [13_mongodb_atlas_cluster.png](assets_proof/13_mongodb_atlas_cluster.png) · [14_mongodb_atlas_data.png](assets_proof/14_mongodb_atlas_data.png) |
-| 2 | **Time Series Collections** | Telemetry (DO, pH, temperature, aerator) is stored in the Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [01_mongo_timeseries_ttl.txt](assets_proof/01_mongo_timeseries_ttl.txt) · [schema.py](app/db/schema.py#L38-L68) |
+| 1 | **PRIMARY platform** | All sensor data, incidents and operating history are stored on **MongoDB Atlas (Cloud)** | [mongo.py](app/db/mongo.py) · [.env.example](.env.example) (Atlas connection option) |
+| 2 | **Time Series Collections** | Telemetry (DO, pH, temperature, aerator) is stored in the Time Series Collection `metrics` (`timeField`, `metaField`, `granularity`) | [schema.py](app/db/schema.py#L38-L68) |
 | 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` compute the DO drop rate over a 5-minute time window; `$group` + `$merge` build the hourly rollup; `$lookup` + `$sortArray` build the incident timeline | [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
-| 4 | **expireAfterSeconds (TTL)** | TTL automatically deletes raw telemetry after 7 days (`604800` seconds); the `metrics_hourly` rollup is kept for 1 year | [01_mongo_timeseries_ttl.txt](assets_proof/01_mongo_timeseries_ttl.txt) · [schema.py](app/db/schema.py) (`init_collections`) |
+| 4 | **expireAfterSeconds (TTL)** | TTL automatically deletes raw telemetry after 7 days (`604800` seconds); the `metrics_hourly` rollup is kept for 1 year | [schema.py](app/db/schema.py) (`init_collections`) |
 | 5 | **Efficient modeling & access** | Time Series (engine-managed buckets), ESR compound index `pond_metric_ts`, 1 aggregate for all 6 ponds, rollups instead of scanning raw data — see [Access Patterns & Design Decisions](#access-patterns--design-decisions) | [schema.py](app/db/schema.py) · [pipelines.py](app/db/pipelines.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
-| 6 | **Tied closely to operations** | MongoDB drives the entire incident state machine (`open → investigating → resolving → recovered`) | [04_swagger_ui_incidents.png](assets_proof/04_swagger_ui_incidents.png) · [06_mongodb_document_incident.png](assets_proof/06_mongodb_document_incident.png) |
+| 6 | **Tied closely to operations** | MongoDB drives the entire incident state machine (`open → investigating → resolving → recovered`) | [incident_lifecycle.py](app/domain/incident_lifecycle.py) · [incidents.py](app/services/incidents.py) |
 
 #### Optional
 
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
-| Event-driven processing | Every incident state change is written to the `events` collection (keyed by `incident_id`) and rebuilt into a timeline via `GET /incidents/{id}/timeline` | [05_mongodb_event_log.png](assets_proof/05_mongodb_event_log.png) |
+| Event-driven processing | Every incident state change is written to the `events` collection (keyed by `incident_id`) and rebuilt into a timeline via `GET /incidents/{id}/timeline` | [events.py](app/db/repositories/events.py) · [pipelines.py](app/db/pipelines.py) (`incident_timeline_pipeline`) |
 | **Atlas Vector Search** | `$vectorSearch` over each incident's water quality fingerprint → suggests handling steps from past incidents in the Investigate step (with an aggregation fallback) | [incident_fingerprint.py](app/domain/incident_fingerprint.py) · [pipelines.py](app/db/pipelines.py) (`similar_incidents_pipeline`) |
 | Change Streams / extensions | The data structure is ready for Change Streams integration for real-time notifications | [app/db/](app/db) |
 
@@ -506,41 +505,19 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 
 | # | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|---|
-| 1 | **At least 1 dashboard** | Health overview dashboard for the 6 ponds: incident KPIs, temperature, DO, pH, alkalinity, CO₂, aerator power, heatmap | [07_datadog_dashboard.png](assets_proof/07_datadog_dashboard.png)   [07_datadog_dashboard_2.png](assets_proof/07_datadog_dashboard_2.png)   [07_datadog_dashboard_3.png](assets_proof/07_datadog_dashboard_3.png)   · [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
-| 2 | **At least 1 monitor/alert** | **CRITICAL** monitor when an aerator fails (`pump_power < 50W`) and **WARNING** when oxygen drops abnormally | [08_datadog_monitor_alert.png](assets_proof/08_datadog_monitor_alert.png) · [pump_failure_critical.json](datadog/monitors/pump_failure_critical.json) |
-| 3 | **Additional capabilities** | Metrics (DogStatsD), Log Management, APM and Distributed Tracing integrated together | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) |
-| 4 | **Connected Metrics/Logs/Traces** | Every log carries `dd.trace_id`; spans are tagged with `pond`, `device_type` → investigate from the alert down to the line of code | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) · [log.py](app/core/log.py) |
+| 1 | **At least 1 dashboard** | Health overview dashboard for the 6 ponds: incident KPIs, temperature, DO, pH, alkalinity, CO₂, aerator power, heatmap | [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
+| 2 | **At least 1 monitor/alert** | **CRITICAL** monitor when an aerator fails (`pump_power < 50W`) and **WARNING** when oxygen drops abnormally | [pump_failure_critical.json](datadog/monitors/pump_failure_critical.json) |
+| 3 | **Additional capabilities** | Metrics (DogStatsD), Log Management, APM and Distributed Tracing integrated together | [telemetry.py](app/core/telemetry.py) · [log.py](app/core/log.py) |
+| 4 | **Connected Metrics/Logs/Traces** | Every log carries `dd.trace_id`; spans are tagged with `pond`, `device_type` → investigate from the alert down to the line of code | [log.py](app/core/log.py) |
 
 #### Advanced Optional
 
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
-| Agent Observability | Monitors Datadog Agent health via `agent status` and `http_check` | [03_agent_status.png](assets_proof/03_agent_status.png)    [03_agent_status_2.png](assets_proof/03_agent_status_2.png)|
-| AI Observability | Uses Watchdog Insights to detect anomalies in logs | [09_datadog_correlation_log_trace_metric.png](assets_proof/09_datadog_correlation_log_trace_metric.png) |
+| Agent Observability | Monitors Datadog Agent health via `agent status` and `http_check` | [http_check conf.yaml](datadog/conf.d/http_check.d/conf.yaml) |
+| AI Observability | Uses Watchdog Insights to detect anomalies in logs | — |
 
 ---
-
-## Evidence Catalog
-
-All screenshots are stored in the **`assets_proof/`** folder with exactly the file names below.
-
-| # | File name | What it shows |
-|---|---|---|
-| 1 | `01_mongo_timeseries_ttl.txt` | Time Series + TTL configuration, indexes and the Vector Search index, read directly from Atlas (31/10/2026) |
-| 2 | `02_pytest_9_xanh.png` | First test run (9/9 passed, 07/10); current result: 106 passed — see [Automated Tests](#automated-tests) |
-| 3 | `03_agent_status.png` | Datadog Agent status |
-| 4 | `04_swagger_ui_incidents.png` | Incident management UI (Incident Management) |
-| 5 | `05_mongodb_event_log.png` | Event log (`events` collection) |
-| 6 | `06_mongodb_document_incident.png` | Document structure of an incident (with `evidence`, `actions`) |
-| 7 | `07_datadog_dashboard.png` | Dashboard — Part 1: KPIs & system health |
-| 8 | `07_datadog_dashboard_2.png` | Dashboard — Part 2: Temperature, DO, pH |
-| 9 | `07_datadog_dashboard_3.png` | Dashboard — Part 3: Alkalinity, CO₂, aerators, heatmap |
-| 10 | `08_datadog_monitor_alert.png` | Red alert (Alert) when an aerator fails |
-| 11 | `09_datadog_correlation_log_trace_metric.png` | Log ↔ Trace ↔ Metric tracing |
-| 12 | Demo video (link in [Submission Information](#submission-information)) | Demo video of the complete incident lifecycle |
-| 13 | `13_mongodb_atlas_cluster.png` | MongoDB Atlas cluster (Cloud, M0 tier) up and running |
-| 14 | `14_mongodb_atlas_data.png` | Sensor data from the 6 ponds flowing live into Atlas |
-| 15 | `15_control_panel_incident.png` | Control panel on 31/10: pond 1 with a critical incident (aerator at 0 W, being resolved), pond 3 with a salinity warning at 7.8 ppt |
 
 ---
 

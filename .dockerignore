@@ -14,7 +14,6 @@ htmlcov
 **/__pycache__
 **/*.py[cod]
 
-# Not needed at runtime: tests (compose mounts ./tests when needed), proof screenshots, docs
+# Not needed at runtime: tests (compose mounts ./tests when needed), docs
 tests
-assets_proof
 *.md
