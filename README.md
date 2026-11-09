@@ -394,7 +394,22 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
 | DO forecast | Datadog seasonal `forecast()` of DO (daily seasonality, so it learns the day/night cycle) reaches ≤ 4 mg/L (warning) or ≤ 3 mg/L (critical) within the next 12 hours, the shortest horizon Datadog allows; it needs a few days of history before it is meaningful | Early warning for the night-time dip; the worker's minute-level forecast opens `do_out_of_range` when ≤ 30 min remain |
 
-The worker also opens a warning incident, with no Datadog monitor, when ORP, NH₃, CO₂, TAN, nitrite or alkalinity cross their threshold: `orp_out_of_range`, `nh3_out_of_range`, `co2_out_of_range`, `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
+| Toxic NH₃ | `nh3` > 0.1 mg/L | `nh3_out_of_range` (warning) |
+| Low ORP | `orp` < 100 mV | `orp_out_of_range` (warning) |
+| High CO₂ | `co2` > 10 mg/L | `co2_out_of_range` (warning) |
+
+The worker also opens a warning incident, with no Datadog monitor, when the test-kit readings cross their threshold (they arrive a few times a day, too rarely for a 5-minute monitor): `tan_out_of_range`, `nitrite_out_of_range`, `alkalinity_out_of_range`.
+
+**System health.** These watch ShrimpWatch itself, so a silent pond never means a broken pipeline:
+
+| Monitor / SLO | Condition | Why |
+|---|---|---|
+| Sensor data stopped | no `shrimpwatch.ingest.records` for 5 minutes (`default_zero`, so silence counts as 0; no-data alert as a backup) | Without data no incident can open |
+| API error rate | APM `trace.fastapi.request.errors / hits` > 5% over 10 minutes (warning > 2%) | Lost sensor batches or operator actions |
+| Worker slow or stopped | `shrimpwatch.worker.cycle_seconds` (sent every cycle) > 25 s, or no data for 5 minutes | Incidents would open and close late, or not at all |
+| SLO: critical incidents detected within 2 minutes | `shrimpwatch.incident.detected{severity:critical,within_slo:true}` / all critical, 99% over 7 days ([datadog/slos/](datadog/slos/)) | The promise behind fast aerator detection |
+
+The **Sức khoẻ hệ thống** dashboard group shows the SLO ratio, the worker cycle time and the API error rate. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 
 Monitors evaluate a **full 5-minute** average and Datadog receives data a few tens of seconds late, so when demoing an aerator failure keep the aerator off for **at least 8 minutes** before the `pump_power < 50 W` monitor switches to Alert (the worker opens the incident earlier, based on the MongoDB data).
 
@@ -414,7 +429,7 @@ A pond has at most one open incident, enforced by MongoDB with a unique partial 
 
 The incident document stores the same timings: `fault_started_at`, `detection_delay_sec`, `acknowledged_at`, `recovered_at`. The **Lịch sử sự cố** group shows the 7-day averages (detection turns green within 2 minutes) and the event stream; the events are also overlaid on the DO and aerator power charts.
 
-`python -m app.cli.datadog_push` updates monitors/dashboards with the same name, and creates them if they do not exist yet.
+`python -m app.cli.datadog_push` updates dashboards, monitors and SLOs with the same name, and creates them if they do not exist yet. It logs the dashboard id to put in `DD_DASHBOARD_ID`.
 
 Each monitor has an English · Vietnamese name and an English message followed by the Vietnamese one. `datadog_push` finds a renamed monitor by its query, so renaming updates it instead of creating a copy.
 

@@ -8,7 +8,7 @@ from ddtrace import tracer
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
-from app.core.telemetry import init_metrics
+from app.core.telemetry import gauge, init_metrics
 from app.db.repositories import metrics as metrics_repo
 from app.domain.ponds import pond_ids
 from app.services import incidents as incident_service
@@ -23,9 +23,9 @@ def run_worker() -> None:
     ponds = pond_ids()
     # First run: backfill the whole TTL range; after that only recompute the previous + current hour.
     rollup_since = utcnow() - timedelta(seconds=settings.TS_TTL_SECONDS)
-    last_rollup = 0.0
+    last_rollup = float("-inf")  # roll up on the first cycle
     while True:
-        t0 = time.time()
+        t0 = time.monotonic()  # not wall clock: an NTP jump must not look like a slow cycle
         if t0 - last_rollup >= settings.ROLLUP_INTERVAL_SEC:
             try:
                 with tracer.trace("worker.rollup_hourly"):
@@ -54,4 +54,7 @@ def run_worker() -> None:
         except Exception as e:
             logger.error("report active incidents failed", extra={"err": str(e)})
 
-        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - (time.time() - t0)))
+        elapsed = time.monotonic() - t0
+        # Heartbeat and load: a monitor alerts when the cycle gets slow or the metric stops (worker down)
+        gauge("worker.cycle_seconds", round(elapsed, 2))
+        time.sleep(max(1.0, settings.WORKER_INTERVAL_SEC - elapsed))

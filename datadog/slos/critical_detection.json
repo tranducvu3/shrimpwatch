@@ -1,0 +1,11 @@
+{
+  "name": "[ShrimpWatch] Critical incidents detected within 2 minutes · Sự cố nghiêm trọng được phát hiện trong 2 phút",
+  "type": "metric",
+  "description": "Share of critical incidents that open within DETECTION_SLO_SEC (120 s) of the fault that caused them. Counter shrimpwatch.incident.detected, sent once per incident with a known fault start (simulated farm).",
+  "query": {
+    "numerator": "sum:shrimpwatch.incident.detected{severity:critical,within_slo:true}.as_count()",
+    "denominator": "sum:shrimpwatch.incident.detected{severity:critical}.as_count()"
+  },
+  "thresholds": [{"timeframe": "7d", "target": 99.0, "warning": 99.5}],
+  "tags": ["service:shrimpwatch"]
+}

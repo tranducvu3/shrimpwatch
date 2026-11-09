@@ -62,3 +62,24 @@ def test_forecast_monitors_follow_datadog_rules():
         amount, unit = re.match(r"\w+\(next_(\d+)([hdw])\)", monitor["query"]).groups()
         assert int(amount) * hours[unit] >= 12, path.name
         assert "threshold_windows" not in monitor["options"], path.name
+
+
+def test_slo_is_updated_by_name_and_created_otherwise(tmp_path, monkeypatch):
+    log: list[tuple[str, str]] = []
+    slos = {"data": [{"id": "abc123", "name": "[ShrimpWatch] Detection"}]}
+    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp(slos))
+    monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **_kw: log.append(("POST", url)) or _Resp({}))
+    monkeypatch.setattr(datadog_push.httpx, "put", lambda url, **_kw: log.append(("PUT", url)) or _Resp({}))
+
+    datadog_push._push("slo", _monitor(tmp_path, name="[ShrimpWatch] Detection"))
+    datadog_push._push("slo", _monitor(tmp_path, name="[ShrimpWatch] Other"))
+    assert log == [
+        ("PUT", "https://api.datadoghq.com/api/v1/slo/abc123"),
+        ("POST", "https://api.datadoghq.com/api/v1/slo"),
+    ]
+
+
+def test_every_datadog_file_is_valid_json_with_a_name():
+    for folder, key in (("monitors", "name"), ("slos", "name"), ("dashboards", "title")):
+        for path in (datadog_push.ROOT / "datadog" / folder).glob("*.json"):
+            assert json.loads(path.read_text(encoding="utf-8"))[key].startswith(("[ShrimpWatch]", "ShrimpWatch")), path

@@ -1070,6 +1070,117 @@
         ]
       },
       "layout": {"x": 0, "y": 27, "width": 12, "height": 9}
+    },
+    {
+      "id": 7,
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Sức khoẻ hệ thống: phát hiện kịp, worker và API",
+        "show_title": true,
+        "widgets": [
+          {
+            "id": 701,
+            "definition": {
+              "type": "query_value",
+              "title": "SLO: sự cố nghiêm trọng phát hiện trong 2 phút (7 ngày, mục tiêu 99%)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1w"},
+              "autoscale": false,
+              "custom_unit": "%",
+              "precision": 1,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "good",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.detected{severity:critical,within_slo:true,$trang_trai}.as_count()"
+                    },
+                    {
+                      "name": "total",
+                      "data_source": "metrics",
+                      "aggregator": "sum",
+                      "query": "sum:shrimpwatch.incident.detected{severity:critical,$trang_trai}.as_count()"
+                    }
+                  ],
+                  "formulas": [{"formula": "100 * good / total"}],
+                  "conditional_formats": [
+                    {"comparator": ">=", "value": 99, "palette": "white_on_green"},
+                    {"comparator": "<", "value": 99, "palette": "white_on_red"}
+                  ]
+                }
+              ]
+            },
+            "layout": {"x": 0, "y": 0, "width": 4, "height": 2}
+          },
+          {
+            "id": 702,
+            "definition": {
+              "type": "timeseries",
+              "title": "Thời gian một vòng kiểm tra của worker (giây) - cảnh báo trên 25, chạy mỗi 30",
+              "title_size": "16",
+              "title_align": "left",
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [{"formula": "query1"}],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.worker.cycle_seconds{$trang_trai}"
+                    }
+                  ],
+                  "style": {"palette": "dog_classic"},
+                  "display_type": "line"
+                }
+              ],
+              "markers": [{"value": "y = 25", "display_type": "error dashed", "label": "Quá chậm 25 s"}],
+              "yaxis": {"min": "0", "include_zero": true}
+            },
+            "layout": {"x": 4, "y": 0, "width": 4, "height": 2}
+          },
+          {
+            "id": 703,
+            "definition": {
+              "type": "timeseries",
+              "title": "Tỉ lệ lỗi API (%) - cảnh báo trên 5",
+              "title_size": "16",
+              "title_align": "left",
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [{"formula": "100 * errors / hits"}],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "errors",
+                      "data_source": "metrics",
+                      "query": "sum:trace.fastapi.request.errors{service:shrimpwatch}.as_count()"
+                    },
+                    {
+                      "name": "hits",
+                      "data_source": "metrics",
+                      "query": "sum:trace.fastapi.request.hits{service:shrimpwatch}.as_count()"
+                    }
+                  ],
+                  "style": {"palette": "dog_classic"},
+                  "display_type": "line"
+                }
+              ],
+              "markers": [{"value": "y = 5", "display_type": "error dashed", "label": "5%"}],
+              "yaxis": {"min": "0", "include_zero": true}
+            },
+            "layout": {"x": 8, "y": 0, "width": 4, "height": 2}
+          }
+        ]
+      },
+      "layout": {"x": 0, "y": 36, "width": 12, "height": 3}
     }
   ]
 }

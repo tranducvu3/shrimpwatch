@@ -1,0 +1,15 @@
+{
+  "name": "[ShrimpWatch] CRITICAL: No sensor data received for 5 minutes · Không nhận được dữ liệu cảm biến 5 phút",
+  "type": "metric alert",
+  "query": "sum(last_5m):default_zero(sum:shrimpwatch.ingest.records{*}.as_count()) < 1",
+  "message": "## 🛑 Sensor data stopped\n\nThe ingest API stored no records in the last 5 minutes. Every pond is now unwatched: no new incidents can open.\n\nCheck the simulator / sensor gateway, the API (`GET /healthz`) and MongoDB, then the API traces: `service:shrimpwatch resource_name:\"POST /ingest/batch\"`.\n\n---\n**Tiếng Việt**\n\n## 🛑 Mất dữ liệu cảm biến\n\nAPI không lưu bản ghi nào trong 5 phút. Không ao nào được giám sát: sự cố mới không thể mở.\n\nKiểm tra simulator / bộ thu cảm biến, API (`GET /healthz`) và MongoDB, rồi xem trace của API: `service:shrimpwatch resource_name:\"POST /ingest/batch\"`.",
+  "tags": ["shrimpwatch", "component:ingest", "sev:critical"],
+  "options": {
+    "thresholds": {"critical": 1.0},
+    "notify_no_data": true,
+    "no_data_timeframe": 10,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}
