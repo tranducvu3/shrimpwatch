@@ -395,13 +395,13 @@ A pond has at most one open incident, enforced by MongoDB with a unique partial 
 
 The incident document stores the same timings: `fault_started_at`, `detection_delay_sec`, `acknowledged_at`, `recovered_at`. The **Lịch sử sự cố** group shows the 7-day averages (detection turns green within 2 minutes) and the event stream; the events are also overlaid on the DO and aerator power charts.
 
-**Farmer alert on Telegram.** When an incident opens or escalates, the farmer gets a Telegram message, routed through Datadog so Datadog stays the one place that decides who is told:
+**Farmer alert by email.** When an incident opens or escalates, the farmer gets an email, routed through Datadog so Datadog stays the one place that decides who is told. Email works on any phone without installing an app, which most farmers do not have for chat bots:
 
 1. The incident service sends a Datadog Event whose text is written for the farmer: the severity (or *cảnh báo → nghiêm trọng* on an escalation), what is wrong (with the DO forecast when DO is falling), the suggested remedy and, when `PUBLIC_BASE_URL` is set to an address the farmer's phone can reach, a link to the pond in the control panel.
 2. Two event monitors, *Farmer alert: incident opened* and *…escalated* ([farmer_alert_open.json](datadog/monitors/farmer_alert_open.json), [farmer_alert_escalated.json](datadog/monitors/farmer_alert_escalated.json)), fire per pond; they are separate so an escalation a few minutes after the opening still notifies.
-3. It notifies the Datadog webhook `shrimpwatch-telegram`, which posts the message to the Telegram Bot API.
+3. Datadog emails that text to every address in `FARMER_ALERT_EMAILS`.
 
-Set it up: create a bot with @BotFather, send it a message, read your chat id from `https://api.telegram.org/bot<token>/getUpdates`, put `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`, then run `python -m app.cli.datadog_push`. It creates or updates the webhook first and only then adds `@webhook-shrimpwatch-telegram` to monitors tagged `notify:telegram`, so the bot token stays in `.env` and in Datadog's webhook settings, never in the repo or the logs. Zalo would need a verified Official Account, so the demo uses Telegram.
+Set it up: put the addresses in `.env` as `FARMER_ALERT_EMAILS=farmer@example.com,manager@example.com`, then run `python -m app.cli.datadog_push`. It adds an `@address` handle per address to monitors tagged `notify:email`, so the addresses stay in `.env` and in Datadog, never in this public repo. Invalid entries are skipped with a warning; remove an address and push again to stop its emails. No mail server is needed: Datadog sends the email.
 
 `python -m app.cli.datadog_push` updates dashboards, monitors and SLOs with the same name, and creates them if they do not exist yet. It logs the dashboard id to put in `DD_DASHBOARD_ID`.
 

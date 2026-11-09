@@ -85,40 +85,24 @@ def test_every_datadog_file_is_valid_json_with_a_name():
             assert json.loads(path.read_text(encoding="utf-8"))[key].startswith(("[ShrimpWatch]", "ShrimpWatch")), path
 
 
-def test_telegram_webhook_needs_token_and_chat(monkeypatch):
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "")
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
-    assert datadog_push.telegram_webhook() is None
+def test_farmer_alert_emails_are_split_trimmed_and_validated(monkeypatch):
+    warned = []
+    monkeypatch.setattr(datadog_push.logger, "warning", lambda _msg, extra=None: warned.append(extra))
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "")
+    assert datadog_push.farmer_alert_emails() == []
 
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
-    hook = datadog_push.telegram_webhook()
-    assert hook["url"] == "https://api.telegram.org/bot123:secret/sendMessage"
-    assert json.loads(hook["payload"]) == {
-        "chat_id": "12345",
-        "text": "$TEXT_ONLY_MSG",
-        "disable_web_page_preview": True,
-    }
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", " a@farm.vn, not-an-email ,, b@x.example.com")
+    assert datadog_push.farmer_alert_emails() == ["a@farm.vn", "b@x.example.com"]
+    assert warned == [{"position": 2}]  # the position only: the entry may hold part of a real address
 
 
-def test_webhook_push_never_logs_the_token(monkeypatch):
-    logged = []
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
-    echo = _Resp({"url": "https://api.telegram.org/bot123:secret/sendMessage"})
-    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp({}, status=404))
-    monkeypatch.setattr(datadog_push.httpx, "post", lambda url, **_kw: echo)
-    monkeypatch.setattr(datadog_push.logger, "info", lambda msg, extra=None: logged.append((msg, extra)))
-
-    assert datadog_push._push_telegram_webhook(datadog_push.telegram_webhook()) == 200
-    assert "secret" not in json.dumps(logged)
-
-
-def test_telegram_handle_is_added_only_to_tagged_monitors_when_configured():
-    tagged = {"message": "m", "tags": ["shrimpwatch", "notify:telegram"]}
+def test_email_handles_are_added_only_to_tagged_monitors_when_configured():
+    tagged = {"message": "m", "tags": ["shrimpwatch", "notify:email"]}
     other = {"message": "m", "tags": ["shrimpwatch"]}
-    assert datadog_push.with_notify_handles(tagged, telegram=True)["message"] == "m\n\n@webhook-shrimpwatch-telegram"
-    assert datadog_push.with_notify_handles(tagged, telegram=False) == tagged
-    assert datadog_push.with_notify_handles(other, telegram=True) == other
+    emails = ["a@farm.vn", "b@farm.vn"]
+    assert datadog_push.with_notify_handles(tagged, emails)["message"] == "m\n\n@a@farm.vn @b@farm.vn"
+    assert datadog_push.with_notify_handles(tagged, []) == tagged
+    assert datadog_push.with_notify_handles(other, emails) == other
 
 
 def test_farmer_alert_monitors_match_the_event_tags_the_service_sends():
@@ -129,28 +113,26 @@ def test_farmer_alert_monitors_match_the_event_tags_the_service_sends():
     ):
         monitor = json.loads((datadog_push.ROOT / "datadog" / "monitors" / name).read_text(encoding="utf-8"))
         assert f"service:shrimpwatch incident_event:{what}" in monitor["query"]
-        assert '.by("pond")' in monitor["query"] and "notify:telegram" in monitor["tags"]
+        assert '.by("pond")' in monitor["query"] and "notify:email" in monitor["tags"]
 
 
-def test_main_fails_when_the_configured_webhook_cannot_be_pushed(monkeypatch):
+def test_main_passes_the_alert_emails_to_every_push(monkeypatch):
     monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
     monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "123:secret")
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_CHAT_ID", "12345")
-    monkeypatch.setattr(datadog_push, "_push_telegram_webhook", lambda hook: 403)
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "a@farm.vn")
     pushed = []
-    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: pushed.append(telegram) or (200, {}))
-    assert datadog_push.main() == 1
-    assert pushed and not any(pushed)  # everything else still pushed, without the handle
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, emails=(): pushed.append(emails) or (200, {}))
+    assert datadog_push.main() == 0
+    assert pushed and all(e == ["a@farm.vn"] for e in pushed)
 
 
 def test_main_fails_when_datadog_rejects_a_file(monkeypatch):
     monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
     monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
-    monkeypatch.setattr(datadog_push.settings, "TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "")
     monkeypatch.setattr(
-        datadog_push, "_push", lambda kind, path, telegram=False: (400 if path.name == "do_low.json" else 200, {})
+        datadog_push, "_push", lambda kind, path, emails=(): (400 if path.name == "do_low.json" else 200, {})
     )
     assert datadog_push.main() == 1
-    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, telegram=False: (200, {}))
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, emails=(): (200, {}))
     assert datadog_push.main() == 0

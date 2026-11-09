@@ -14,9 +14,8 @@ class Settings(BaseSettings):
     DD_SERVICE: str = "shrimpwatch"
     # Dashboard id (from its URL or `python -m app.cli.datadog_push`): the incident panel links straight to it
     DD_DASHBOARD_ID: str = ""
-    # Farmer alert: datadog_push creates a Datadog webhook to this Telegram bot/chat (kept in .env, never in the repo)
-    TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_CHAT_ID: str = ""
+    # Farmer alert: comma-separated addresses datadog_push adds to notify:email monitors (kept in .env only)
+    FARMER_ALERT_EMAILS: str = ""
     # Where the farmer opens the control panel from the alert (a URL their phone can reach); empty = no link
     PUBLIC_BASE_URL: str = ""
 

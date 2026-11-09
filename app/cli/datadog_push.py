@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
@@ -14,8 +16,8 @@ logger = get_logger("datadog_push")
 
 ROOT = Path(__file__).resolve().parents[2]
 
-TELEGRAM_WEBHOOK = "shrimpwatch-telegram"
-NOTIFY_TELEGRAM_TAG = "notify:telegram"
+NOTIFY_EMAIL_TAG = "notify:email"
+_EMAIL = re.compile(r"[^@\s,]+@[^@\s,]+\.[^@\s,]+")
 
 
 def _headers() -> dict[str, str]:
@@ -59,47 +61,35 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
     return matches[0] if matches else None
 
 
-def telegram_webhook() -> dict | None:
-    """Datadog webhook that forwards the alert text to the farmer's Telegram chat; None when Telegram is not set up.
+def farmer_alert_emails() -> list[str]:
+    """Addresses in FARMER_ALERT_EMAILS (comma separated); invalid entries are skipped with a warning.
 
-    The bot token is part of the URL: it lives in .env and in Datadog's webhook settings, never in the repo or logs.
+    They live in .env only: the repo is public, so the monitor JSON carries no address.
     """
-    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
-        return None
-    body = {"chat_id": settings.TELEGRAM_CHAT_ID, "text": "$TEXT_ONLY_MSG", "disable_web_page_preview": True}
-    return {
-        "name": TELEGRAM_WEBHOOK,
-        "url": f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
-        "payload": json.dumps(body, ensure_ascii=False),
-        "encode_as": "json",
-    }
+    emails = []
+    for position, entry in enumerate(settings.FARMER_ALERT_EMAILS.split(","), start=1):
+        entry = entry.strip()
+        if _EMAIL.fullmatch(entry):
+            emails.append(entry)
+        elif entry:
+            logger.warning("skipping an invalid FARMER_ALERT_EMAILS entry", extra={"position": position})
+    return emails
 
 
-def _push_telegram_webhook(webhook: dict) -> int:
-    """Create or update the webhook. Logs the status only: the response echoes the URL with the bot token."""
-    base = f"{_base_url()}/integration/webhooks/configuration/webhooks"
-    exists = httpx.get(f"{base}/{TELEGRAM_WEBHOOK}", headers=_headers(), timeout=30).status_code == 200
-    if exists:
-        resp = httpx.put(f"{base}/{TELEGRAM_WEBHOOK}", headers=_headers(), json=webhook, timeout=30)
-    else:
-        resp = httpx.post(base, headers=_headers(), json=webhook, timeout=30)
-    logger.info("push telegram webhook", extra={"status": resp.status_code, "updated": exists})
-    return resp.status_code
-
-
-def with_notify_handles(payload: dict, telegram: bool) -> dict:
-    """Add the @webhook handle to monitors tagged notify:telegram once the webhook exists (Datadog rejects unknown
-    handles); rebuilt from the JSON on every push, so removing the Telegram settings stops the alerts."""
-    if not telegram or NOTIFY_TELEGRAM_TAG not in payload.get("tags", []):
+def with_notify_handles(payload: dict, emails: Sequence[str]) -> dict:
+    """Add an @email handle per address to monitors tagged notify:email; rebuilt from the JSON on every push, so
+    removing an address and pushing again stops its emails."""
+    if not emails or NOTIFY_EMAIL_TAG not in payload.get("tags", []):
         return payload
-    return {**payload, "message": f"{payload.get('message', '')}\n\n@webhook-{TELEGRAM_WEBHOOK}"}
+    handles = " ".join(f"@{e}" for e in emails)
+    return {**payload, "message": f"{payload.get('message', '')}\n\n{handles}"}
 
 
-def _push(kind: str, path: Path, telegram: bool = False):
+def _push(kind: str, path: Path, emails: Sequence[str] = ()):
     """kind: 'dashboard', 'monitor' or 'slo' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if kind == "monitor":
-        payload = with_notify_handles(payload, telegram)
+        payload = with_notify_handles(payload, emails)
     existing = _existing_id(kind, payload)
     if existing is None:
         resp = httpx.post(f"{_base_url()}/{kind}", headers=_headers(), json=payload, timeout=30)
@@ -118,23 +108,19 @@ def main():
     if not settings.DD_API_KEY or not settings.DD_APP_KEY:
         logger.error("DD_API_KEY/DD_APP_KEY are not set in .env")
         return 1
-    # The webhook must exist before a monitor can notify it
-    webhook = telegram_webhook()
-    telegram = webhook is not None and _push_telegram_webhook(webhook) < 400
-    if webhook is None:
-        logger.info("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: no Telegram farmer alert")
-    elif not telegram:
-        logger.error("Telegram webhook push failed: monitors are pushed without the farmer alert handle")
+    emails = farmer_alert_emails()
+    if not emails:
+        logger.info("FARMER_ALERT_EMAILS not set: the farmer alert monitors email nobody")
     failed = []
     for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
-            status, _ = _push(kind, p, telegram)
+            status, _ = _push(kind, p, emails)
             if status >= 400:
                 failed.append(p.name)
     if failed:
         logger.error("some Datadog files were rejected", extra={"files": failed})
-    # Keep pushing the rest, but a rejected file (or Telegram configured but not working) is a failed run
-    return 1 if failed or (webhook is not None and not telegram) else 0
+    # Keep pushing the rest, but a rejected file is a failed run
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

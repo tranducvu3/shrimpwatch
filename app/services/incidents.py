@@ -47,7 +47,7 @@ _SEVERITY_VI = {"critical": "nghiêm trọng", "warning": "cảnh báo", "info":
 def _alert_text(pond_id: str, finding: Finding, escalated_from: str | None = None) -> str:
     """Event text for an opened or escalated incident: how bad, what is wrong, what to do, where to look.
 
-    The Telegram farmer alert forwards it as is, so it is written for the farmer (Vietnamese, no jargon).
+    The farmer alert email forwards it as is, so it is written for the farmer (Vietnamese, no jargon).
     """
     severity = _SEVERITY_VI.get(finding.severity.value, finding.severity.value)
     if escalated_from:
