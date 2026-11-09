@@ -120,10 +120,16 @@ def test_open_event_text_tells_the_farmer_what_to_do(sent, monkeypatch):
     title, kw = sent["event"][0]
     assert "pond-98" in title
     assert kw["text"].splitlines() == [
-        "Mức độ: nghiêm trọng.",
-        "0 W",
-        "Đề xuất xử lý: Sửa quạt nước.",
-        "Mở bảng điều khiển: https://farm.example/control?ao=pond-98",
+        "%%%",
+        "**Mức độ:** 🔴 nghiêm trọng",
+        "",
+        "**Tình trạng:** 0 W",
+        "",
+        "**Đề xuất xử lý:**",
+        "- Sửa quạt nước",
+        "",
+        "**[👉 Mở bảng điều khiển ao pond-98](https://farm.example/control?ao=pond-98)**",
+        "%%%",
     ]
 
 
@@ -132,4 +138,13 @@ def test_escalation_text_names_both_severities_and_omits_an_unset_link(sent, mon
     incident_service.open_or_update("pond-79", WARNING, IncidentEvidence())
     incident_service.open_or_update("pond-79", CRITICAL, IncidentEvidence())
     _, kw = sent["event"][-1]
-    assert kw["text"].splitlines() == ["Nâng mức: cảnh báo → nghiêm trọng.", "0 W", "Đề xuất xử lý: Sửa quạt nước."]
+    assert kw["text"].splitlines() == [
+        "%%%",
+        "**Nâng mức:** 🟠 cảnh báo → 🔴 nghiêm trọng",
+        "",
+        "**Tình trạng:** 0 W",
+        "",
+        "**Đề xuất xử lý:**",
+        "- Sửa quạt nước",
+        "%%%",
+    ]
