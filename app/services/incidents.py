@@ -11,9 +11,12 @@ from app.core.log import get_logger
 from app.core.telemetry import distribution, event, gauge, increment, set_span_tags
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
+from app.domain.conditions import REMEDIES, Remedy
 from app.domain.incident_lifecycle import ensure_transition, is_escalation
 from app.domain.incident_rules import Finding
 from app.domain.models import Incident, IncidentEvidence, IncidentState
+from app.domain.remedies import suggested_remedies
+from app.services import ponds as pond_service
 
 logger = get_logger("services.incidents")
 
@@ -206,7 +209,7 @@ def auto_recover(pond_id: str) -> str | None:
     return existing["_id"]
 
 
-def transition(incident_id: str, state: IncidentState, action: str | None = None) -> None:
+def transition(incident_id: str, state: IncidentState, action: str | None = None, remedy: Remedy | None = None) -> None:
     """A technician moves the incident to the next step (Investigating/Resolving/Recovered), with an action note."""
     incident = incidents_repo.get(incident_id)
     if not incident:
@@ -219,6 +222,8 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
     details = {"from_state": from_state, "state": state.value}
     if action:
         details["action"] = action
+    if remedy:
+        details["remedy"] = remedy.value
     events_repo.record("incident_action", pond_id, incident_id=incident_id, details=details)
 
     fields = {}
@@ -237,6 +242,27 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
         _datadog_event(incident, f"incident_{state.value}", action or f"{from_state} -> {state.value}")
 
 
+def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> dict:
+    """The operator applies a remedy to an incident: recorded on the incident, which moves to Resolving.
+
+    Only new readings can prove the pond recovered, so the worker (not this call) moves it to Recovered.
+    On the simulated farm the remedy also ends the simulated cause (pond_service.apply_remedy).
+    """
+    incident = incidents_repo.get(incident_id)
+    if not incident:
+        raise IncidentNotFound(incident_id)
+    label = REMEDIES[remedy].label
+    # Record on the incident first: if it was closed meanwhile this raises (409) before the farm is changed
+    transition(incident_id, IncidentState.RESOLVING, f"{label}: {note}" if note else label, remedy=remedy)
+    cleared = pond_service.apply_remedy(incident["pond_id"], remedy)
+    return {
+        "incident_id": incident_id,
+        "remedy": remedy.value,
+        "state": IncidentState.RESOLVING.value,
+        "cleared": cleared,
+    }
+
+
 def report_active(pond_ids: list[str]) -> None:
     """0/1 gauge per pond per cycle: the dashboard counts CURRENTLY active incidents (the incident.open counter only counts openings)."""
     active = incidents_repo.active_pond_ids()
@@ -253,4 +279,8 @@ def timeline(incident_id: str) -> dict:
     if row is None:
         raise IncidentNotFound(incident_id)
     set_span_tags(pond_id=row.get("pond_id"))
+    row["suggested_remedies"] = [
+        {"remedy": r.value, "label": REMEDIES[r].label, "description": REMEDIES[r].description}
+        for r in suggested_remedies(row.get("root_cause"))
+    ]
     return row
