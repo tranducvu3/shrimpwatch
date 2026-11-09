@@ -431,7 +431,7 @@ The incident document stores the same timings: `fault_started_at`, `detection_de
 
 **Farmer alert by email.** When an incident opens or escalates, the farmer gets an email, routed through Datadog so Datadog stays the one place that decides who is told. Email works on any phone without installing an app, which most farmers do not have for chat bots:
 
-1. The incident service sends a Datadog Event whose text is written for the farmer: the severity (or *cảnh báo → nghiêm trọng* on an escalation), what is wrong (with the DO forecast when DO is falling), the suggested remedy and, when `PUBLIC_BASE_URL` is set to an address the farmer's phone can reach, a link to the pond in the control panel.
+1. The incident service sends a Datadog Event whose text is written for the farmer: the severity (or *cảnh báo → nghiêm trọng* on an escalation), what is wrong (with the DO forecast when DO is falling), the suggested remedy and, when `PUBLIC_BASE_URL` is set to an address the farmer's phone can reach, a link to the pond in the control panel. Datadog email takes no HTML or CSS, so the text is laid out in Markdown (bold labels, a colour dot per severity, remedies as a list); the monitor message is only a heading, so the details are not shown twice.
 2. Two event monitors, *Farmer alert: incident opened* and *…escalated* ([farmer_alert_open.json](datadog/monitors/farmer_alert_open.json), [farmer_alert_escalated.json](datadog/monitors/farmer_alert_escalated.json)), fire per pond; they are separate so an escalation a few minutes after the opening still notifies.
 3. Datadog emails that text to every address in `FARMER_ALERT_EMAILS`.
 

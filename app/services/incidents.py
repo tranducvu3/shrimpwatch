@@ -41,26 +41,28 @@ def _datadog_event(incident: dict, what: str, text: str, alert_type: str | None 
     )
 
 
-_SEVERITY_VI = {"critical": "nghiêm trọng", "warning": "cảnh báo", "info": "thông tin"}
+_SEVERITY_VI = {"critical": "🔴 nghiêm trọng", "warning": "🟠 cảnh báo", "info": "🔵 thông tin"}
 
 
 def _alert_text(pond_id: str, finding: Finding, escalated_from: str | None = None) -> str:
     """Event text for an opened or escalated incident: how bad, what is wrong, what to do, where to look.
 
-    The farmer alert email forwards it as is, so it is written for the farmer (Vietnamese, no jargon).
+    The farmer alert email shows it under the monitor message, so it is written for the farmer (Vietnamese, no
+    jargon). Datadog email takes no HTML or CSS, so the layout is Markdown, which `%%%` turns on for an event.
     """
     severity = _SEVERITY_VI.get(finding.severity.value, finding.severity.value)
     if escalated_from:
-        lines = [f"Nâng mức: {_SEVERITY_VI.get(escalated_from, escalated_from)} → {severity}."]
+        blocks = [f"**Nâng mức:** {_SEVERITY_VI.get(escalated_from, escalated_from)} → {severity}"]
     else:
-        lines = [f"Mức độ: {severity}."]
-    lines.append(finding.description)
-    remedies = ", ".join(REMEDIES[r].label for r in suggested_remedies(finding.root_cause))
+        blocks = [f"**Mức độ:** {severity}"]
+    blocks.append(f"**Tình trạng:** {finding.description}")
+    remedies = [REMEDIES[r].label for r in suggested_remedies(finding.root_cause)]
     if remedies:
-        lines.append(f"Đề xuất xử lý: {remedies}.")
+        blocks.append("**Đề xuất xử lý:**\n" + "\n".join(f"- {label}" for label in remedies))
     if settings.PUBLIC_BASE_URL:
-        lines.append(f"Mở bảng điều khiển: {settings.PUBLIC_BASE_URL.rstrip('/')}/control?ao={pond_id}")
-    return "\n".join(lines)
+        url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/control?ao={pond_id}"
+        blocks.append(f"**[👉 Mở bảng điều khiển ao {pond_id}]({url})**")
+    return "%%%\n" + "\n\n".join(blocks) + "\n%%%"
 
 
 def _seconds(start: datetime, end: datetime) -> float:
