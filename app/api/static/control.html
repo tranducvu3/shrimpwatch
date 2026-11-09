@@ -215,6 +215,23 @@
   .chip.forecast { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
   .inc-section { display: flex; flex-direction: column; gap: 6px; }
   .inc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  /* The one place the operator acts: next step first, notes on demand */
+  .inc-next { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--radius); background: var(--info-bg); }
+  .inc-next .label { color: var(--accent); }
+  button.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.btn.ghost.danger { color: var(--crit); }
+  button.link {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 4px 0;
+    cursor: pointer; align-self: flex-start;
+  }
+  button.link:focus-visible, button.icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.icon {
+    font: inherit; font-size: 18px; line-height: 1; width: 32px; height: 32px; border-radius: 8px; flex: none;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer;
+  }
+  @media (hover: hover) { button.icon:hover { background: var(--surface-2); color: var(--text); } }
+  .inc-foot { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--surface-2); padding-top: 10px; }
+  .inc-foot .spacer, .inc-actions .spacer { flex: 1; }
   .inc-body textarea {
     width: 100%; min-height: 60px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
     background: var(--surface); color: var(--text); font: inherit;
@@ -232,7 +249,7 @@
   @media (max-width: 480px) {
     dialog.inc { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; border: 0; }
   }
-  @media (pointer: coarse) { .links a { min-height: 44px; } }
+  @media (pointer: coarse) { .links a, button.link { min-height: 44px; } button.icon { width: 44px; height: 44px; } }
 </style>
 </head>
 <body>
@@ -670,7 +687,11 @@
 
   const seconds = (a, b) => (a && b ? (toDate(b) - toDate(a)) / 1000 : null);
 
+  // What the operator expanded in the detail; kept across the 5 s re-render, reset per incident
+  let detailUi = {};
+
   async function openIncident(id) {
+    if (id !== openIncidentId) detailUi = {};
     openIncidentId = id;
     const dialog = $("#inc-dialog");
     if (!dialog.open) dialog.showModal();
@@ -692,30 +713,44 @@
     }
   }
 
+  // Evidence that explains each root cause; the rest is one click away
+  const KEY_EVIDENCE = {
+    pump_failure: ["min_do", "do_drop", "pump"], do_out_of_range: ["min_do", "do_drop"],
+    temperature_out_of_range: ["temperature"], ph_out_of_range: ["ph", "ph_swing"], salinity_out_of_range: ["salinity"],
+    orp_out_of_range: ["orp"], nh3_out_of_range: ["nh3", "tan", "ph"], co2_out_of_range: ["co2", "ph", "alkalinity"],
+    tan_out_of_range: ["tan", "nh3"], nitrite_out_of_range: ["nitrite"], alkalinity_out_of_range: ["alkalinity", "ph"],
+  };
+
+  // Returns [chips that explain the root cause, the other chips]
   function evidenceChips(inc) {
     const ev = inc.evidence || {};
     const notes = ev.notes || {};
     const items = [
-      ["DO thấp nhất", ev.min_do, 2, "mg/L"],
-      ["DO giảm", ev.do_drop_rate_mg_per_l_per_min, 3, "mg/L/phút"],
-      ["Công suất quạt TB", ev.avg_pump_power_watts, 0, "W"],
-      ["ORP", ev.last_orp_mv, 0, "mV"],
-      ["NH₃", ev.nh3_mg_per_l, 3, "mg/L"],
-      ["Biên độ pH 24h", ev.ph_swing_24h, 2, ""],
-      ["Nhiệt độ TB", notes.avg_temperature, 1, "°C"],
-      ["pH TB", notes.avg_ph, 2, ""],
-      ["Độ mặn TB", notes.avg_salinity, 1, "ppt"],
-      ["CO₂", notes.co2, 1, "mg/L"],
-      ["TAN", notes.tan, 2, "mg/L"],
-      ["Nitrite", notes.nitrite, 2, "mg/L"],
-      ["Độ kiềm", notes.alkalinity, 0, "mg/L"],
-    ].filter(([, v]) => v != null);
-    const chips = items.map(([k, v, d, u]) => el("span", { class: "chip" }, [`${k}: `, el("b", { text: `${Number(v).toFixed(d)} ${u}`.trim() })]));
-    if (ev.minutes_to_do_critical != null && inc.state !== "recovered") {
-      chips.unshift(el("span", { class: "chip forecast", text: `Dự báo ≈ ${Math.round(ev.minutes_to_do_critical)} phút nữa DO < ${catalog.thresholds.do_critical} mg/L` }));
+      ["min_do", "DO thấp nhất", ev.min_do, 2, "mg/L"],
+      ["do_drop", "DO giảm", ev.do_drop_rate_mg_per_l_per_min, 3, "mg/L/phút"],
+      ["pump", "Công suất quạt TB", ev.avg_pump_power_watts, 0, "W"],
+      ["orp", "ORP", ev.last_orp_mv, 0, "mV"],
+      ["nh3", "NH₃", ev.nh3_mg_per_l, 3, "mg/L"],
+      ["ph_swing", "Biên độ pH 24h", ev.ph_swing_24h, 2, ""],
+      ["temperature", "Nhiệt độ TB", notes.avg_temperature, 1, "°C"],
+      ["ph", "pH TB", notes.avg_ph, 2, ""],
+      ["salinity", "Độ mặn TB", notes.avg_salinity, 1, "ppt"],
+      ["co2", "CO₂", notes.co2, 1, "mg/L"],
+      ["tan", "TAN", notes.tan, 2, "mg/L"],
+      ["nitrite", "Nitrite", notes.nitrite, 2, "mg/L"],
+      ["alkalinity", "Độ kiềm", notes.alkalinity, 0, "mg/L"],
+    ].filter(([, , v]) => v != null);
+    const chip = ([, k, v, d, u]) => el("span", { class: "chip" }, [`${k}: `, el("b", { text: `${Number(v).toFixed(d)} ${u}`.trim() })]);
+    const wanted = KEY_EVIDENCE[inc.root_cause] || [];
+    let key = items.filter(([id]) => wanted.includes(id));
+    if (!key.length) key = items.slice(0, 3);
+    const keyChips = key.map(chip);
+    const doIncident = ["pump_failure", "do_out_of_range"].includes(inc.root_cause);
+    if (doIncident && ev.minutes_to_do_critical != null && inc.state !== "recovered") {
+      keyChips.unshift(el("span", { class: "chip forecast", text: `Dự báo ≈ ${Math.round(ev.minutes_to_do_critical)} phút nữa DO < ${catalog.thresholds.do_critical} mg/L` }));
     }
-    if (notes.detected_by === "ingest") chips.push(el("span", { class: "chip", text: "Phát hiện ngay khi nhận dữ liệu (quạt báo tắt 2 lần liên tiếp)" }));
-    return chips;
+    if (notes.detected_by === "ingest") keyChips.push(el("span", { class: "chip", text: "Phát hiện ngay khi nhận dữ liệu (quạt báo tắt 2 lần liên tiếp)" }));
+    return [keyChips, items.filter((x) => !key.includes(x)).map(chip)];
   }
 
   function timingChips(inc) {
@@ -725,7 +760,7 @@
       chips.push(el("span", { class: `chip ${inc.detection_delay_sec <= slo ? "good" : "bad"}` },
         ["Phát hiện sau ", el("b", { text: fmtDuration(inc.detection_delay_sec) }), " kể từ khi xảy ra lỗi"]));
     }
-    chips.push(el("span", { class: "chip" }, ["Tiếp nhận sau ", el("b", { text: inc.acknowledged_at ? fmtDuration(seconds(inc.created_at, inc.acknowledged_at)) : "chưa tiếp nhận" })]));
+    if (inc.acknowledged_at) chips.push(el("span", { class: "chip" }, ["Tiếp nhận sau ", el("b", { text: fmtDuration(seconds(inc.created_at, inc.acknowledged_at)) })]));
     if (inc.recovered_at) chips.push(el("span", { class: "chip good" }, ["Hồi phục sau ", el("b", { text: fmtDuration(seconds(inc.created_at, inc.recovered_at)) })]));
     return chips;
   }
@@ -749,68 +784,96 @@
     }
   }
 
+  // A "Xem …" / "Ẩn …" link that flips one detailUi flag and re-renders
+  function toggle(flag, showText, hideText, inc) {
+    const onclick = () => {
+      detailUi[flag] = !detailUi[flag];
+      renderDetail(inc, $("#inc-note")?.value || "");
+      if (flag === "note" && detailUi.note) $("#inc-note")?.focus();
+    };
+    return el("button", { class: "link", type: "button", "aria-expanded": String(!!detailUi[flag]), text: detailUi[flag] ? hideText : showText, onclick });
+  }
+
   function renderDetail(inc, draft) {
     const active = inc.state !== "recovered";
-    const note = el("textarea", { id: "inc-note", placeholder: "Ghi chú: đã kiểm tra gì, làm gì (lưu vào sự cố)", "aria-label": "Ghi chú xử lý" });
+    const pond = pondName(inc.pond_id);
+    const note = el("textarea", { id: "inc-note", placeholder: "Đã kiểm tra gì, làm gì (lưu cùng thao tác kế tiếp)", "aria-label": "Ghi chú xử lý" });
     note.value = draft || "";
-    const close = el("button", { class: "btn small", type: "button", text: "Đóng", "aria-label": "Đóng chi tiết sự cố" });
-    close.addEventListener("click", () => $("#inc-dialog").close());
+    const noteText = () => note.value.trim();
+    const close = el("button", { class: "icon", type: "button", text: "✕", "aria-label": "Đóng cửa sổ", onclick: () => $("#inc-dialog").close() });
 
-    const send = (button, fn, message) => act(button, async () => { await fn(); note.value = ""; }, message).then(refreshDetail);
-    const stateButtons = (NEXT[inc.state] || []).map(([state, label]) => {
-      const b = el("button", { class: `btn small${state === "recovered" ? "" : " primary"}`, type: "button", text: label });
-      b.addEventListener("click", () => send(b, () => api("PATCH", `/incidents/${inc._id}?state=${state}${note.value.trim() ? `&action=${encodeURIComponent(note.value.trim())}` : ""}`), `${pondName(inc.pond_id)}: ${STATES[state]}`));
-      return b;
-    });
-    if (active) {
-      const save = el("button", { class: "btn small", type: "button", text: "Lưu ghi chú" });
-      save.addEventListener("click", () => {
-        if (!note.value.trim()) return toast("Nhập ghi chú trước", true);
-        send(save, () => api("PATCH", `/incidents/${inc._id}?state=${inc.state}&action=${encodeURIComponent(note.value.trim())}`), "Đã lưu ghi chú");
-      });
-      stateButtons.push(save);
-    }
-    const remedyButtons = (inc.suggested_remedies || []).map((r) => {
-      const b = el("button", { class: "btn small primary", type: "button", text: r.label, title: r.description });
-      b.addEventListener("click", () => send(b, () => api("POST", `/incidents/${inc._id}/remedies/${r.remedy}${note.value.trim() ? `?note=${encodeURIComponent(note.value.trim())}` : ""}`), `${pondName(inc.pond_id)}: ${r.label}, chờ dữ liệu xác nhận hồi phục`));
-      return b;
-    });
+    const send = (button, fn, message) => act(button, async () => { await fn(); note.value = ""; detailUi.note = false; }, message).then(refreshDetail);
+    const setState = (state) => api("PATCH", `/incidents/${inc._id}?state=${state}${noteText() ? `&action=${encodeURIComponent(noteText())}` : ""}`);
+    const button = (cls, text, onClick, title) =>
+      el("button", { class: `btn ${cls}`, type: "button", text, ...(title ? { title } : {}), onclick: (ev) => onClick(ev.currentTarget) });
+
+    // Remedies are the main move when the root cause has some; otherwise the first next state is
+    const remedies = (inc.suggested_remedies || []).map((r) => button("primary", r.label,
+      (b) => send(b, () => api("POST", `/incidents/${inc._id}/remedies/${r.remedy}${noteText() ? `?note=${encodeURIComponent(noteText())}` : ""}`), `${pond}: ${r.label}, chờ dữ liệu xác nhận hồi phục`),
+      r.description));
+    const next = NEXT[inc.state] || [];
+    const moves = next.filter(([s]) => s !== "recovered").map(([state, label], i) =>
+      button(i === 0 && !remedies.length ? "primary" : "", label, (b) => send(b, () => setState(state), `${pond}: ${STATES[state]}`)));
+    const dismiss = next.find(([s]) => s === "recovered");
+    const actionPanel = el("div", { class: "inc-next" }, [
+      el("span", { class: "label", text: remedies.length ? "Xử lý đề xuất" : "Bước tiếp theo" }),
+      el("div", { class: "inc-actions" }, [...remedies, ...moves]),
+      ...(detailUi.note ? [note, el("div", { class: "inc-actions" }, [
+        button("small", "Lưu ghi chú", (b) => {
+          if (!noteText()) return toast("Nhập ghi chú trước", true);
+          send(b, () => setState(inc.state), "Đã lưu ghi chú");
+        }),
+      ])] : []),
+      el("div", { class: "inc-actions" }, [
+        toggle("note", "+ Thêm ghi chú", "Bỏ ghi chú", inc),
+        el("span", { class: "spacer" }),
+        ...(dismiss ? [button("small ghost danger", dismiss[1], (b) => send(b, () => setState("recovered"), `${pond}: ${STATES.recovered}`))] : []),
+      ]),
+      el("span", { class: "muted", text: "Worker tự đóng sự cố khi dữ liệu cho thấy ao đã ổn." }),
+    ]);
+
+    const [keyChips, otherChips] = evidenceChips(inc);
+    const timing = timingChips(inc);
     const links = inc.links || {};
-    const linkItems = [["dashboard", "Dashboard ao"], ["logs", "Logs"], ["traces", "Traces"], ["events", "Events"]]
+    const linkItems = [["dashboard", "Dashboard"], ["logs", "Logs"], ["traces", "Traces"], ["events", "Events"]]
       .filter(([k]) => links[k])
       .map(([k, label]) => el("a", { href: links[k], target: "_blank", rel: "noopener" }, [`${label} ↗`]));
+    const timeline = inc.timeline || [];
+    // A closed incident has nothing to act on: its story is the timeline, so show it
+    detailUi.timeline ??= !active;
 
     $("#inc-body").replaceChildren(
       el("div", { class: "inc-top" }, [
         el("div", { class: "inc-head" }, [
-          el("h2", { id: "inc-title", text: `${pondName(inc.pond_id)} · ${inc.title}` }),
+          el("h2", { id: "inc-title", text: `${pond} · ${inc.title}` }),
           el("div", { class: "meta" }, [
             el("span", { class: `pill ${inc.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[inc.severity] || inc.severity }),
             el("span", { class: "pill state", text: STATES[inc.state] || inc.state }),
-            el("span", { class: "muted", text: `${ROOT_CAUSES[inc.root_cause] || inc.root_cause || ""} · mở lúc ${hhmm(inc.created_at)} · ${inc._id}` }),
+            el("span", { class: "muted", text: `${ROOT_CAUSES[inc.root_cause] || inc.root_cause || ""} · mở lúc ${hhmm(inc.created_at)} (${ago(inc.created_at)})` }),
           ]),
         ]),
         close,
       ]),
       el("p", { class: "inc-desc", text: inc.description }),
-      el("div", { class: "chips" }, timingChips(inc)),
-      el("div", { class: "inc-section" }, [el("span", { class: "label", text: "Bằng chứng" }), el("div", { class: "chips" }, evidenceChips(inc))]),
-      ...(active ? [el("div", { class: "inc-section" }, [
-        el("span", { class: "label", text: "Xử lý" }),
-        remedyButtons.length
-          ? el("div", { class: "inc-actions" }, [el("span", { class: "muted", text: "Đề xuất theo nguyên nhân:" }), ...remedyButtons])
-          : el("span", { class: "muted", text: "Chưa có cách xử lý đề xuất cho nguyên nhân này: ghi lại việc đã làm." }),
-        note,
-        el("div", { class: "inc-actions" }, stateButtons),
-        el("span", { class: "muted", text: "Sau khi xử lý, sự cố chuyển sang Đang xử lý; worker tự đóng khi dữ liệu cho thấy ao đã ổn." }),
+      el("div", { class: "chips" }, keyChips),
+      ...(active ? [actionPanel] : []),
+      ...(timing.length ? [el("div", { class: "chips" }, timing)] : []),
+      ...(otherChips.length ? [el("div", { class: "inc-section" }, [
+        toggle("more", `Xem thêm ${otherChips.length} chỉ số`, "Ẩn chỉ số khác", inc),
+        ...(detailUi.more ? [el("div", { class: "chips" }, otherChips)] : []),
       ])] : []),
-      el("div", { class: "inc-section" }, [el("span", { class: "label", text: "Điều tra trên Datadog" }), el("div", { class: "inc-actions links" }, linkItems)]),
       el("div", { class: "inc-section" }, [
-        el("span", { class: "label", text: "Dòng thời gian" }),
-        el("ol", { class: "tl" }, (inc.timeline || []).map((e) => {
+        toggle("timeline", `Xem dòng thời gian (${timeline.length})`, "Ẩn dòng thời gian", inc),
+        ...(detailUi.timeline ? [el("ol", { class: "tl" }, timeline.map((e) => {
           const [what, detail, pondEvent] = timelineText(e);
           return el("li", {}, [el("time", { text: hhmm(e.timestamp) }), el("span", { class: pondEvent ? "sys" : "" }, [el("b", { text: what }), detail ? ` · ${detail}` : ""])]);
-        })),
+        }))] : []),
+      ]),
+      el("div", { class: "inc-foot" }, [
+        el("span", { class: "muted", text: "Datadog" }),
+        el("div", { class: "inc-actions links" }, linkItems),
+        el("span", { class: "spacer" }),
+        el("span", { class: "muted", text: inc._id }),
       ]),
     );
   }
