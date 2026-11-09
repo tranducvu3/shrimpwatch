@@ -228,6 +228,8 @@
   /* Remedy picker: every remedy, the ones that fit the root cause first and marked */
   .picker { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
   .picker .dd { flex: 1 1 260px; min-width: 0; }
+  .picker .pill { align-self: center; font-size: 13px; padding: 6px 12px; }
+  .inc-next .pill.status-doing { background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent); }
   .inc .dd-menu { position: static; margin-top: 4px; max-height: none; box-shadow: none; }
   .dd-opt.suggested { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
   .picker .dd-btn.locked { flex: 1 1 260px; min-width: 0; cursor: not-allowed; background: var(--surface-2); color: var(--muted); }
@@ -1022,8 +1024,8 @@
     const appliedNames = (inc.remedies || []).map((t) => labelIn(catalog.remedies, t)).join(", ");
     let statusText;
     let main;
-    // Back to Investigating: the API clears the remedies, so the dropdown opens again for a new attempt
-    const retry = (cls) => button(cls, "Xử lý lại", (b) => {
+    // After a failed check. Back to Investigating: the API clears the remedies, so the dropdown opens again
+    const retry = button("primary", "Xử lý lại", (b) => {
       detailUi.picked = new Set();
       send(b, () => setState("investigating"), `${pond}: chọn cách xử lý mới`);
     });
@@ -1032,10 +1034,11 @@
       [el("span", { class: "dd-value", text: appliedNames })]);
     if (status === "failed") {
       statusText = `${appliedNames} chưa có tác dụng: ${metricChange(check.metric, check.baseline, check.value)} sau ${fmtDuration(seconds(check.applied_at, check.checked_at))}. Tìm nguyên nhân khác rồi chọn cách xử lý mới.`;
-      main = el("div", { class: "picker" }, [locked, retry("primary")]);
+      main = el("div", { class: "picker" }, [locked, retry]);
     } else if (status === "doing") {
       statusText = `${appliedNames}${remedyProgress(check, checkSec)}`;
-      main = el("div", { class: "picker" }, [locked, retry("")]);
+      // The badge sits where "Xử lý lại" appears if the check fails
+      main = el("div", { class: "picker" }, [locked, el("span", { class: "pill status-doing", text: STATUS.doing })]);
     } else {
       statusText = "Chọn một hoặc nhiều cách xử lý. Cách phù hợp với nguyên nhân được đánh dấu Đề xuất.";
       main = remedyPicker(inc, applyRemedies);
@@ -1070,7 +1073,8 @@
           el("h2", { id: "inc-title", text: `${pond} · ${inc.title}` }),
           el("div", { class: "meta" }, [
             el("span", { class: `pill ${inc.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[inc.severity] || inc.severity }),
-            el("span", { class: `pill status-${statusOf(inc)}`, text: STATUS[statusOf(inc)] }),
+            // "Đang xử lý" is shown next to the applied remedy instead
+            statusOf(inc) === "doing" ? null : el("span", { class: `pill status-${statusOf(inc)}`, text: STATUS[statusOf(inc)] }),
             el("span", { class: "muted", text: `${ROOT_CAUSES[inc.root_cause] || inc.root_cause || ""} · mở lúc ${hhmm(inc.created_at)} (${ago(inc.created_at)})` }),
           ]),
         ]),
