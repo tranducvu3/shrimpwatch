@@ -637,9 +637,9 @@
   };
   // Next states the operator can pick (the API checks the same rules and answers 409 otherwise)
   const NEXT = {
-    open: [["investigating", "Tiếp nhận, điều tra"], ["resolving", "Đang xử lý"], ["recovered", "Đóng: báo nhầm / đã ổn"]],
-    investigating: [["resolving", "Đang xử lý"], ["recovered", "Đóng: đã ổn"]],
-    resolving: [["investigating", "Điều tra lại"], ["recovered", "Đóng: đã ổn"]],
+    open: [["investigating", "Tiếp nhận, điều tra"], ["resolving", "Đang xử lý"], ["recovered", "Xử lý xong: báo nhầm / đã ổn"]],
+    investigating: [["resolving", "Đang xử lý"], ["recovered", "Xử lý xong: đã ổn"]],
+    resolving: [["investigating", "Điều tra lại"], ["recovered", "Xử lý xong: đã ổn"]],
     recovered: [],
   };
   const RECENT_RECOVERED_MS = 24 * 3600 * 1000;
