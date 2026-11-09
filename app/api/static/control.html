@@ -219,7 +219,7 @@
   .chip.forecast { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
   .inc-section { display: flex; flex-direction: column; gap: 6px; }
   .inc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  /* The one place the operator acts: next step first, notes on demand */
+  /* The one place the operator acts: status, remedies, next step */
   .inc-next { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--radius); background: var(--info-bg); }
   .inc-next .label { color: var(--accent); }
   .inc-next.failed { background: var(--crit-bg); }
@@ -249,11 +249,6 @@
   @media (hover: hover) { button.icon:hover { background: var(--surface-2); color: var(--text); } }
   .inc-foot { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--surface-2); padding-top: 10px; }
   .inc-foot .spacer, .inc-actions .spacer { flex: 1; }
-  .inc-body textarea {
-    width: 100%; min-height: 60px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface); color: var(--text); font: inherit;
-  }
-  .inc-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .links a {
     display: inline-flex; align-items: center; min-height: 32px; padding: 4px 10px; border-radius: 6px; font-weight: 600;
     border: 1px solid var(--border); color: var(--accent); text-decoration: none; font-size: 13px;
@@ -737,10 +732,8 @@
 
   async function refreshDetail() {
     if (!openIncidentId) return;
-    const note = $("#inc-note");
-    const draft = note ? note.value : "";
     try {
-      renderDetail(await api("GET", `/incidents/${openIncidentId}/timeline`), draft);
+      renderDetail(await api("GET", `/incidents/${openIncidentId}/timeline`));
     } catch (e) {
       toast(e.message, true);
     }
@@ -984,22 +977,18 @@
   function toggle(flag, showText, hideText, inc) {
     const onclick = () => {
       detailUi[flag] = !detailUi[flag];
-      renderDetail(inc, $("#inc-note")?.value || "");
-      if (flag === "note" && detailUi.note) $("#inc-note")?.focus();
+      renderDetail(inc);
     };
     return el("button", { class: "link", type: "button", "aria-expanded": String(!!detailUi[flag]), text: detailUi[flag] ? hideText : showText, onclick });
   }
 
-  function renderDetail(inc, draft) {
+  function renderDetail(inc) {
     const active = inc.state !== "recovered";
     const pond = pondName(inc.pond_id);
-    const note = el("textarea", { id: "inc-note", placeholder: "Đã kiểm tra gì, làm gì (lưu cùng thao tác kế tiếp)", "aria-label": "Ghi chú xử lý" });
-    note.value = draft || "";
-    const noteText = () => note.value.trim();
     const close = el("button", { class: "icon", type: "button", text: "✕", "aria-label": "Đóng cửa sổ", onclick: () => $("#inc-dialog").close() });
 
-    const send = (button, fn, message) => act(button, async () => { await fn(); note.value = ""; detailUi.note = false; }, message).then(refreshDetail);
-    const setState = (state) => api("PATCH", `/incidents/${inc._id}?state=${state}${noteText() ? `&action=${encodeURIComponent(noteText())}` : ""}`);
+    const send = (button, fn, message) => act(button, fn, message).then(refreshDetail);
+    const setState = (state) => api("PATCH", `/incidents/${inc._id}?state=${state}`);
     const button = (cls, text, onClick, title) =>
       el("button", { class: `btn ${cls}`, type: "button", text, ...(title ? { title } : {}), onclick: (ev) => onClick(ev.currentTarget) });
 
@@ -1008,11 +997,7 @@
       if (!types.length) return toast("Chọn ít nhất một cách xử lý", true);
       const labels = types.map((t) => labelIn(catalog.remedies, t)).join(", ");
       send(b, async () => {
-        // The note goes with the first remedy only, so it is not repeated in the timeline
-        for (const [i, t] of types.entries()) {
-          const q = i === 0 && noteText() ? `?note=${encodeURIComponent(noteText())}` : "";
-          await api("POST", `/incidents/${inc._id}/remedies/${t}${q}`);
-        }
+        for (const t of types) await api("POST", `/incidents/${inc._id}/remedies/${t}`);
         detailUi.picked = new Set();
         detailUi.menu = false;
       }, `${pond}: ${labels}. Kiểm tra kết quả sau ${fmtDuration(checkSec)}`);
@@ -1047,14 +1032,7 @@
       el("span", { class: "label", text: "Cách xử lý" }),
       el("p", { text: statusText }),
       main,
-      ...(detailUi.note ? [note, el("div", { class: "inc-actions" }, [
-        button("small", "Lưu ghi chú", (b) => {
-          if (!noteText()) return toast("Nhập ghi chú trước", true);
-          send(b, () => setState(inc.state), "Đã lưu ghi chú");
-        }),
-      ])] : []),
       el("div", { class: "inc-actions" }, [
-        toggle("note", "+ Thêm ghi chú", "Bỏ ghi chú", inc),
         el("span", { class: "spacer" }),
         button("small ghost danger", "Đóng: báo nhầm", (b) => send(b, () => setState("recovered"), `${pond}: đã đóng sự cố`)),
       ]),
@@ -1129,8 +1107,8 @@
       }
       if (added) applyFilter();
       renderIncidents([...open, ...investigating, ...resolving].sort((a, b) => toDate(b.created_at) - toDate(a.created_at)), recovered);
-      // Keep an open detail current, but never under the operator's cursor while they type a note
-      if (openIncidentId && document.activeElement?.id !== "inc-note" && !detailUi.menu) refreshDetail();
+      // Keep an open detail current, but not while the operator is picking remedies
+      if (openIncidentId && !detailUi.menu) refreshDetail();
       $("#health-dot").className = "dot ok";
       $("#health-text").textContent = `${ponds.length} ao`;
       $("#updated").textContent = `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN")}`;
