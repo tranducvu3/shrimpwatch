@@ -80,7 +80,7 @@ CONDITIONS: dict[ConditionType, Condition] = {
         ramp_min=15,
     ),
     ConditionType.ALGAE_BLOOM: Condition(
-        "Tảo nở hoa",
+        "Tảo phát triển",
         "Tảo dày quang hợp mạnh ban ngày: pH và DO tăng cao",
         {MetricType.PH: 0.6, MetricType.DO: 1.0},
         ramp_min=30,
