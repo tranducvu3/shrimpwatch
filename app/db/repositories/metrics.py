@@ -59,6 +59,17 @@ def latest_value(pond_id: str, metric: str, since: datetime, source: str | None 
     return doc["value"] if doc else None
 
 
+def latest_values(pond_id: str, metric: str, since: datetime, limit: int) -> list[float]:
+    """The latest `limit` values since `since`, newest first."""
+    cursor = (
+        metrics_collection()
+        .find({"metadata.pond_id": pond_id, "metadata.metric": metric, "timestamp": {"$gte": since}}, {"value": 1})
+        .sort("timestamp", -1)
+        .limit(limit)
+    )
+    return [d["value"] for d in cursor]
+
+
 def average_value(pond_id: str, metric: str, since: datetime, limit: int = 30) -> float | None:
     """Average of the latest `limit` points since `since`."""
     docs = list(

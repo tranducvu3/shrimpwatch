@@ -12,11 +12,14 @@ from app.core.config import settings
 from app.core.log import get_logger
 from app.db.mongo import get_db
 from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS
+from app.domain.incident_lifecycle import ACTIVE_STATES
 from app.domain.ponds import pond_ids
 
 logger = get_logger("db.schema")
 
 METRICS_POND_METRIC_TS_INDEX = "pond_metric_ts"
+ONE_ACTIVE_INCIDENT_INDEX = "one_active_incident_per_pond"
+DUPLICATE_KEY = 11000
 _OBSOLETE_METRIC_INDEXES = [
     "metadata.pond_id_1_timestamp_-1",
     "metadata.metric_1_timestamp_-1",
@@ -111,6 +114,20 @@ def _init_incidents(db: Database, force: bool) -> None:
     incidents.create_index([("pond_id", 1), ("state", 1)])
     incidents.create_index([("state", 1), ("created_at", -1)])
     incidents.create_index([("created_at", -1)])
+    # At most one active incident per pond, enforced by MongoDB: the ingest check and the worker can both open one.
+    try:
+        incidents.create_index(
+            [("pond_id", 1)],
+            name=ONE_ACTIVE_INCIDENT_INDEX,
+            unique=True,
+            partialFilterExpression={"state": {"$in": [s.value for s in ACTIVE_STATES]}},
+        )
+    except OperationFailure as e:
+        if e.code != DUPLICATE_KEY:
+            raise
+        # Old data with 2 active incidents for a pond: keep starting (the service still updates the existing one),
+        # but say so loudly, the invariant is not enforced until those incidents are closed
+        logger.error("one-active-incident index not created: a pond has 2 active incidents", extra={"err": str(e)})
 
 
 # The similar-incident search (Atlas Vector Search on incidents.fingerprint) was removed.

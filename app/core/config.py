@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     DO_WINDOW_SEC: int = 300
     PUMP_FAILED_MAX_WATTS: float = 50.0
     PUMP_RUNNING_MIN_WATTS: float = 500.0
+    # Consecutive pump_status = 0 readings that mean the aerator has stopped (checked at ingest and by the worker)
+    PUMP_STOPPED_READINGS: int = 2
     DO_RECOVERY_MARGIN: float = 0.5
 
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pymongo.errors import DuplicateKeyError
+
 from app.core.clock import utcnow
 from app.db.mongo import incidents_collection
 from app.db.pipelines import incident_timeline_pipeline
@@ -28,8 +30,13 @@ def list_recent(state: IncidentState | None = None, limit: int = 50) -> list[dic
     return list(incidents_collection().find(query).sort("created_at", -1).limit(limit))
 
 
-def insert(doc: dict[str, Any]) -> None:
-    incidents_collection().insert_one(doc)
+def insert(doc: dict[str, Any]) -> bool:
+    """False if the pond already has an active incident (unique index one_active_incident_per_pond)."""
+    try:
+        incidents_collection().insert_one(doc)
+    except DuplicateKeyError:
+        return False
+    return True
 
 
 def update_fields(incident_id: str, fields: dict[str, Any]) -> None:

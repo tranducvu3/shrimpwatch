@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.log import get_logger
 from app.core.telemetry import set_span_tags
 from app.db.repositories import metrics as metrics_repo
-from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered
+from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered, pump_stopped
 from app.domain.models import DeviceType, IncidentEvidence, Source
 from app.services import derivations
 from app.services import incidents as incident_service
@@ -58,6 +58,10 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         tan=_latest_manual(pond_id, "tan", now),
         nitrite=_latest_manual(pond_id, "nitrite", now),
         alkalinity=_latest_manual(pond_id, "alkalinity", now),
+        pump_stopped=pump_stopped(
+            metrics_repo.latest_values(pond_id, "pump_status", now - RECENT, settings.PUMP_STOPPED_READINGS),
+            settings.PUMP_STOPPED_READINGS,
+        ),
     )
     thresholds = Thresholds.from_settings()
 

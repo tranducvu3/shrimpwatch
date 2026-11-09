@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered
+from app.domain.incident_rules import PondSnapshot, Thresholds, evaluate, has_recovered, pump_stopped
 from app.domain.models import Severity
 
 T = Thresholds(
@@ -132,3 +132,33 @@ def test_water_quality_at_threshold_or_missing_is_normal():
 def test_oxygen_and_environment_rules_come_before_water_quality():
     assert evaluate(replace(snap(min_do=3.5), nh3=0.5), T).root_cause == "do_out_of_range"
     assert evaluate(replace(snap(temp=36.0), nh3=0.5), T).root_cause == "temperature_out_of_range"
+
+
+@pytest.mark.parametrize(
+    "statuses, expected",
+    [
+        ([0.0, 0.0], True),
+        ([0.0, 0.0, 1.0], True),
+        ([0.0, 1.0], False),
+        ([1.0, 0.0], False),
+        ([0.0], False),
+        ([], False),
+    ],
+)
+def test_pump_stopped_needs_consecutive_off_readings(statuses, expected):
+    assert pump_stopped(statuses, required=2) is expected
+
+
+def test_stopped_aerator_is_critical_before_the_power_average_drops():
+    # Average still high (only 2 of 10 readings are 0 W) but the aerator reported off twice
+    finding = evaluate(replace(snap(avg_pump=1200.0), pump_stopped=True), T)
+    assert finding.severity == Severity.CRITICAL and finding.root_cause == "pump_failure"
+
+
+def test_stopped_aerator_without_any_power_data_is_critical():
+    s = PondSnapshot("pond-01", avg_pump_watts=None, do_drop_rate=None, min_do=None, pump_stopped=True)
+    assert evaluate(s, T).root_cause == "pump_failure"
+
+
+def test_no_recovery_while_aerator_is_stopped():
+    assert has_recovered(replace(snap(avg_pump=1200.0, min_do=7.0), pump_stopped=True), T) is False
