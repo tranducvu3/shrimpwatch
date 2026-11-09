@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     DETECTION_SLO_SEC: int = 120
     # How far back an injected fault (aerator failure, condition, scenario) can explain a new incident
     FAULT_LOOKBACK_SEC: int = 2 * 3600
+    # A remedy that has not moved the root-cause metric towards normal after this many seconds has failed
+    REMEDY_CHECK_SEC: int = 60
 
 
 settings = Settings()

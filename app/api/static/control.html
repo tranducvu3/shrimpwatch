@@ -193,7 +193,11 @@
   @media (hover: hover) { .inc-row:hover { background: var(--surface-2); } }
   .inc-row .t { font-weight: 600; flex: 1 1 260px; min-width: 0; }
   .inc-row .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .pill.state { color: var(--accent); background: var(--info-bg); }
+  /* Handling status: Chưa xử lý -> Đang xử lý -> Xử lý xong, or Xử lý không thành công */
+  .pill.status-todo { color: var(--muted); background: var(--surface-2); }
+  .pill.status-doing { color: var(--accent); background: var(--info-bg); }
+  .pill.status-done { color: var(--ok); background: var(--ok-bg); }
+  .pill.status-failed { color: var(--crit); background: var(--crit-bg); }
   button.incident { cursor: pointer; font: inherit; font-size: 13px; text-align: left; border: 0; width: 100%; }
   button.incident[hidden] { display: none; }
   /* Incident detail */
@@ -218,6 +222,18 @@
   /* The one place the operator acts: next step first, notes on demand */
   .inc-next { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--radius); background: var(--info-bg); }
   .inc-next .label { color: var(--accent); }
+  .inc-next.failed { background: var(--crit-bg); }
+  .inc-next.failed .label { color: var(--crit); }
+  .inc-next p { margin: 0; }
+  /* Remedy picker: every remedy, the ones that fit the root cause first and marked */
+  .picker { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+  .picker .dd { flex: 1 1 260px; min-width: 0; }
+  .inc .dd-menu { position: static; margin-top: 4px; max-height: none; box-shadow: none; }
+  .dd-opt.suggested { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .dd-opt.applied { cursor: default; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .tag.hl { color: var(--accent-text); background: var(--accent); }
+  .tag.done { color: var(--ok); background: var(--ok-bg); }
   button.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
   button.btn.ghost.danger { color: var(--crit); }
   button.link {
@@ -307,6 +323,13 @@
   ];
   const UNITS = { C: "°C", ppt: "ppt", "mg/L": "mg/L", "mg_CaCO3/L": "mg/L", mV: "mV", W: "W", pH: "" };
   const STATES = { open: "MỞ", investigating: "ĐANG ĐIỀU TRA", resolving: "ĐANG XỬ LÝ", recovered: "ĐÃ HỒI PHỤC" };
+  // What the operator sees: open/investigating = nothing applied yet; resolving = a remedy is running (or failed)
+  const STATUS = { todo: "Chưa xử lý", doing: "Đang xử lý", done: "Xử lý xong", failed: "Xử lý không thành công" };
+  function statusOf(inc) {
+    if (inc.state === "recovered") return "done";
+    if (inc.state !== "resolving") return "todo";
+    return inc.remedy_check?.outcome === "failed" ? "failed" : "doing";
+  }
   const SEVERITIES = { critical: "nghiêm trọng", warning: "cảnh báo", info: "thông tin" };
 
   const FILTER_PARAM = "ao";
@@ -580,7 +603,7 @@
     if (incident) {
       refs.incident.hidden = false;
       refs.incident.className = "incident" + (incident.severity === "warning" ? " warning" : "");
-      refs.incident.textContent = `${STATES[incident.state] || incident.state} · ${incident.title} · xem chi tiết`;
+      refs.incident.textContent = `${STATUS[statusOf(incident)]} · ${incident.title} · xem chi tiết`;
       refs.incidentId = incident._id;
     } else {
       refs.incident.hidden = true;
@@ -635,13 +658,6 @@
     salinity_out_of_range: "Độ mặn", orp_out_of_range: "ORP", nh3_out_of_range: "NH₃", co2_out_of_range: "CO₂",
     tan_out_of_range: "TAN", nitrite_out_of_range: "Nitrite", alkalinity_out_of_range: "Độ kiềm",
   };
-  // Next states the operator can pick (the API checks the same rules and answers 409 otherwise)
-  const NEXT = {
-    open: [["investigating", "Tiếp nhận, điều tra"], ["resolving", "Đang xử lý"], ["recovered", "Xử lý xong: báo nhầm / đã ổn"]],
-    investigating: [["resolving", "Đang xử lý"], ["recovered", "Xử lý xong: đã ổn"]],
-    resolving: [["investigating", "Điều tra lại"], ["recovered", "Xử lý xong: đã ổn"]],
-    recovered: [],
-  };
   const RECENT_RECOVERED_MS = 24 * 3600 * 1000;
   let incidentList = [];
   let openIncidentId = null;
@@ -676,7 +692,7 @@
       const done = i.state === "recovered";
       const row = el("button", { class: `inc-row ${done ? "recovered" : i.severity}`, type: "button" }, [
         el("span", { class: `pill ${i.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[i.severity] || i.severity }),
-        el("span", { class: "pill state", text: STATES[i.state] || i.state }),
+        el("span", { class: `pill status-${statusOf(i)}`, text: STATUS[statusOf(i)] }),
         el("span", { class: "t", text: `${pondName(i.pond_id)} · ${i.title}` }),
         el("span", { class: "when", text: done ? `hồi phục sau ${fmtDuration(seconds(i.created_at, i.recovered_at))}` : `mở ${hhmm(i.created_at)} · ${ago(i.created_at)}` }),
       ]);
@@ -767,13 +783,89 @@
 
   const labelIn = (items, type) => (items.find((x) => x.type === type) || {}).label || type;
 
+  const METRIC_UNIT = { do: "mg/L", nh3: "mg/L", co2: "mg/L", tan: "mg/L", nitrite: "mg/L", alkalinity: "mg/L", orp: "mV", temperature: "°C", salinity: "ppt", ph: "" };
+  const fmtReading = (metric, v) => Number(v).toFixed((READINGS.find((r) => r.key === metric) || { digits: 2 }).digits);
+  // "DO 2.80 → 2.70 mg/L"
+  function metricChange(metric, from, to) {
+    const name = METRIC[metric] || metric || "";
+    if (from == null || to == null) return name;
+    return `${name} ${fmtReading(metric, from)} → ${fmtReading(metric, to)} ${METRIC_UNIT[metric] || ""}`.trim();
+  }
+
+  // What the check of the latest remedy says so far, after the remedy names
+  function remedyProgress(check, checkSec) {
+    const change = metricChange(check.metric, check.baseline, check.value);
+    if (check.outcome === "improving" && check.normal) {
+      const moved = check.baseline != null && check.value != null ? ` (${change})` : "";
+      return `: các chỉ số đã về mức bình thường${moved}. Sự cố tự đóng khi ao ổn định thêm vài phút.`;
+    }
+    if (check.outcome === "improving") return `: ${change}, đang cải thiện. Sự cố tự đóng khi ao ổn định.`;
+    if (!check.metric) return ". Sự cố tự đóng khi ao ổn định.";
+    const left = Math.ceil(checkSec - seconds(check.applied_at, new Date().toISOString()));
+    const when = left > 0 ? `Sau ${fmtDuration(left)} kiểm tra` : "Đang kiểm tra";
+    const start = check.baseline != null
+      ? ` (lúc áp dụng: ${`${fmtReading(check.metric, check.baseline)} ${METRIC_UNIT[check.metric] || ""}`.trim()})`
+      : "";
+    return `. ${when} ${METRIC[check.metric] || check.metric} có cải thiện không${start}.`;
+  }
+
+  // Every remedy as a checklist, the ones that fit the root cause first and highlighted; applied ones stay ticked
+  function remedyPicker(inc, onApply) {
+    const suggested = (inc.suggested_remedies || []).map((r) => r.remedy);
+    const applied = new Set(inc.remedies || []);
+    const rank = (type) => (suggested.includes(type) ? suggested.indexOf(type) : suggested.length);
+    const all = [...catalog.remedies].sort((a, b) => rank(a.type) - rank(b.type));
+    const picked = (detailUi.picked ??= new Set());
+    const value = el("span", { class: "dd-value" });
+    const apply = el("button", { class: "btn primary", type: "button", onclick: (ev) => onApply(ev.currentTarget, [...picked]) });
+    const sync = () => {
+      const names = all.filter((r) => picked.has(r.type)).map((r) => r.label);
+      const hint = suggested.length ? ` · đề xuất: ${suggested.map((t) => labelIn(catalog.remedies, t)).join(", ")}` : "";
+      value.className = `dd-value${names.length ? "" : " placeholder"}`;
+      value.textContent = names.length ? names.join(", ") : `${applied.size ? "Thêm cách xử lý" : "Chọn cách xử lý"}${hint}`;
+      apply.textContent = picked.size > 1 ? `Áp dụng (${picked.size})` : "Áp dụng";
+    };
+    const options = all.map((r) => {
+      const done = applied.has(r.type);
+      const box = el("input", { type: "checkbox", value: r.type });
+      box.checked = done || picked.has(r.type);
+      box.disabled = done;
+      box.addEventListener("change", () => { box.checked ? picked.add(r.type) : picked.delete(r.type); sync(); });
+      return el("label", { class: `dd-opt${suggested.includes(r.type) ? " suggested" : ""}${done ? " applied" : ""}` }, [
+        box,
+        el("span", { class: "dd-text" }, [
+          el("span", { class: "name" }, [
+            r.label,
+            suggested.includes(r.type) ? el("span", { class: "tag hl", text: "Đề xuất" }) : null,
+            done ? el("span", { class: "tag done", text: "Đã áp dụng" }) : null,
+          ]),
+          el("span", { class: "sub", text: r.description }),
+        ]),
+      ]);
+    });
+    const dd = el("details", { class: "dd" }, [
+      el("summary", { class: "dd-btn", "aria-label": "Cách xử lý" }, [value]),
+      el("div", { class: "dd-menu", role: "group", "aria-label": "Cách xử lý" }, options),
+    ]);
+    dd.open = Boolean(detailUi.menu);
+    dd.addEventListener("toggle", () => { detailUi.menu = dd.open; });
+    sync();
+    return el("div", { class: "picker" }, [dd, apply]);
+  }
+
   function timelineText(e) {
     const d = e.details || {};
     switch (e.event) {
       case "incident_open": return ["Mở sự cố", `${SEVERITIES[d.severity] || d.severity} · ${d.title || ""}`];
       case "incident_escalated": return ["Nâng mức", `${ROOT_CAUSES[d.from_root_cause] || d.from_root_cause} → ${ROOT_CAUSES[d.to_root_cause] || d.to_root_cause}`];
-      case "incident_action": return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
-      case "incident_recovered": return ["Tự hồi phục", "Worker xác nhận từ dữ liệu: DO an toàn, quạt chạy"];
+      case "incident_action":
+        if (d.remedy) return ["Chọn cách xử lý", d.action || labelIn(catalog.remedies, d.remedy)];
+        if (d.state === "investigating" && d.from_state === "resolving") return ["Điều tra lại", d.action || ""];
+        return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
+      case "remedy_improving": return ["Đang cải thiện", metricChange(d.metric, d.baseline, d.value)];
+      case "remedy_normal": return ["Chỉ số về bình thường", metricChange(d.metric, d.baseline, d.value)];
+      case "remedy_failed": return ["Xử lý không thành công", metricChange(d.metric, d.baseline, d.value)];
+      case "incident_recovered": return ["Xử lý xong", "Dữ liệu xác nhận ao đã ổn: DO an toàn, quạt chạy"];
       case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
       case "condition_start": return ["Bắt đầu điều kiện", labelIn(catalog.conditions, d.condition), true];
       case "condition_clear": return ["Kết thúc điều kiện", d.condition === "all" ? "tất cả" : labelIn(catalog.conditions, d.condition), true];
@@ -807,17 +899,44 @@
     const button = (cls, text, onClick, title) =>
       el("button", { class: `btn ${cls}`, type: "button", text, ...(title ? { title } : {}), onclick: (ev) => onClick(ev.currentTarget) });
 
-    // Remedies are the main move when the root cause has some; otherwise the first next state is
-    const remedies = (inc.suggested_remedies || []).map((r) => button("primary", r.label,
-      (b) => send(b, () => api("POST", `/incidents/${inc._id}/remedies/${r.remedy}${noteText() ? `?note=${encodeURIComponent(noteText())}` : ""}`), `${pond}: ${r.label}, chờ dữ liệu xác nhận hồi phục`),
-      r.description));
-    const next = NEXT[inc.state] || [];
-    const moves = next.filter(([s]) => s !== "recovered").map(([state, label], i) =>
-      button(i === 0 && !remedies.length ? "primary" : "", label, (b) => send(b, () => setState(state), `${pond}: ${STATES[state]}`)));
-    const dismiss = next.find(([s]) => s === "recovered");
-    const actionPanel = el("div", { class: "inc-next" }, [
-      el("span", { class: "label", text: remedies.length ? "Xử lý đề xuất" : "Bước tiếp theo" }),
-      el("div", { class: "inc-actions" }, [...remedies, ...moves]),
+    const checkSec = catalog.thresholds.remedy_check_sec;
+    const applyRemedies = (b, types) => {
+      if (!types.length) return toast("Chọn ít nhất một cách xử lý", true);
+      const labels = types.map((t) => labelIn(catalog.remedies, t)).join(", ");
+      send(b, async () => {
+        // The note goes with the first remedy only, so it is not repeated in the timeline
+        for (const [i, t] of types.entries()) {
+          const q = i === 0 && noteText() ? `?note=${encodeURIComponent(noteText())}` : "";
+          await api("POST", `/incidents/${inc._id}/remedies/${t}${q}`);
+        }
+        detailUi.picked = new Set();
+        detailUi.menu = false;
+      }, `${pond}: ${labels}. Kiểm tra kết quả sau ${fmtDuration(checkSec)}`);
+    };
+
+    // One status, what it means, and the one thing to do next
+    const status = statusOf(inc);
+    const check = inc.remedy_check || {};
+    const appliedNames = (inc.remedies || []).map((t) => labelIn(catalog.remedies, t)).join(", ");
+    let statusText;
+    let main;
+    if (status === "failed") {
+      statusText = `${appliedNames} chưa có tác dụng: ${metricChange(check.metric, check.baseline, check.value)} sau ${fmtDuration(seconds(check.applied_at, check.checked_at))}. Tìm nguyên nhân khác rồi chọn cách xử lý mới.`;
+      main = el("div", { class: "inc-actions" }, [button("primary", "Điều tra lại", (b) => {
+        detailUi.picked = new Set();
+        send(b, () => setState("investigating"), `${pond}: điều tra lại, chọn cách xử lý mới`);
+      })]);
+    } else if (status === "doing") {
+      statusText = `${appliedNames}${remedyProgress(check, checkSec)}`;
+      main = remedyPicker(inc, applyRemedies);
+    } else {
+      statusText = "Chọn một hoặc nhiều cách xử lý. Cách phù hợp với nguyên nhân được đánh dấu Đề xuất.";
+      main = remedyPicker(inc, applyRemedies);
+    }
+    const actionPanel = el("div", { class: `inc-next ${status}` }, [
+      el("span", { class: "label", text: "Cách xử lý" }),
+      el("p", { text: statusText }),
+      main,
       ...(detailUi.note ? [note, el("div", { class: "inc-actions" }, [
         button("small", "Lưu ghi chú", (b) => {
           if (!noteText()) return toast("Nhập ghi chú trước", true);
@@ -827,9 +946,8 @@
       el("div", { class: "inc-actions" }, [
         toggle("note", "+ Thêm ghi chú", "Bỏ ghi chú", inc),
         el("span", { class: "spacer" }),
-        ...(dismiss ? [button("small ghost danger", dismiss[1], (b) => send(b, () => setState("recovered"), `${pond}: ${STATES.recovered}`))] : []),
+        button("small ghost danger", "Đóng: báo nhầm", (b) => send(b, () => setState("recovered"), `${pond}: đã đóng sự cố`)),
       ]),
-      el("span", { class: "muted", text: "Worker tự đóng sự cố khi dữ liệu cho thấy ao đã ổn." }),
     ]);
 
     const [keyChips, otherChips] = evidenceChips(inc);
@@ -848,7 +966,7 @@
           el("h2", { id: "inc-title", text: `${pond} · ${inc.title}` }),
           el("div", { class: "meta" }, [
             el("span", { class: `pill ${inc.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[inc.severity] || inc.severity }),
-            el("span", { class: "pill state", text: STATES[inc.state] || inc.state }),
+            el("span", { class: `pill status-${statusOf(inc)}`, text: STATUS[statusOf(inc)] }),
             el("span", { class: "muted", text: `${ROOT_CAUSES[inc.root_cause] || inc.root_cause || ""} · mở lúc ${hhmm(inc.created_at)} (${ago(inc.created_at)})` }),
           ]),
         ]),
@@ -910,7 +1028,7 @@
       if (added) applyFilter();
       renderIncidents([...open, ...investigating, ...resolving].sort((a, b) => toDate(b.created_at) - toDate(a.created_at)), recovered);
       // Keep an open detail current, but never under the operator's cursor while they type a note
-      if (openIncidentId && document.activeElement?.id !== "inc-note") refreshDetail();
+      if (openIncidentId && document.activeElement?.id !== "inc-note" && !detailUi.menu) refreshDetail();
       $("#health-dot").className = "dot ok";
       $("#health-text").textContent = `${ponds.length} ao`;
       $("#updated").textContent = `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN")}`;

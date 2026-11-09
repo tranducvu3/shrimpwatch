@@ -13,11 +13,14 @@ from app.core.log import get_logger
 from app.core.telemetry import distribution, event, gauge, increment, set_span_tags, tag_value
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
+from app.db.repositories import metrics as metrics_repo
 from app.domain.conditions import REMEDIES, Remedy
 from app.domain.incident_lifecycle import ensure_transition, is_escalation
-from app.domain.incident_rules import Finding
-from app.domain.models import Incident, IncidentEvidence, IncidentState
+from app.domain.incident_rules import Finding, Thresholds
+from app.domain.models import MANUAL_METRIC_UNITS, Incident, IncidentEvidence, IncidentState, MetricType
 from app.domain.remedies import suggested_remedies
+from app.domain.remedy_outcome import RemedyOutcome, remedy_outcome, watched_metric
+from app.services import derivations
 from app.services import ponds as pond_service
 
 logger = get_logger("services.incidents")
@@ -253,6 +256,9 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
     events_repo.record("incident_action", pond_id, incident_id=incident_id, details=details)
 
     fields = {}
+    if state == IncidentState.INVESTIGATING and from_state != IncidentState.INVESTIGATING.value:
+        # Investigating again: the operator picks the remedies afresh
+        fields |= {"remedies": [], "remedy_check": None}
     if from_state == IncidentState.OPEN.value and state != IncidentState.OPEN and not incident.get("acknowledged_at"):
         fields["acknowledged_at"] = utcnow()
         distribution(
@@ -278,15 +284,88 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     if not incident:
         raise IncidentNotFound(incident_id)
     label = REMEDIES[remedy].label
+    pond_id = incident["pond_id"]
+    # The value the remedy has to improve on, read before the farm changes
+    now = utcnow()
+    metric = watched_metric(incident.get("root_cause"))
+    baseline = _current_value(pond_id, metric, now) if metric else None
     # Record on the incident first: if it was closed meanwhile this raises (409) before the farm is changed
     transition(incident_id, IncidentState.RESOLVING, f"{label}: {note}" if note else label, remedy=remedy)
-    cleared = pond_service.apply_remedy(incident["pond_id"], remedy)
+    check = {
+        "metric": metric.value if metric else None,
+        "baseline": baseline,
+        "applied_at": now,
+        "outcome": RemedyOutcome.PENDING.value,
+    }
+    incidents_repo.add_remedy(incident_id, remedy.value, check)
+    cleared = pond_service.apply_remedy(pond_id, remedy)
     return {
         "incident_id": incident_id,
         "remedy": remedy.value,
         "state": IncidentState.RESOLVING.value,
         "cleared": cleared,
     }
+
+
+# Sensor readings older than this do not describe the pond now
+CURRENT_VALUE_WINDOW = timedelta(minutes=10)
+
+
+def _current_value(pond_id: str, metric: MetricType, now: datetime) -> float | None:
+    """Latest reading of `metric`; test-kit metrics are measured a few times a day, so they stay current longer."""
+    window = derivations.MANUAL_FRESHNESS if metric in MANUAL_METRIC_UNITS else CURRENT_VALUE_WINDOW
+    return metrics_repo.latest_value(pond_id, metric.value, now - window)
+
+
+_METRIC_VI = {"do": "DO", "nh3": "NH₃", "co2": "CO₂", "orp": "ORP", "ph": "pH", "tan": "TAN"}
+
+
+def check_remedy(pond_id: str, now: datetime | None = None, still_abnormal: bool = True) -> RemedyOutcome | None:
+    """Judge the latest remedy of the pond's Resolving incident once REMEDY_CHECK_SEC has passed (worker, every cycle).
+
+    Improving: it stays Resolving until the worker sees a stable pond. Failed (the metric held or got worse): the
+    operator is asked to investigate again. Judged once per remedy; None when there is nothing to judge.
+    `still_abnormal` False (no rule fires any more): the metrics are back to normal, so the remedy worked.
+    """
+    incident = incidents_repo.find_active(pond_id)
+    if incident is None or incident.get("state") != IncidentState.RESOLVING.value:
+        return None
+    check = incident.get("remedy_check") or {}
+    if check.get("outcome") != RemedyOutcome.PENDING.value or not check.get("applied_at"):
+        return None
+    now = now or utcnow()
+    elapsed = _seconds(check["applied_at"], now)
+    if still_abnormal and elapsed < settings.REMEDY_CHECK_SEC:
+        return RemedyOutcome.PENDING  # too early: skip reading the metric
+    metric = MetricType(check["metric"]) if check.get("metric") in set(MetricType) else None
+    current = _current_value(pond_id, metric, now) if metric else None
+    baseline = check.get("baseline")
+    outcome = remedy_outcome(
+        metric, baseline, current, elapsed, settings.REMEDY_CHECK_SEC, Thresholds.from_settings(), still_abnormal
+    )
+    if outcome == RemedyOutcome.PENDING:
+        return outcome
+    fields = {"outcome": outcome.value, "value": current, "checked_at": now, "normal": not still_abnormal}
+    if not incidents_repo.set_remedy_outcome(incident["_id"], check["applied_at"], fields):
+        return None  # another remedy or "investigate again" came first
+    details = {
+        "metric": metric.value if metric else None,
+        "baseline": baseline,
+        "value": current,
+        "remedies": incident.get("remedies", []),
+    }
+    what = "remedy_normal" if not still_abnormal else f"remedy_{outcome.value}"
+    events_repo.record(what, pond_id, incident_id=incident["_id"], details=details)
+    if outcome == RemedyOutcome.FAILED and metric:
+        name = _METRIC_VI.get(metric.value, metric.value)
+        _datadog_event(
+            incident,
+            "remedy_failed",
+            f"{name} không cải thiện sau {elapsed:.0f} s: {baseline:g} → {current:g}. Cần điều tra lại.",
+            alert_type="warning",
+        )
+        logger.warning("remedy failed", extra={"pond": pond_id, "incident_id": incident["_id"], **details})
+    return outcome
 
 
 # The Datadog incident table lists what the control panel lists: active incidents and those recovered in 24 hours

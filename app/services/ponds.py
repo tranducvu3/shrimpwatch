@@ -192,6 +192,7 @@ def scenario_catalog() -> dict:
             "tan_warn": settings.TAN_WARN,
             "pump_failed_max_watts": settings.PUMP_FAILED_MAX_WATTS,
             "detection_slo_sec": settings.DETECTION_SLO_SEC,
+            "remedy_check_sec": settings.REMEDY_CHECK_SEC,
         },
     }
 
