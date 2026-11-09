@@ -176,7 +176,12 @@
   .incidents { margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
   .incidents-head { display: flex; align-items: baseline; gap: 8px; }
   .incidents-head h2 { font-size: 16px; margin: 0; }
-  .inc-list { display: flex; flex-direction: column; gap: 6px; }
+  /* About 5½ rows, then the list scrolls on its own (the half row shows there is more) */
+  .inc-list {
+    display: flex; flex-direction: column; gap: 6px; max-height: 270px; overflow-y: auto; overscroll-behavior: contain;
+    padding: 2px 6px 2px 2px; scrollbar-gutter: stable;
+  }
+  .inc-row { flex: none; }
   .inc-row {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left; width: 100%; cursor: pointer;
     font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
