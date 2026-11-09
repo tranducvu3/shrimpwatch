@@ -134,11 +134,6 @@
   /* "Tăng: …" / "Giảm: …" lines, in the options and in the summary */
   .sub { font-size: 12px; line-height: 1.4; color: var(--muted); }
   .sub b { font-weight: 600; color: var(--text); }
-  .sev-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .sev-row select {
-    min-height: 32px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface); color: var(--text); font: inherit; font-size: 13px;
-  }
   .remedies { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .remedies[hidden] { display: none; }
   .summary { display: flex; flex-direction: column; gap: 2px; }
@@ -347,7 +342,8 @@
   const FILTER_PARAM = "ao";
 
   let catalog = null;
-  const SEVERITY_LABEL = { light: "Nhẹ", medium: "Vừa", severe: "Nặng" };
+  // Every condition turned on from the panel runs at full strength, so its effect is clear in the demo
+  const CONDITION_SEVERITY = "severe";
   let lastPonds = [];
   const cards = new Map();
   // Ponds picked in the header filter; empty = show all. Kept in the URL (?ao=pond-01,pond-03) so it survives reloads.
@@ -471,13 +467,6 @@
       refs.readings.append(cell);
     }
 
-    // Severity applies to the next condition that gets ticked
-    refs.severity = el(
-      "select",
-      { "aria-label": "Mức độ khi bật điều kiện" },
-      catalog.severities.map((sv) => el("option", { value: sv.type, text: SEVERITY_LABEL[sv.type] || sv.type })),
-    );
-    refs.severity.value = "medium";
     refs.remedies = el("div", { class: "remedies", hidden: "" });
     refs.remedyKey = "";
 
@@ -489,7 +478,7 @@
         const on = box.checked;
         // Contradicting conditions (rain vs sun...) cannot both be on: the server ends them, show it at once
         if (on) for (const other of c.conflicts || []) if (refs.conds[other]) refs.conds[other].box.checked = false;
-        act(box, () => api(on ? "POST" : "DELETE", `/ponds/${id}/conditions/${c.type}${on ? `?severity=${refs.severity.value}` : ""}`),
+        act(box, () => api(on ? "POST" : "DELETE", `/ponds/${id}/conditions/${c.type}${on ? `?severity=${CONDITION_SEVERITY}` : ""}`),
           `${pond.name || id}: ${on ? "bật" : "tắt"} ${c.label}`);
       });
       refs.conds[c.type] = { box, label: c.label };
@@ -526,7 +515,6 @@
         el("span", { class: "muted", text: "chọn nhiều được · bật đến khi bỏ chọn" }),
         refs.clear,
       ]),
-      el("div", { class: "sev-row" }, [el("span", { class: "muted", text: "Mức độ khi bật" }), refs.severity]),
       refs.dropdown,
       refs.summary,
       refs.remedies,
@@ -535,12 +523,12 @@
     return refs;
   }
 
-  // "Tảo tàn · Nặng · đang tăng 40%": how far a condition's effect has built up (or, for one-off actions, faded)
+  // "Tảo tàn · đang tăng 40%": how far a condition's effect has built up (or, for one-off actions, faded)
   function progressText(a) {
     const spec = catalog.conditions.find((c) => c.type === a.type) || {};
     const pct = Math.round(a.intensity * 100);
     const state = spec.duration_min ? `còn tác dụng ${pct}%` : pct < 100 ? `đang tăng ${pct}%` : "đã đạt mức tối đa";
-    return `${spec.label || a.type} · ${SEVERITY_LABEL[a.severity] || a.severity} · ${state}`;
+    return `${spec.label || a.type} · ${state}`;
   }
 
   function minutesLeft(until) {
