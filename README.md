@@ -401,7 +401,7 @@ The incident document stores the same timings: `fault_started_at`, `detection_de
 2. Two event monitors, *Farmer alert: incident opened* and *…escalated* ([farmer_alert_open.json](datadog/monitors/farmer_alert_open.json), [farmer_alert_escalated.json](datadog/monitors/farmer_alert_escalated.json)), fire per pond; they are separate so an escalation a few minutes after the opening still notifies.
 3. Datadog emails that text to every address in `FARMER_ALERT_EMAILS`.
 
-Set it up: put the addresses in `.env` as `FARMER_ALERT_EMAILS=farmer@example.com,manager@example.com`, then run `python -m app.cli.datadog_push`. It adds an `@address` handle per address to monitors tagged `notify:email`, so the addresses stay in `.env` and in Datadog, never in this public repo. Invalid entries are skipped with a warning; remove an address and push again to stop its emails. No mail server is needed: Datadog sends the email.
+Set it up: put the addresses in `.env` as `FARMER_ALERT_EMAILS=farmer@example.com,manager@example.com`, then run `python -m app.cli.datadog_push`. It adds an `@address` handle per address to monitors tagged `notify:email`, so the addresses stay in `.env` and in Datadog, never in this public repo. Invalid entries are skipped with a warning; remove an address and push again to stop its emails. No mail server is needed: Datadog sends the email. On a trial Datadog organization the email only reaches members of that organization (checked live: an org member received the alert, an outside Gmail address did not), so invite each recipient to the organization first.
 
 `python -m app.cli.datadog_push` updates dashboards, monitors and SLOs with the same name, and creates them if they do not exist yet. It logs the dashboard id to put in `DD_DASHBOARD_ID`.
 
