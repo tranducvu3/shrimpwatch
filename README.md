@@ -305,7 +305,7 @@ curl http://localhost:8000/healthz
 
 Open [http://localhost:8000/control](http://localhost:8000/control) to create abnormal behavior for each pond without calling the API by hand:
 
-- **Conditions**: each pond has a dropdown of real-world situations; tick any number. Each option lists the metrics it raises (*Tăng*) and lowers (*Giảm*); when several run together their effects add up. The affected readings get an outline and a summary under the dropdown shows the combined change, with amounts. A condition stays on until you untick it (or press *Bỏ chọn tất cả*).
+- **Conditions**: each pond has a dropdown of real-world situations; tick any number. Each option lists the metrics it raises (*Tăng*) and lowers (*Giảm*); when several run together their effects add up. The affected readings get an outline and a summary under the dropdown shows the combined change, with amounts. A condition stays on until you untick it (or press *Khôi phục ao* to clear them all).
 
   | Condition | Changes directly | Knock-on |
   |---|---|---|
