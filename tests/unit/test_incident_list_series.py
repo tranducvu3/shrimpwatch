@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timedelta
 
 from app.cli import datadog_push
+from app.core.config import settings
 from app.core.telemetry import tag_value
 from app.domain.incident_lifecycle import ACTIVE_STATES
 from app.services.incidents import incident_list_series
@@ -32,6 +33,12 @@ def test_titles_become_readable_tag_values():
     assert tag_value("SỰ CỐ: Quạt nước hỏng → oxy sụt") == "sự_cố_quạt_nước_hỏng_oxy_sụt"
     assert tag_value("Cảnh báo: NH₃ độc cao") == "cảnh_báo_nh3_độc_cao"
     assert not set("|,# ") & set(tag_value("a|b, c#d"))
+
+
+def test_times_are_shown_in_farm_time(monkeypatch):
+    monkeypatch.setattr(settings, "FARM_TIMEZONE", "UTC")
+    inc = {"_id": "inc-a", "pond_id": "pond-01", "state": "open", "title": "t", "created_at": NOW}
+    assert incident_list_series([inc], [], NOW)[0][2]["opened_at"] == "09/11_14:33"
 
 
 def test_active_incidents_report_minutes_open_and_recovered_ones_minutes_to_recover():
@@ -65,6 +72,7 @@ def test_active_incidents_report_minutes_open_and_recovered_ones_minutes_to_reco
                 "severity": "warning",
                 "state": "open",
                 "title": "cảnh_báo_oxy_giảm_nhanh_bất_thường",
+                "opened_at": "09/11_21:31",
                 "incident_id": "inc-a",
             },
         ),
@@ -76,7 +84,9 @@ def test_active_incidents_report_minutes_open_and_recovered_ones_minutes_to_reco
                 "severity": "warning",
                 "state": "recovered",
                 "title": "cảnh_báo_nh3_độc_cao",
+                "opened_at": "09/11_18:33",
                 "incident_id": "inc-b",
+                "recovered_at": "09/11_18:33",
             },
         ),
     ]
@@ -91,14 +101,18 @@ def test_dashboard_tables_read_the_series_the_worker_sends():
     recovered_queries = [q["query"] for q in widgets[802]["requests"][0]["queries"]]
     assert recovered_queries[0].startswith("max:shrimpwatch.incident.recovered_minutes{")
     sample = {"_id": "inc-a", "pond_id": "pond-01", "state": "open", "title": "t", "created_at": NOW}
-    sent_tags = set(incident_list_series([sample], [], NOW)[0][2])
-    for query in open_queries + recovered_queries:
-        group_by = query.rsplit("by {", 1)[1].rstrip("}").split(",")
-        assert set(group_by) <= sent_tags
+    recovered = {**sample, "state": "recovered", "recovered_at": NOW}
+    open_tags, recovered_tags = (set(row[2]) for row in incident_list_series([sample], [recovered], NOW))
+    for queries, sent_tags in ((open_queries, open_tags), (recovered_queries, recovered_tags)):
+        for query in queries:
+            group_by = re.search(r" by \{([^}]*)\}", query).group(1).split(",")
+            # Datadog fills a gap for 5 minutes by default: an ended incident would stay on the table
+            assert query.endswith(".fill(null)")
+            assert set(group_by) <= sent_tags
     # Links only use the grouped tags, and a host placeholder that datadog_push fills in
     for link in widgets[801]["custom_links"] + widgets[802]["custom_links"]:
         assert link["link"].startswith(("$DD_APP_URL/", "$PUBLIC_BASE_URL/"))
-        assert set(re.findall(r"\{\{(\w+)\.value\}\}", link["link"])) <= set(group_by)
+        assert set(re.findall(r"\{\{(\w+)\.value\}\}", link["link"])) <= open_tags
 
 
 def test_custom_link_placeholders_are_filled_or_dropped():

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     FARM_ID: str = "farm-001"
     FARM_NAME: str = "ShrimpWatch Demo Farm"
     NUM_PONDS: int = 6
+    # Times shown as text (the Datadog incident table) are in the farm's local time; stored times stay naive UTC
+    FARM_TIMEZONE: str = "Asia/Ho_Chi_Minh"
 
     SIMULATOR_INTERVAL_SEC: int = 30
     API_URL: str = "http://localhost:8000"

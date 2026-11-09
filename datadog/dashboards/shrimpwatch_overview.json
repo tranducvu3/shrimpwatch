@@ -146,7 +146,7 @@
                       "name": "query1",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{$trang_trai,$ao} by {incident_id}"
+                      "query": "max:shrimpwatch.incident.open_minutes{$trang_trai,$ao} by {incident_id}.fill(null)"
                     }
                   ],
                   "conditional_formats": [
@@ -183,19 +183,19 @@
                       "name": "open",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:open,$trang_trai,$ao} by {pond,title,incident_id}"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:open,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
                     },
                     {
                       "name": "investigating",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:investigating,$trang_trai,$ao} by {pond,title,incident_id}"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:investigating,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
                     },
                     {
                       "name": "resolving",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:resolving,$trang_trai,$ao} by {pond,title,incident_id}"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:resolving,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
                     }
                   ],
                   "formulas": [
@@ -262,7 +262,7 @@
                       "name": "query1",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {incident_id}"
+                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {incident_id}.fill(null)"
                     }
                   ],
                   "conditional_formats": [
@@ -299,7 +299,7 @@
                       "name": "recovered",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {pond,title,incident_id}"
+                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {pond,title,opened_at,recovered_at,incident_id}.fill(null)"
                     }
                   ],
                   "formulas": [
@@ -337,7 +337,7 @@
             "id": 805,
             "definition": {
               "type": "note",
-              "content": "Giống danh sách **Sự cố** trong bảng điều khiển, cập nhật mỗi 30 giây. Tên sự cố bắt đầu bằng *sự_cố* là nghiêm trọng, *cảnh_báo* là cảnh báo. Bấm vào một dòng để mở bảng điều khiển của ao (tiếp nhận, xử lý), sự kiện của sự cố, logs hoặc traces. Sự cố vừa đổi trạng thái có thể hiện ở cả hai cột trong tối đa 2 phút.",
+              "content": "Giống danh sách **Sự cố** trong bảng điều khiển, cập nhật mỗi 30 giây. Tên sự cố bắt đầu bằng *sự_cố* là nghiêm trọng, *cảnh_báo* là cảnh báo. Bấm vào một dòng để mở bảng điều khiển của ao (tiếp nhận, xử lý), sự kiện của sự cố, logs hoặc traces. Giờ mở và giờ hồi phục theo giờ trang trại (ngày/tháng_giờ:phút). Sự cố vừa đổi trạng thái có thể hiện ở cả hai cột trong tối đa 2 phút.",
               "background_color": "white",
               "font_size": "14",
               "text_align": "left",

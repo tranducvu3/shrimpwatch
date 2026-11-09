@@ -1,5 +1,6 @@
 """Detection delay, time to acknowledge and time to recover, and the Datadog Events mirroring the lifecycle."""
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -168,9 +169,15 @@ def test_worker_reports_active_and_recently_recovered_incidents(monkeypatch):
     by_id = {tags["incident_id"]: (name, tags) for name, _, tags in gauges if "incident_id" in (tags or {})}
     assert old_id not in by_id
     assert by_id[recent_id][0] == "incident.recovered_minutes"
-    assert by_id[active_id] == (
-        "incident.open_minutes",
-        {"pond": pond, "severity": "critical", "state": "open", "title": "quat_hong", "incident_id": active_id},
-    )
+    name, tags = by_id[active_id]
+    assert name == "incident.open_minutes"
+    assert {k: tags[k] for k in ("pond", "severity", "state", "title")} == {
+        "pond": pond,
+        "severity": "critical",
+        "state": "open",
+        "title": "quat_hong",
+    }
+    assert re.fullmatch(r"\d\d/\d\d_\d\d:\d\d", tags["opened_at"]) and "recovered_at" not in tags
+    assert "recovered_at" in by_id[recent_id][1]
     assert ("incident.active", 1, {"pond": pond}) in gauges
     incident_service.auto_recover(pond)

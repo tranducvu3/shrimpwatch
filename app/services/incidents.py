@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.core.clock import utcnow
 from app.core.config import settings
@@ -300,8 +301,8 @@ def incident_list_series(active: list[dict], recovered: list[dict], now: datetim
     """One gauge per listed incident, so a Datadog query table can show the control panel's incident list.
 
     Active: incident.open_minutes = minutes since it opened, tagged with its state. Recovered:
-    incident.recovered_minutes = minutes it took to recover. The incident id tag keeps repeats of the same
-    cause in one pond on separate rows.
+    incident.recovered_minutes = minutes it took to recover. Opened/recovered times are tags in farm time
+    ("09/11_14:32"); the incident id tag keeps repeats of the same cause in one pond on separate rows.
     """
     series = []
     for inc in active:
@@ -315,14 +316,23 @@ def incident_list_series(active: list[dict], recovered: list[dict], now: datetim
     return series
 
 
+def _farm_time(ts: datetime) -> str:
+    """Naive UTC -> "dd/mm_hh:mm" in the farm's timezone: a valid tag value (Datadog keeps `/` and `:`)."""
+    return ts.replace(tzinfo=timezone.utc).astimezone(ZoneInfo(settings.FARM_TIMEZONE)).strftime("%d/%m_%H:%M")
+
+
 def _list_tags(incident: dict) -> dict:
-    return {
+    tags = {
         "pond": incident["pond_id"],
         "severity": incident.get("severity"),
         "state": incident["state"],
         "title": tag_value(incident.get("title") or ""),
+        "opened_at": _farm_time(incident["created_at"]),
         "incident_id": incident["_id"],
     }
+    if incident.get("recovered_at"):
+        tags["recovered_at"] = _farm_time(incident["recovered_at"])
+    return tags
 
 
 def report_active(pond_ids: list[str]) -> None:
