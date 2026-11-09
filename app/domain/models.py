@@ -78,6 +78,7 @@ class IncidentEvidence(BaseModel):
     last_orp_mv: float | None = None
     nh3_mg_per_l: float | None = None
     ph_swing_24h: float | None = None
+    minutes_to_do_critical: float | None = None
     do_window_sec: int = 300
     notes: dict | None = None
 

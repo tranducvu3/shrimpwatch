@@ -38,3 +38,5 @@ Incident.actions
 Incident.detection_delay_sec
 Incident.acknowledged_at
 Incident.recovered_at
+# Pydantic field: the DO forecast stored in incidents.evidence (shown in the incident panel and Telegram alert).
+IncidentEvidence.minutes_to_do_critical

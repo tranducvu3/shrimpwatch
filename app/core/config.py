@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     NITRITE_WARN: float = 1.0
     TAN_WARN: float = 1.0  # below the ~1.45 mg/L juvenile safe level (Zhang et al. 2019), above lab larvae/PL limits
     PH_SWING_WARN: float = 0.5
+    # Warn when the straight-line DO forecast reaches DO_CRITICAL within this many minutes
+    DO_FORECAST_WARN_MIN: float = 30.0
 
     # Worker: check interval and thresholds for detecting pump failure / recovery
     WORKER_INTERVAL_SEC: int = 30

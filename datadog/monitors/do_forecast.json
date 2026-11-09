@@ -1,0 +1,13 @@
+{
+  "name": "[ShrimpWatch] DO forecast: below 4 (warning) / 3 mg/L (critical) within 12 hours · Dự báo DO xuống dưới 4 / 3 mg/L trong 12 giờ",
+  "type": "query alert",
+  "query": "min(next_12h):forecast(avg:shrimpwatch.metric.do{source:sensor} by {pond}, 'seasonal', 1, interval='30m', seasonality='daily') <= 3",
+  "message": "## 📉 DO in pond {{pond.name}} is forecast to fall below {{#is_alert}}3{{/is_alert}}{{#is_warning}}4{{/is_warning}} mg/L within the next 12 hours\n\nDatadog's seasonal forecast, which learns the pond's day/night DO cycle, crosses the threshold (warning 4 mg/L, critical 3 mg/L): usually the night-time dip. The worker computes the same thing from MongoDB (`$derivative` over 5 minutes): see `minutes_to_do_critical` in the incident evidence and the *Phút đến khi DO < 3* chart.\n\nAct before it happens: plan extra aeration for the night, cut the evening feed, prepare the backup aerator.\n\n---\n**Tiếng Việt**\n\n## 📉 Dự báo DO ao {{pond.name}} xuống dưới {{#is_alert}}3{{/is_alert}}{{#is_warning}}4{{/is_warning}} mg/L trong 12 giờ tới\n\nDự báo theo chu kỳ ngày/đêm của Datadog cho thấy DO sẽ chạm ngưỡng (cảnh báo 4 mg/L, nguy hiểm 3 mg/L), thường là lúc DO tụt về đêm. Worker tính cùng điều này từ MongoDB (`$derivative` trong 5 phút): xem `minutes_to_do_critical` trong bằng chứng sự cố và biểu đồ *Phút đến khi DO < 3*.\n\nXử lý trước khi xảy ra: tăng quạt ban đêm, giảm cữ ăn chiều tối, chuẩn bị quạt dự phòng.",
+  "tags": ["shrimpwatch", "metric:do", "sev:critical"],
+  "options": {
+    "thresholds": {"critical": 3.0, "warning": 4.0},
+    "renotify_interval": 30,
+    "notify_no_data": false,
+    "include_tags": true
+  }
+}
