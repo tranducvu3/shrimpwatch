@@ -353,7 +353,7 @@ The worker also opens a warning incident, with no Datadog monitor, when ORP, NH�
 
 Monitors evaluate a **full 5-minute** average and Datadog receives data a few tens of seconds late, so when demoing an aerator failure keep the aerator off for **at least 8 minutes** before the `pump_power < 50 W` monitor switches to Alert (the worker opens the incident earlier, based on the MongoDB data).
 
-The **Sự cố ĐANG MỞ** (open incidents) widget reads the gauge `shrimpwatch.incident.active` (0/1 per pond, sent by the worker every 30-second cycle), so the number drops as soon as an incident recovers. The counters `shrimpwatch.incident.open` / `incident.recovered` are still used to count how many times incidents opened / recovered.
+The **Số sự cố đang xảy ra** (active incidents) card and the **Sự cố** column of the per-pond table read the gauge `shrimpwatch.incident.active` (0/1 per pond, sent by the worker every 30-second cycle), so the number drops as soon as an incident recovers. Both take the last 1-minute bucket (`.rollup(max, 60)`, aggregator `last`): the table spans 1 day for the manual readings, and a rollup without an interval would turn the column into "any incident in the last 24 hours". The counters `shrimpwatch.incident.open` / `incident.recovered` are still used to count how many times incidents opened / recovered.
 
 A pond has at most one open incident. When a more severe cause appears, the incident is escalated and an `incident_escalated` event is written; incidents are never downgraded, so they keep the most severe cause until they recover.
 
