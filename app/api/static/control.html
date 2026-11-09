@@ -262,8 +262,22 @@
   .tl li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--surface-2); font-size: 13px; }
   .tl time { color: var(--muted); font-variant-numeric: tabular-nums; }
   .tl .sys { color: var(--muted); }
-  .tl .result { margin-left: 10px; font-weight: 600; white-space: nowrap; }
-  .tl .result.good { color: var(--ok); } .tl .result.bad { color: var(--crit); } .tl .result.muted { font-weight: 400; }
+  /* Treatment history: one collapsible line per attempt, its events inside */
+  .hist { border-top: 1px solid var(--surface-2); }
+  .hist summary {
+    list-style: none; display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: baseline;
+    padding: 8px 0; cursor: pointer; font-size: 13px;
+  }
+  .hist summary::-webkit-details-marker { display: none; }
+  .hist summary .t::before { content: "▸"; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s; }
+  .hist[open] summary .t::before { transform: rotate(90deg); }
+  .hist summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (hover: hover) { .hist summary:hover { background: var(--surface-2); } }
+  .hist .tl { margin: 0 0 6px 74px; }
+  .hist-end li { border-top: 1px solid var(--surface-2); }
+  .hist .result { margin-left: 10px; font-weight: 600; }
+  .hist .result.good { color: var(--ok); } .hist .result.bad { color: var(--crit); } .hist .result.muted { font-weight: 400; }
+  @media (max-width: 480px) { .hist .tl { margin-left: 14px; } .hist .tl li { grid-template-columns: 48px 1fr; } }
   @media (max-width: 480px) {
     dialog.inc { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; border: 0; }
   }
@@ -890,45 +904,84 @@
   // Remedies ticked together and applied with one click arrive within a few seconds of each other
   const BATCH_MS = 10000;
 
-  // Timeline rows: one line per remedy, with the result of its check on the same line. The pond's own
-  // "remedy_applied" record of the same remedy is dropped (it repeats the line), and so are the check events.
-  function timelineRows(timeline) {
+  // The timeline split into "Phát hiện sự cố" and one group per attempt ("Xử lý lần 1", "Xử lý lần 2", …): the
+  // remedies applied with one click, the result of their check, and what happened until the next attempt.
+  // The pond's own "remedy_applied" record of a remedy picked in the incident is dropped: it repeats that line.
+  function historyGroups(timeline, active) {
     const remedyActions = timeline.filter((e) => e.event === "incident_action" && e.details?.remedy);
     const isEcho = (e) => e.event === "remedy_applied" && remedyActions.some((a) =>
       a.details.remedy === e.details?.remedy && Math.abs(toDate(a.timestamp) - toDate(e.timestamp)) < BATCH_MS);
-    const rows = [];
-    let waiting = []; // remedy rows applied since the last check result
+    const opening = timeline.find((e) => e.event === "incident_open");
+    // The detection group lists the pond events of the half hour before too; its time is when the incident opened
+    const groups = [{ title: "Phát hiện sự cố", ts: opening?.timestamp, remedies: [], rows: [] }];
+    let finalRow = null;
+    let lastRemedyAt = null;
     for (const e of timeline) {
       const d = e.details || {};
+      let current = groups[groups.length - 1];
       if (isEcho(e)) continue;
-      if (REMEDY_RESULTS.includes(e.event)) {
-        const result = remedyResult(e);
-        for (const row of waiting) row.result = result;
-        waiting = [];
-        continue;
-      }
       if (e.event === "incident_action" && d.remedy) {
-        // A remedy picked later restarts the check: the earlier ones (not picked together with it) are never judged
-        const last = waiting[waiting.length - 1];
-        if (last && toDate(e.timestamp) - toDate(last.ts) > BATCH_MS) {
-          for (const row of waiting) row.result = { cls: "muted", text: "chưa kiểm tra xong (đã chọn cách khác)" };
-          waiting = [];
+        // A remedy picked later restarts the check: the attempt before it is never judged
+        if (!current.remedies.length || toDate(e.timestamp) - lastRemedyAt > BATCH_MS) {
+          if (current.remedies.length && !current.result) current.result = { cls: "muted", text: "chưa kiểm tra xong (đã chọn cách khác)" };
+          current = { title: `Xử lý lần ${groups.length}`, ts: e.timestamp, remedies: [], rows: [] };
+          groups.push(current);
         }
+        lastRemedyAt = toDate(e.timestamp);
         const label = labelIn(catalog.remedies, d.remedy);
         const note = d.action && d.action.startsWith(`${label}: `) ? d.action.slice(label.length + 2) : "";
-        const row = { ts: e.timestamp, what: label, detail: note, result: { cls: "muted", text: "đang kiểm tra" } };
-        rows.push(row);
-        waiting.push(row);
+        current.remedies.push(label);
+        current.rows.push({ ts: e.timestamp, what: "Chọn cách xử lý", detail: note ? `${label} · ${note}` : label });
         continue;
       }
-      if (e.event === "incident_recovered") {
-        for (const row of waiting) row.result = { cls: "good", text: "✓ hiệu quả" };
-        waiting = [];
+      if (REMEDY_RESULTS.includes(e.event)) {
+        const result = remedyResult(e);
+        if (current.remedies.length) current.result = result;
+        current.rows.push({ ts: e.timestamp, what: `Kiểm tra sau ${fmtDuration(catalog.thresholds.remedy_check_sec)}`, detail: result.text });
+        continue;
       }
       const [what, detail, sys] = timelineText(e);
-      rows.push({ ts: e.timestamp, what, detail, sys });
+      if (e.event === "incident_recovered") {
+        if (current.remedies.length && !current.result) current.result = { cls: "good", text: "✓ hiệu quả" };
+        finalRow = { ts: e.timestamp, what, detail };
+        continue;
+      }
+      current.rows.push({ ts: e.timestamp, what, detail, sys });
     }
-    return rows;
+    const last = groups[groups.length - 1];
+    if (last.remedies.length && !last.result) last.result = { cls: "muted", text: active ? "đang kiểm tra" : "chưa có kết quả" };
+    return [groups, finalRow];
+  }
+
+  const historyRow = (r) => el("li", {}, [
+    el("time", { text: hhmm(r.ts) }),
+    el("span", { class: r.sys ? "sys" : "" }, [el("b", { text: r.what }), r.detail ? ` · ${r.detail}` : ""]),
+  ]);
+
+  // One collapsible line per group; open/closed is kept across the 5 s re-render. By default only the attempt
+  // still running is open.
+  function historyView(inc, active) {
+    const [groups, finalRow] = historyGroups(inc.timeline || [], active);
+    const opened = (detailUi.history ??= {});
+    const items = groups.map((g, i) => {
+      const details = el("details", { class: "hist" }, [
+        el("summary", {}, [
+          el("time", { text: g.ts ? hhmm(g.ts) : "" }),
+          el("span", { class: "t" }, [
+            el("b", { text: g.title }),
+            g.remedies.length ? ` · ${g.remedies.join(", ")}` : "",
+            g.result ? el("span", { class: `result ${g.result.cls}`, text: g.result.text }) : null,
+          ]),
+          el("span", { class: "muted", text: `${g.rows.length} mục` }),
+        ]),
+        el("ol", { class: "tl" }, g.rows.map(historyRow)),
+      ]);
+      details.open = opened[i] ?? (active && i === groups.length - 1 && i > 0);
+      details.addEventListener("toggle", () => { opened[i] = details.open; });
+      return details;
+    });
+    if (finalRow) items.push(el("ol", { class: "tl hist-end" }, [historyRow(finalRow)]));
+    return el("div", { class: "inc-section" }, [el("span", { class: "label", text: "Lịch sử xử lý" }), el("div", {}, items)]);
   }
 
   // A "Xem …" / "Ẩn …" link that flips one detailUi flag and re-renders
@@ -1011,9 +1064,6 @@
     const linkItems = [["dashboard", "Dashboard"], ["logs", "Logs"], ["traces", "Traces"], ["events", "Events"]]
       .filter(([k]) => links[k])
       .map(([k, label]) => el("a", { href: links[k], target: "_blank", rel: "noopener" }, [`${label} ↗`]));
-    const timeline = timelineRows(inc.timeline || []);
-    // A closed incident has nothing to act on: its story is the timeline, so show it
-    detailUi.timeline ??= !active;
 
     $("#inc-body").replaceChildren(
       el("div", { class: "inc-top" }, [
@@ -1035,17 +1085,7 @@
         toggle("more", `Xem thêm ${otherChips.length} chỉ số`, "Ẩn chỉ số khác", inc),
         ...(detailUi.more ? [el("div", { class: "chips" }, otherChips)] : []),
       ])] : []),
-      el("div", { class: "inc-section" }, [
-        toggle("timeline", `Xem dòng thời gian (${timeline.length})`, "Ẩn dòng thời gian", inc),
-        ...(detailUi.timeline ? [el("ol", { class: "tl" }, timeline.map((r) => el("li", {}, [
-          el("time", { text: hhmm(r.ts) }),
-          el("span", { class: r.sys ? "sys" : "" }, [
-            el("b", { text: r.what }),
-            r.detail ? ` · ${r.detail}` : "",
-            r.result ? el("span", { class: `result ${r.result.cls}`, text: r.result.text }) : null,
-          ]),
-        ])))] : []),
-      ]),
+      historyView(inc, active),
       el("div", { class: "inc-foot" }, [
         el("span", { class: "muted", text: "Datadog" }),
         el("div", { class: "inc-actions links" }, linkItems),
