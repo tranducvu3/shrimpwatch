@@ -32,7 +32,9 @@ collection.** Always run tests against a throwaway local database, never the URI
 Atlas). Environment variables override `.env`, so set them explicitly:
 
 ```bash
-mkdir -p /tmp/db && mongod --fork --logpath /tmp/mongod.log --dbpath /tmp/db   # if Mongo is not running
+# if Mongo is not running; a replica set because the Change Streams tests need one
+mkdir -p /tmp/db && mongod --fork --replSet rs0 --logpath /tmp/mongod.log --dbpath /tmp/db
+mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
 MONGODB_URI=mongodb://localhost:27017 MONGODB_DB=shrimpwatch_test DD_TRACE_ENABLED=false \
   pytest -v -rs --cov tests/
 ```

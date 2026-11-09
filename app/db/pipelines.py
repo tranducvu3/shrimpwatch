@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.core.clock import utcnow
-from app.db.mongo import EVENTS, METRICS_HOURLY
+from app.db.mongo import EVENTS, INCIDENTS, METRICS_HOURLY
 
 
 def compute_do_drop_rate_pipeline(
@@ -240,6 +240,35 @@ def latest_readings_pipeline(pond_ids: list[str], metrics: list[str], since: dat
                 "value": 1,
                 "unit": 1,
                 "timestamp": 1,
+            }
+        },
+    ]
+
+
+def incident_changes_pipeline() -> list[dict[str, Any]]:
+    """Change stream filter: new or changed incidents and new events, with only the fields the panel needs.
+
+    `metrics` is a time series collection, which change streams do not support; the panel polls readings instead.
+    """
+    return [
+        {
+            "$match": {
+                "$or": [
+                    {"ns.coll": INCIDENTS, "operationType": {"$in": ["insert", "update", "replace"]}},
+                    {"ns.coll": EVENTS, "operationType": "insert"},
+                ]
+            }
+        },
+        {
+            "$project": {
+                "ns.coll": 1,
+                "operationType": 1,
+                "documentKey": 1,
+                "fullDocument.pond_id": 1,
+                "fullDocument.state": 1,
+                "fullDocument.severity": 1,
+                "fullDocument.incident_id": 1,
+                "fullDocument.event": 1,
             }
         },
     ]
