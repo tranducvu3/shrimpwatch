@@ -390,7 +390,7 @@
       refs.dropdown.querySelector(".dd-menu").scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
 
-    refs.clear = el("button", { class: "btn small", type: "button", text: "Bỏ chọn tất cả", hidden: "" });
+    refs.clear = el("button", { class: "btn small", type: "button", text: "Khôi phục ao", hidden: "" });
     refs.clear.addEventListener("click", () => act(refs.clear, () => api("DELETE", `/ponds/${id}/conditions`),
       `${pond.name || id}: đã tắt các điều kiện`));
     refs.summary = el("div", { class: "summary", "aria-live": "polite" });

@@ -41,7 +41,7 @@
                       "name": "query1",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "sum:shrimpwatch.incident.active{$trang_trai,$ao}"
+                      "query": "sum:shrimpwatch.incident.active{$trang_trai,$ao}.rollup(max, 60)"
                     }
                   ],
                   "conditional_formats": [
@@ -140,7 +140,7 @@
                       "name": "incident",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.active{$trang_trai,$ao} by {pond}.rollup(max)"
+                      "query": "max:shrimpwatch.incident.active{$trang_trai,$ao} by {pond}.rollup(max, 60)"
                     },
                     {
                       "name": "temp",
