@@ -262,6 +262,8 @@
   .tl li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--surface-2); font-size: 13px; }
   .tl time { color: var(--muted); font-variant-numeric: tabular-nums; }
   .tl .sys { color: var(--muted); }
+  .tl .result { margin-left: 10px; font-weight: 600; white-space: nowrap; }
+  .tl .result.good { color: var(--ok); } .tl .result.bad { color: var(--crit); } .tl .result.muted { font-weight: 400; }
   @media (max-width: 480px) {
     dialog.inc { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; border: 0; }
   }
@@ -859,12 +861,8 @@
       case "incident_open": return ["Mở sự cố", `${SEVERITIES[d.severity] || d.severity} · ${d.title || ""}`];
       case "incident_escalated": return ["Nâng mức", `${ROOT_CAUSES[d.from_root_cause] || d.from_root_cause} → ${ROOT_CAUSES[d.to_root_cause] || d.to_root_cause}`];
       case "incident_action":
-        if (d.remedy) return ["Chọn cách xử lý", d.action || labelIn(catalog.remedies, d.remedy)];
         if (d.state === "investigating" && d.from_state === "resolving") return ["Điều tra lại", d.action || ""];
         return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
-      case "remedy_improving": return ["Đang cải thiện", metricChange(d.metric, d.baseline, d.value)];
-      case "remedy_normal": return ["Chỉ số về bình thường", metricChange(d.metric, d.baseline, d.value)];
-      case "remedy_failed": return ["Xử lý không thành công", metricChange(d.metric, d.baseline, d.value)];
       case "incident_recovered": return ["Xử lý xong", "Dữ liệu xác nhận ao đã ổn: DO an toàn, quạt chạy"];
       case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
       case "condition_start": return ["Bắt đầu điều kiện", labelIn(catalog.conditions, d.condition), true];
@@ -874,6 +872,63 @@
       case "remedy_applied": return ["Xử lý", labelIn(catalog.remedies, d.remedy), true];
       default: return [e.event, ""];
     }
+  }
+
+  // The result of a remedy check, shown on the line of each remedy it judged
+  function remedyResult(e) {
+    const d = e.details || {};
+    const change = metricChange(d.metric, d.baseline, d.value);
+    const moved = d.baseline != null && d.value != null ? ` · ${change}` : "";
+    switch (e.event) {
+      case "remedy_failed": return { cls: "bad", text: `✗ không thành công${moved}` };
+      case "remedy_normal": return { cls: "good", text: "✓ hiệu quả · chỉ số về bình thường" };
+      default: return { cls: "good", text: `✓ hiệu quả${moved}` };
+    }
+  }
+
+  const REMEDY_RESULTS = ["remedy_improving", "remedy_normal", "remedy_failed"];
+  // Remedies ticked together and applied with one click arrive within a few seconds of each other
+  const BATCH_MS = 10000;
+
+  // Timeline rows: one line per remedy, with the result of its check on the same line. The pond's own
+  // "remedy_applied" record of the same remedy is dropped (it repeats the line), and so are the check events.
+  function timelineRows(timeline) {
+    const remedyActions = timeline.filter((e) => e.event === "incident_action" && e.details?.remedy);
+    const isEcho = (e) => e.event === "remedy_applied" && remedyActions.some((a) =>
+      a.details.remedy === e.details?.remedy && Math.abs(toDate(a.timestamp) - toDate(e.timestamp)) < BATCH_MS);
+    const rows = [];
+    let waiting = []; // remedy rows applied since the last check result
+    for (const e of timeline) {
+      const d = e.details || {};
+      if (isEcho(e)) continue;
+      if (REMEDY_RESULTS.includes(e.event)) {
+        const result = remedyResult(e);
+        for (const row of waiting) row.result = result;
+        waiting = [];
+        continue;
+      }
+      if (e.event === "incident_action" && d.remedy) {
+        // A remedy picked later restarts the check: the earlier ones (not picked together with it) are never judged
+        const last = waiting[waiting.length - 1];
+        if (last && toDate(e.timestamp) - toDate(last.ts) > BATCH_MS) {
+          for (const row of waiting) row.result = { cls: "muted", text: "chưa kiểm tra xong (đã chọn cách khác)" };
+          waiting = [];
+        }
+        const label = labelIn(catalog.remedies, d.remedy);
+        const note = d.action && d.action.startsWith(`${label}: `) ? d.action.slice(label.length + 2) : "";
+        const row = { ts: e.timestamp, what: label, detail: note, result: { cls: "muted", text: "đang kiểm tra" } };
+        rows.push(row);
+        waiting.push(row);
+        continue;
+      }
+      if (e.event === "incident_recovered") {
+        for (const row of waiting) row.result = { cls: "good", text: "✓ hiệu quả" };
+        waiting = [];
+      }
+      const [what, detail, sys] = timelineText(e);
+      rows.push({ ts: e.timestamp, what, detail, sys });
+    }
+    return rows;
   }
 
   // A "Xem …" / "Ẩn …" link that flips one detailUi flag and re-renders
@@ -956,7 +1011,7 @@
     const linkItems = [["dashboard", "Dashboard"], ["logs", "Logs"], ["traces", "Traces"], ["events", "Events"]]
       .filter(([k]) => links[k])
       .map(([k, label]) => el("a", { href: links[k], target: "_blank", rel: "noopener" }, [`${label} ↗`]));
-    const timeline = inc.timeline || [];
+    const timeline = timelineRows(inc.timeline || []);
     // A closed incident has nothing to act on: its story is the timeline, so show it
     detailUi.timeline ??= !active;
 
@@ -982,10 +1037,14 @@
       ])] : []),
       el("div", { class: "inc-section" }, [
         toggle("timeline", `Xem dòng thời gian (${timeline.length})`, "Ẩn dòng thời gian", inc),
-        ...(detailUi.timeline ? [el("ol", { class: "tl" }, timeline.map((e) => {
-          const [what, detail, pondEvent] = timelineText(e);
-          return el("li", {}, [el("time", { text: hhmm(e.timestamp) }), el("span", { class: pondEvent ? "sys" : "" }, [el("b", { text: what }), detail ? ` · ${detail}` : ""])]);
-        }))] : []),
+        ...(detailUi.timeline ? [el("ol", { class: "tl" }, timeline.map((r) => el("li", {}, [
+          el("time", { text: hhmm(r.ts) }),
+          el("span", { class: r.sys ? "sys" : "" }, [
+            el("b", { text: r.what }),
+            r.detail ? ` · ${r.detail}` : "",
+            r.result ? el("span", { class: `result ${r.result.cls}`, text: r.result.text }) : null,
+          ]),
+        ])))] : []),
       ]),
       el("div", { class: "inc-foot" }, [
         el("span", { class: "muted", text: "Datadog" }),
