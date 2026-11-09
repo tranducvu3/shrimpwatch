@@ -83,3 +83,56 @@ def test_every_datadog_file_is_valid_json_with_a_name():
     for folder, key in (("monitors", "name"), ("slos", "name"), ("dashboards", "title")):
         for path in (datadog_push.ROOT / "datadog" / folder).glob("*.json"):
             assert json.loads(path.read_text(encoding="utf-8"))[key].startswith(("[ShrimpWatch]", "ShrimpWatch")), path
+
+
+def test_farmer_alert_emails_are_split_trimmed_and_validated(monkeypatch):
+    warned = []
+    monkeypatch.setattr(datadog_push.logger, "warning", lambda _msg, extra=None: warned.append(extra))
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "")
+    assert datadog_push.farmer_alert_emails() == []
+
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", " a@farm.vn, not-an-email ,, b@x.example.com")
+    assert datadog_push.farmer_alert_emails() == ["a@farm.vn", "b@x.example.com"]
+    assert warned == [{"position": 2}]  # the position only: the entry may hold part of a real address
+
+
+def test_email_handles_are_added_only_to_tagged_monitors_when_configured():
+    tagged = {"message": "m", "tags": ["shrimpwatch", "notify:email"]}
+    other = {"message": "m", "tags": ["shrimpwatch"]}
+    emails = ["a@farm.vn", "b@farm.vn"]
+    assert datadog_push.with_notify_handles(tagged, emails)["message"] == "m\n\n@a@farm.vn @b@farm.vn"
+    assert datadog_push.with_notify_handles(tagged, []) == tagged
+    assert datadog_push.with_notify_handles(other, emails) == other
+
+
+def test_farmer_alert_monitors_match_the_event_tags_the_service_sends():
+    """The incident service tags Events with incident_event:<what> and pond (app/services/incidents.py)."""
+    for what, name in (
+        ("incident_open", "farmer_alert_open.json"),
+        ("incident_escalated", "farmer_alert_escalated.json"),
+    ):
+        monitor = json.loads((datadog_push.ROOT / "datadog" / "monitors" / name).read_text(encoding="utf-8"))
+        assert f"service:shrimpwatch incident_event:{what}" in monitor["query"]
+        assert '.by("pond")' in monitor["query"] and "notify:email" in monitor["tags"]
+
+
+def test_main_passes_the_alert_emails_to_every_push(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
+    monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "a@farm.vn")
+    pushed = []
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, emails=(): pushed.append(emails) or (200, {}))
+    assert datadog_push.main() == 0
+    assert pushed and all(e == ["a@farm.vn"] for e in pushed)
+
+
+def test_main_fails_when_datadog_rejects_a_file(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "DD_API_KEY", "k")
+    monkeypatch.setattr(datadog_push.settings, "DD_APP_KEY", "a")
+    monkeypatch.setattr(datadog_push.settings, "FARMER_ALERT_EMAILS", "")
+    monkeypatch.setattr(
+        datadog_push, "_push", lambda kind, path, emails=(): (400 if path.name == "do_low.json" else 200, {})
+    )
+    assert datadog_push.main() == 1
+    monkeypatch.setattr(datadog_push, "_push", lambda kind, path, emails=(): (200, {}))
+    assert datadog_push.main() == 0

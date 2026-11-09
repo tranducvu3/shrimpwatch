@@ -41,6 +41,28 @@ def _datadog_event(incident: dict, what: str, text: str, alert_type: str | None 
     )
 
 
+_SEVERITY_VI = {"critical": "nghiêm trọng", "warning": "cảnh báo", "info": "thông tin"}
+
+
+def _alert_text(pond_id: str, finding: Finding, escalated_from: str | None = None) -> str:
+    """Event text for an opened or escalated incident: how bad, what is wrong, what to do, where to look.
+
+    The farmer alert email forwards it as is, so it is written for the farmer (Vietnamese, no jargon).
+    """
+    severity = _SEVERITY_VI.get(finding.severity.value, finding.severity.value)
+    if escalated_from:
+        lines = [f"Nâng mức: {_SEVERITY_VI.get(escalated_from, escalated_from)} → {severity}."]
+    else:
+        lines = [f"Mức độ: {severity}."]
+    lines.append(finding.description)
+    remedies = ", ".join(REMEDIES[r].label for r in suggested_remedies(finding.root_cause))
+    if remedies:
+        lines.append(f"Đề xuất xử lý: {remedies}.")
+    if settings.PUBLIC_BASE_URL:
+        lines.append(f"Mở bảng điều khiển: {settings.PUBLIC_BASE_URL.rstrip('/')}/control?ao={pond_id}")
+    return "\n".join(lines)
+
+
 def _seconds(start: datetime, end: datetime) -> float:
     return round((end - start).total_seconds(), 1)
 
@@ -82,7 +104,7 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
         _datadog_event(
             {**existing, **fields},
             "incident_escalated",
-            f"{current} -> {finding.severity.value}. {finding.description}",
+            _alert_text(existing["pond_id"], finding, escalated_from=current),
         )
     elif finding.root_cause == existing.get("root_cause"):
         # Same cause: refresh the description with the latest data
@@ -156,7 +178,7 @@ def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str | N
         "incident.open", tags={"pond": pond_id, "severity": finding.severity.value, "root_cause": finding.root_cause}
     )
     _report_detection(doc)
-    _datadog_event(doc, "incident_open", finding.description)
+    _datadog_event(doc, "incident_open", _alert_text(pond_id, finding))
     logger.error(
         "incident opened",
         extra={

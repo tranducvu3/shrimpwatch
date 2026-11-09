@@ -54,10 +54,23 @@ def test_pump_failure_is_critical():
     assert (f.severity, f.root_cause) == (Severity.CRITICAL, "pump_failure")
 
 
-def test_pump_failure_without_do_window_does_not_crash():
+def test_pump_failure_without_do_window_leaves_out_unknown_values():
     f = evaluate(snap(avg_pump=0.0, drop_rate=None, min_do=None), T)
     assert f.root_cause == "pump_failure"
-    assert "n/a" in f.description
+    assert f.description == "Quạt ao pond-01 đã dừng. Công suất trung bình 5 phút gần nhất: 0.0 W."
+
+
+def test_pump_failure_caught_at_ingest_names_only_the_stop():
+    f = evaluate(replace(snap(avg_pump=None, drop_rate=None, min_do=None), pump_stopped=True), T)
+    assert f.description == "Quạt ao pond-01 đã dừng."
+
+
+def test_pump_failure_description_lists_known_measurements():
+    f = evaluate(snap(avg_pump=10.0, drop_rate=0.0123, min_do=4.5), T)
+    assert f.description == (
+        "Quạt ao pond-01 đã dừng. Công suất trung bình 5 phút gần nhất: 10.0 W. "
+        "Tốc độ giảm DO: 0.0123 mg/L/phút. DO thấp nhất: 4.50 mg/L."
+    )
 
 
 def test_pump_failure_while_do_rising_falls_through_to_do_rules():

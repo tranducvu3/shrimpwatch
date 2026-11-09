@@ -114,8 +114,17 @@ def _forecast(s: PondSnapshot, t: Thresholds) -> str:
     return "" if minutes is None else f" Dự báo ≈ {minutes:.0f} phút nữa DO < {t.do_critical:g} mg/L."
 
 
-def _fmt(value: float | None, spec: str) -> str:
-    return "n/a" if value is None else format(value, spec)
+def _pump_failure_text(s: PondSnapshot, t: Thresholds) -> str:
+    """What the farmer reads (also in the alert email): only the measurements known so far. A stopped aerator caught at
+    ingest opens the incident before the worker has a 5-minute power average or a DO drop rate."""
+    parts = [f"Quạt ao {s.pond_id} đã dừng."]
+    if s.avg_pump_watts is not None:
+        parts.append(f"Công suất trung bình 5 phút gần nhất: {s.avg_pump_watts:.1f} W.")
+    if s.do_drop_rate is not None:
+        parts.append(f"Tốc độ giảm DO: {s.do_drop_rate:.4f} mg/L/phút.")
+    if s.min_do is not None:
+        parts.append(f"DO thấp nhất: {s.min_do:.2f} mg/L.")
+    return " ".join(parts) + _forecast(s, t)
 
 
 def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
@@ -126,8 +135,7 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
         return Finding(
             Severity.CRITICAL,
             "SỰ CỐ: Quạt nước hỏng → oxy sụt",
-            f"Quạt ao {s.pond_id} đã dừng. Công suất trung bình 5 phút gần nhất: {_fmt(s.avg_pump_watts, '.1f')} W. "
-            f"DO drop rate: {_fmt(s.do_drop_rate, '.4f')} mg/L/phút, min DO: {s.min_do}.{_forecast(s, t)}",
+            _pump_failure_text(s, t),
             "pump_failure",
         )
     if s.do_drop_rate is not None and s.do_drop_rate >= t.do_drop_rate_warn and not failed:
