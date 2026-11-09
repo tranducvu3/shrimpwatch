@@ -36,6 +36,22 @@ def increment(name: str, value: int = 1, tags: dict | None = None):
         pass
 
 
+def distribution(name: str, value: float, tags: dict | None = None):
+    """Server-side aggregated: Datadog computes avg/p95 across all ponds and hosts."""
+    try:
+        statsd.distribution(name, value, tags=_tags(tags))
+    except Exception:
+        pass
+
+
+def event(title: str, text: str, alert_type: str, aggregation_key: str, tags: dict | None = None):
+    """A Datadog Event through the agent (no API key in the app). alert_type: info, warning, error or success."""
+    try:
+        statsd.event(title, text, alert_type=alert_type, aggregation_key=aggregation_key, tags=_tags(tags))
+    except Exception:
+        pass
+
+
 def set_span_tags(pond_id: str | None = None, device_type: str | None = None, **extra):
     span = tracer.current_span()
     if span is None:

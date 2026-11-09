@@ -391,6 +391,18 @@ The **Số sự cố đang xảy ra** (active incidents) card and the **Sự c�
 
 A pond has at most one open incident, enforced by MongoDB with a unique partial index (`one_active_incident_per_pond`: unique `pond_id` where `state` is open, investigating or resolving), because both the ingest check and the worker can open one. When a more severe cause appears, the incident is escalated and an `incident_escalated` event is written; incidents are never downgraded, so they keep the most severe cause until they recover.
 
+**Incident timings and Datadog Events.** Every incident change also goes to Datadog, so Datadog and MongoDB show the same lifecycle:
+
+| Signal | Type | Meaning |
+|---|---|---|
+| `shrimpwatch.incident.detection_delay` | distribution (s) | Fault start → incident opened. The fault start is the latest aerator failure, condition or scenario the simulator injected into the pond since its previous incident closed; real sensors have no ground truth, so nothing is sent for them |
+| `shrimpwatch.incident.detected` | counter, `within_slo:true\|false` | One per incident with a known fault; `true` when detected within `DETECTION_SLO_SEC` (120 s) |
+| `shrimpwatch.incident.time_to_acknowledge` | distribution (s) | Incident opened → the operator first moves it out of `open` |
+| `shrimpwatch.incident.time_to_recover` | distribution (s) | Incident opened → recovered (by the worker or the operator) |
+| Datadog Event per change | event, `aggregation_key` = incident id | `incident_open`, `incident_escalated`, `incident_investigating`, `incident_resolving`, `incident_recovered` (tag `incident_event`), sent through the agent, so the app needs no API key |
+
+The incident document stores the same timings: `fault_started_at`, `detection_delay_sec`, `acknowledged_at`, `recovered_at`. The **Lịch sử sự cố** group shows the 7-day averages (detection turns green within 2 minutes) and the event stream; the events are also overlaid on the DO and aerator power charts.
+
 `python -m app.cli.datadog_push` updates monitors/dashboards with the same name, and creates them if they do not exist yet.
 
 Each monitor has an English · Vietnamese name and an English message followed by the Vietnamese one. `datadog_push` finds a renamed monitor by its query, so renaming updates it instead of creating a copy.

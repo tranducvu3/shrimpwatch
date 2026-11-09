@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pymongo.errors import DuplicateKeyError
@@ -43,9 +44,19 @@ def update_fields(incident_id: str, fields: dict[str, Any]) -> None:
     incidents_collection().update_one({"_id": incident_id}, {"$set": {"updated_at": utcnow(), **fields}})
 
 
-def set_state(incident_id: str, state: IncidentState, action: str | None = None) -> None:
+def last_closed_at(pond_id: str) -> datetime | None:
+    """When the pond's latest recovered incident was closed (updated_at covers incidents older than recovered_at)."""
+    doc = incidents_collection().find_one(
+        {"pond_id": pond_id, "state": IncidentState.RECOVERED.value}, {"updated_at": 1}, sort=[("updated_at", -1)]
+    )
+    return doc["updated_at"] if doc else None
+
+
+def set_state(
+    incident_id: str, state: IncidentState, action: str | None = None, fields: dict[str, Any] | None = None
+) -> None:
     now = utcnow()
-    update: dict[str, Any] = {"$set": {"updated_at": now, "state": state.value}}
+    update: dict[str, Any] = {"$set": {"updated_at": now, "state": state.value, **(fields or {})}}
     if action:
         update["$push"] = {"actions": {"time": now, "state": state.value, "action": action}}
     incidents_collection().update_one({"_id": incident_id}, update)

@@ -374,6 +374,7 @@
               "title": "DO (mg/L) - cảnh báo dưới 4, nguy hiểm dưới 3",
               "title_size": "16",
               "title_align": "left",
+              "events": [{"q": "tags:service:shrimpwatch incident_event:* $ao", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
@@ -404,6 +405,7 @@
               "title": "Công suất quạt nước (W) - dưới 50 W là quạt hỏng",
               "title_size": "16",
               "title_align": "left",
+              "events": [{"q": "tags:service:shrimpwatch incident_event:* $ao", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
@@ -925,7 +927,7 @@
             "id": 504,
             "definition": {
               "type": "note",
-              "content": "**Cách đọc.** Bảng trái: số lần sự cố mở trong 7 ngày, mỗi cột là một nguyên nhân (ô trống = không có). Nhật ký bên phải: lúc sự cố mở và lúc tự hồi phục.",
+              "content": "**Cách đọc.** Bảng trái: số lần sự cố mở trong 7 ngày, mỗi cột là một nguyên nhân (ô trống = không có). Nhật ký bên phải: lúc sự cố mở và lúc tự hồi phục. Hàng giữa: thời gian trung bình từ lúc xảy ra lỗi đến lúc mở sự cố (xanh khi trong 2 phút), đến lúc người vận hành tiếp nhận, và đến lúc ao hồi phục. Hàng dưới: mọi thay đổi của sự cố gửi sang Datadog dưới dạng Event; các sự kiện này cũng hiện trên biểu đồ DO và công suất quạt.",
               "background_color": "white",
               "font_size": "14",
               "text_align": "left",
@@ -934,10 +936,111 @@
               "has_padding": true
             },
             "layout": {"x": 0, "y": 3, "width": 12, "height": 1}
+          },
+          {
+            "id": 507,
+            "definition": {
+              "type": "query_value",
+              "title": "Phát hiện sự cố sau (TB 7 ngày, từ lúc xảy ra lỗi)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1w"},
+              "autoscale": false,
+              "custom_unit": "giây",
+              "precision": 0,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "q",
+                      "data_source": "metrics",
+                      "aggregator": "avg",
+                      "query": "avg:shrimpwatch.incident.detection_delay{$trang_trai,$ao}"
+                    }
+                  ],
+                  "formulas": [{"formula": "q"}],
+                  "conditional_formats": [
+                    {"comparator": "<=", "value": 120, "palette": "white_on_green"},
+                    {"comparator": ">", "value": 120, "palette": "white_on_red"}
+                  ]
+                }
+              ]
+            },
+            "layout": {"x": 0, "y": 4, "width": 4, "height": 2}
+          },
+          {
+            "id": 508,
+            "definition": {
+              "type": "query_value",
+              "title": "Người vận hành tiếp nhận sau (TB 7 ngày)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1w"},
+              "autoscale": false,
+              "custom_unit": "giây",
+              "precision": 0,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "q",
+                      "data_source": "metrics",
+                      "aggregator": "avg",
+                      "query": "avg:shrimpwatch.incident.time_to_acknowledge{$trang_trai,$ao}"
+                    }
+                  ],
+                  "formulas": [{"formula": "q"}]
+                }
+              ]
+            },
+            "layout": {"x": 4, "y": 4, "width": 4, "height": 2}
+          },
+          {
+            "id": 509,
+            "definition": {
+              "type": "query_value",
+              "title": "Ao hồi phục sau (TB 7 ngày, từ lúc mở sự cố)",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"live_span": "1w"},
+              "autoscale": false,
+              "custom_unit": "giây",
+              "precision": 0,
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "q",
+                      "data_source": "metrics",
+                      "aggregator": "avg",
+                      "query": "avg:shrimpwatch.incident.time_to_recover{$trang_trai,$ao}"
+                    }
+                  ],
+                  "formulas": [{"formula": "q"}]
+                }
+              ]
+            },
+            "layout": {"x": 8, "y": 4, "width": 4, "height": 2}
+          },
+          {
+            "id": 510,
+            "definition": {
+              "type": "event_stream",
+              "title": "Sự kiện vòng đời sự cố (mở, nâng mức, điều tra, xử lý, hồi phục)",
+              "title_size": "16",
+              "title_align": "left",
+              "query": "tags:service:shrimpwatch incident_event:* $ao",
+              "tags_execution": "and",
+              "event_size": "s"
+            },
+            "layout": {"x": 0, "y": 6, "width": 12, "height": 3}
           }
         ]
       },
-      "layout": {"x": 0, "y": 25, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 25, "width": 12, "height": 9}
     }
   ]
 }
