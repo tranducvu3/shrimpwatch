@@ -1,5 +1,8 @@
 """Datadog: DogStatsD metrics and tags for the current span. A failed metric send must never break the main flow."""
 
+import re
+import unicodedata
+
 from datadog import initialize, statsd
 from ddtrace import tracer
 
@@ -20,6 +23,19 @@ def _tags(tags: dict | None) -> list[str]:
         f"env:{settings.DD_ENV}",
         f"service:{settings.DD_SERVICE}",
     ]
+
+
+_NOT_TAG_CHAR = re.compile(r"[^\w\-./]+")
+
+
+def tag_value(text: str) -> str:
+    """Free text (an incident title) as a tag value that reads the same in Datadog.
+
+    Datadog lowercases tags, keeps Unicode letters and turns other characters into underscores; doing it here keeps
+    `|`, `,` and `#` out of the DogStatsD packet. NFKC turns subscripts into digits (NH₃ -> nh3).
+    """
+    text = unicodedata.normalize("NFKC", text).lower()
+    return _NOT_TAG_CHAR.sub("_", text).strip("_")[:200]
 
 
 def gauge(name: str, value: float, tags: dict | None = None):
