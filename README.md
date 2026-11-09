@@ -70,6 +70,40 @@ Data groups collected:
 
 When the aerator fails, DO falls by ~0.1 mg/L/minute and ORP follows. An incident's `incidents.evidence` now also carries `last_orp_mv`, `nh3_mg_per_l` and `ph_swing_24h`, so technicians see the water quality context right in the Investigate step. On the Datadog dashboard, ORP sits next to DO and aerator power in *Oxy và quạt nước*, and NH₃, TAN, nitrite and the pH swing are in the water and waste sections.
 
+### Metric Rules
+
+The worker checks every pond every 30 seconds. A value outside the safe range opens an incident (or updates the pond's open one). Thresholds live in [`app/core/config.py`](app/core/config.py).
+
+| Metric | Unit | Safe range | Incident when | Severity | Value checked |
+|---|---|---|---|---|---|
+| Aerator power | W | ≥ 50 | < 50 | critical (`pump_failure`) | 5-min average |
+| DO | mg/L | ≥ 4 | < 4 · < 3 | warning · critical | 5-min minimum |
+| DO drop rate | mg/L/min | < 0.05 | ≥ 0.05 (aerator running) | warning | 5-min window |
+| Temperature | °C | 26 – 32 | outside the range | warning | 5-min average |
+| pH | — | 7.5 – 8.5 | outside the range | warning | 5-min average |
+| Salinity | ppt | ≥ 10 | < 10 | warning | 5-min average |
+| ORP | mV | ≥ 100 | < 100 | warning | latest, last 5 min |
+| NH₃ (toxic ammonia) | mg/L | ≤ 0.1 | > 0.1 | warning | derived, see below |
+| CO₂ | mg/L | ≤ 10 | > 10 | warning | derived, see below |
+| TAN | mg/L | ≤ 1 | > 1 | warning | latest test kit, last 24 h |
+| Nitrite (NO₂) | mg/L | ≤ 1 | > 1 | warning | latest test kit, last 24 h |
+| Alkalinity | mg CaCO₃/L | ≥ 120 | < 120 | warning | latest test kit, last 24 h |
+| pH swing 24 h | pH | ≤ 0.5 | dashboard color only, no incident | — | derived, see below |
+
+- **Priority** when several rules fire: aerator → DO → temperature, pH, salinity → NH₃, nitrite, TAN, CO₂, ORP, alkalinity. A pond has one open incident; it escalates to a more severe cause but never downgrades.
+- **Recovery**: the worker closes the incident when the 5-min minimum DO is above 4.5 mg/L (threshold + 0.5) and the aerator draws more than 500 W (or sends no power data).
+
+**Derived metrics** (written back to `metrics` with `source: derived`):
+
+| Metric | Formula | Inputs |
+|---|---|---|
+| CO₂ (mg/L) | `44000 × (alkalinity / 50000) × 10^(6.35 − pH)` | alkalinity: latest test kit (24 h); pH: latest sensor (30 min) |
+| NH₃ (mg/L) | `TAN / (1 + 10^(pKa − pH))`, with `pKa = 0.09018 + 2729.92 / (T + 273.15)` (Emerson 1975) | TAN: latest test kit (24 h); pH, temperature T (°C): latest sensor (30 min) |
+| DO drop rate (mg/L/min) | `−d(DO)/dt` over the last 5 minutes (`$setWindowFields` + `$derivative`); positive when DO falls | DO sensor, last 5 min |
+| pH swing (pH) | `max(pH) − min(pH)` over the last 24 hours | hourly rollups in `metrics_hourly` |
+
+Example: alkalinity 148 mg/L and pH 8.10 give CO₂ = 44000 × 0.00296 × 10^(−1.75) ≈ 2.3 mg/L.
+
 **Technical highlights:**
 - A MongoDB **Time Series Collection** with `expireAfterSeconds` (7-day TTL) is the single store for telemetry.
 - A **`$setWindowFields` + `$derivative`** pipeline computes the oxygen drop rate (DO drop rate) over a 5-minute **time** window for all 6 ponds in **one** aggregate → the result is stored in `incidents.evidence`.
