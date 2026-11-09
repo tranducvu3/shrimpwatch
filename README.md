@@ -356,6 +356,12 @@ Open [http://localhost:8000/control](http://localhost:8000/control) to create ab
   | Water exchange (*Thay nước*) | DO +0.5, temperature −1 °C, TAN −0.3, nitrite −0.15, alkalinity −15 | ORP ↑, NH₃ ↓, CO₂ ↓ |
 
   DO and ORP move gradually (about 20 minutes); alkalinity, TAN and nitrite are re-tested on the simulator's next send whenever a condition starts or stops, so their change shows right away. Offsets live in `app/domain/conditions.py`.
+- **Incidents** (*Sự cố*, above the ponds): the open incidents, newest first, plus those recovered in the last 24 hours. Click one (or the incident line on a pond card) to handle it in one place:
+  - **Timings**: detected N seconds after the fault (green within the 2-minute SLO), acknowledged after, recovered after.
+  - **Evidence**: the DO forecast (*Dự báo ≈ N phút nữa DO < 3 mg/L*), lowest DO, drop rate, aerator power, ORP, NH₃ and the other readings stored with the incident.
+  - **Handle**: the remedies suggested for the root cause (one click: recorded, incident → *Đang xử lý*), a note field, and the allowed next states. The worker closes the incident when the data shows the pond is safe.
+  - **Investigate in Datadog**: the dashboard filtered to the pond (set `DD_DASHBOARD_ID`), its logs, traces and incident events, for the incident's time window.
+  - **Timeline**: what broke (aerator, condition, scenario), what the operator did and when the data confirmed recovery.
 - **Pond filter** (header): show only the ponds you pick; each button carries the pond's status dot (green normal, amber warning, red incident). The selection is kept in the URL (`/control?ao=pond-01,pond-03`), so it survives a reload and can be shared. **Restore all ponds** still applies to every pond.
 - The page refreshes every 5 seconds: latest sensor and derived metrics from the last 10 minutes, the latest test-kit readings (alkalinity, TAN, nitrite) from the last 24 hours (hover for when they were entered), highlighted when over a threshold, plus running conditions and open incidents.
 

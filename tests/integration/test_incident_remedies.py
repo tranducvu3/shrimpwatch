@@ -53,6 +53,8 @@ def test_timeline_shows_the_remedy_and_suggestions(client):
     events = [e["event"] for e in body["timeline"]]
     assert "remedy_applied" in events and events.count("pump_state_change") >= 2  # failed, then repaired
     assert [s["remedy"] for s in body["suggested_remedies"]] == ["repair_aerator"]
+    assert set(body["links"]) == {"dashboard", "logs", "traces", "events"}
+    assert f"%40pond%3A{POND}" in body["links"]["logs"]
 
 
 def test_remedy_on_a_recovered_incident_is_rejected(client):
@@ -97,3 +99,8 @@ def test_timeline_of_an_active_incident_includes_pond_events_after_its_last_upda
     )
     events = [e["event"] for e in client.get(f"/incidents/{incident_id}/timeline").json()["timeline"]]
     assert "remedy_applied" in events
+
+
+def test_incident_list_is_limited(client):
+    assert client.get("/incidents", params={"limit": 0}).status_code == 422
+    assert len(client.get("/incidents", params={"limit": 1}).json()) <= 1

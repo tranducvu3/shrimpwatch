@@ -177,6 +177,62 @@
     button.btn.small { padding: 6px 12px; font-size: 13px; }
     .dd-opt { padding: 10px 12px; }
   }
+  /* Incident section: what needs the operator now, above the pond cards */
+  .incidents { margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .incidents-head { display: flex; align-items: baseline; gap: 8px; }
+  .incidents-head h2 { font-size: 16px; margin: 0; }
+  .inc-list { display: flex; flex-direction: column; gap: 6px; }
+  .inc-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left; width: 100%; cursor: pointer;
+    font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
+    border-left: 4px solid var(--warn); border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow);
+  }
+  .inc-row.critical { border-left-color: var(--crit); }
+  .inc-row.recovered { border-left-color: var(--ok); opacity: .8; }
+  .inc-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (hover: hover) { .inc-row:hover { background: var(--surface-2); } }
+  .inc-row .t { font-weight: 600; flex: 1 1 260px; min-width: 0; }
+  .inc-row .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .pill.state { color: var(--accent); background: var(--info-bg); }
+  button.incident { cursor: pointer; font: inherit; font-size: 13px; text-align: left; border: 0; width: 100%; }
+  button.incident[hidden] { display: none; }
+  /* Incident detail */
+  dialog.inc {
+    width: min(820px, calc(100% - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: 0 16px 48px rgba(16, 24, 40, .3);
+  }
+  dialog.inc::backdrop { background: rgba(15, 20, 25, .45); }
+  .inc-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .inc-top { display: flex; gap: 8px; align-items: flex-start; }
+  .inc-top h2 { font-size: 17px; margin: 0; }
+  .inc-head { flex: 1; min-width: 0; }
+  .inc-top .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .inc-desc { margin: 0; color: var(--text); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  .chip b { font-variant-numeric: tabular-nums; }
+  .chip.good { background: var(--ok-bg); color: var(--ok); } .chip.bad { background: var(--crit-bg); color: var(--crit); }
+  .chip.forecast { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+  .inc-section { display: flex; flex-direction: column; gap: 6px; }
+  .inc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .inc-body textarea {
+    width: 100%; min-height: 60px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text); font: inherit;
+  }
+  .inc-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .links a {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 4px 10px; border-radius: 6px; font-weight: 600;
+    border: 1px solid var(--border); color: var(--accent); text-decoration: none; font-size: 13px;
+  }
+  @media (hover: hover) { .links a:hover { background: var(--surface-2); } }
+  .tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .tl li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--surface-2); font-size: 13px; }
+  .tl time { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tl .sys { color: var(--muted); }
+  @media (max-width: 480px) {
+    dialog.inc { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; border: 0; }
+  }
+  @media (pointer: coarse) { .links a { min-height: 44px; } }
 </style>
 </head>
 <body>
@@ -199,8 +255,18 @@
     báo. DO đổi dần và đạt gần mức mới sau khoảng 20 phút; độ kiềm, TAN, nitrite được đo lại ngay khi bật hoặc tắt
     một điều kiện.
   </div>
+  <section class="incidents" id="incidents" aria-labelledby="incidents-title">
+    <div class="incidents-head">
+      <h2 id="incidents-title">Sự cố</h2>
+      <span class="muted" id="incidents-count"></span>
+    </div>
+    <div class="inc-list" id="inc-list"></div>
+  </section>
   <div class="grid" id="ponds"></div>
 </main>
+<dialog class="inc" id="inc-dialog" aria-labelledby="inc-title">
+  <div class="inc-body" id="inc-body"></div>
+</dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -341,7 +407,8 @@
     const refs = {};
 
     refs.pill = el("span", { class: "pill ok", text: "Bình thường" });
-    refs.incident = el("div", { class: "incident", hidden: "" });
+    refs.incident = el("button", { class: "incident", type: "button", hidden: "" });
+    refs.incident.addEventListener("click", () => refs.incidentId && openIncident(refs.incidentId));
     refs.readings = el("div", { class: "readings" });
     refs.cells = {};
     for (const r of READINGS) {
@@ -495,7 +562,8 @@
     if (incident) {
       refs.incident.hidden = false;
       refs.incident.className = "incident" + (incident.severity === "warning" ? " warning" : "");
-      refs.incident.textContent = `${STATES[incident.state] || incident.state} · ${incident.title}`;
+      refs.incident.textContent = `${STATES[incident.state] || incident.state} · ${incident.title} · xem chi tiết`;
+      refs.incidentId = incident._id;
     } else {
       refs.incident.hidden = true;
     }
@@ -542,15 +610,220 @@
     applyFilter();
   });
 
+
+  // ---------- Incidents: list, detail, actions ----------
+  const ROOT_CAUSES = {
+    pump_failure: "Quạt nước hỏng", do_out_of_range: "DO", temperature_out_of_range: "Nhiệt độ", ph_out_of_range: "pH",
+    salinity_out_of_range: "Độ mặn", orp_out_of_range: "ORP", nh3_out_of_range: "NH₃", co2_out_of_range: "CO₂",
+    tan_out_of_range: "TAN", nitrite_out_of_range: "Nitrite", alkalinity_out_of_range: "Độ kiềm",
+  };
+  // Next states the operator can pick (the API checks the same rules and answers 409 otherwise)
+  const NEXT = {
+    open: [["investigating", "Tiếp nhận, điều tra"], ["resolving", "Đang xử lý"], ["recovered", "Đóng: báo nhầm / đã ổn"]],
+    investigating: [["resolving", "Đang xử lý"], ["recovered", "Đóng: đã ổn"]],
+    resolving: [["investigating", "Điều tra lại"], ["recovered", "Đóng: đã ổn"]],
+    recovered: [],
+  };
+  const RECENT_RECOVERED_MS = 24 * 3600 * 1000;
+  let incidentList = [];
+  let openIncidentId = null;
+
+  // The API sends naive UTC ("2026-11-08T12:00:00"); accept an explicit Z or offset too
+  const toDate = (ts) => new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(ts) ? ts : ts + "Z");
+  const hhmm = (ts) => toDate(ts).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+  function fmtDuration(sec) {
+    if (sec == null) return "–";
+    const s = Math.round(sec);
+    if (s < 60) return `${s} giây`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return s % 60 ? `${m} phút ${s % 60} giây` : `${m} phút`;
+    return `${Math.floor(m / 60)} giờ ${m % 60} phút`;
+  }
+
+  function ago(ts) {
+    const min = Math.max(0, Math.round((Date.now() - toDate(ts)) / 60000));
+    return min < 1 ? "vừa xong" : min < 60 ? `${min} phút trước` : `${Math.floor(min / 60)} giờ trước`;
+  }
+
+  const pondName = (id) => (lastPonds.find((p) => p._id === id) || {}).name || id;
+
+  function renderIncidents(active, recovered) {
+    const recent = recovered.filter((i) => Date.now() - toDate(i.recovered_at || i.updated_at) < RECENT_RECOVERED_MS).slice(0, 5);
+    incidentList = [...active, ...recent];
+    $("#incidents-count").textContent = active.length
+      ? `${active.length} đang mở${recent.length ? ` · ${recent.length} đã hồi phục trong 24 giờ` : ""}`
+      : recent.length ? `Không có sự cố đang mở · ${recent.length} đã hồi phục trong 24 giờ` : "Không có sự cố trong 24 giờ";
+    $("#inc-list").replaceChildren(...incidentList.map((i) => {
+      const done = i.state === "recovered";
+      const row = el("button", { class: `inc-row ${done ? "recovered" : i.severity}`, type: "button" }, [
+        el("span", { class: `pill ${i.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[i.severity] || i.severity }),
+        el("span", { class: "pill state", text: STATES[i.state] || i.state }),
+        el("span", { class: "t", text: `${pondName(i.pond_id)} · ${i.title}` }),
+        el("span", { class: "when", text: done ? `hồi phục sau ${fmtDuration(seconds(i.created_at, i.recovered_at))}` : `mở ${hhmm(i.created_at)} · ${ago(i.created_at)}` }),
+      ]);
+      row.addEventListener("click", () => openIncident(i._id));
+      return row;
+    }));
+  }
+
+  const seconds = (a, b) => (a && b ? (toDate(b) - toDate(a)) / 1000 : null);
+
+  async function openIncident(id) {
+    openIncidentId = id;
+    const dialog = $("#inc-dialog");
+    if (!dialog.open) dialog.showModal();
+    await refreshDetail();
+  }
+
+  $("#inc-dialog").addEventListener("close", () => { openIncidentId = null; });
+  // Click on the backdrop closes the dialog
+  $("#inc-dialog").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); });
+
+  async function refreshDetail() {
+    if (!openIncidentId) return;
+    const note = $("#inc-note");
+    const draft = note ? note.value : "";
+    try {
+      renderDetail(await api("GET", `/incidents/${openIncidentId}/timeline`), draft);
+    } catch (e) {
+      toast(e.message, true);
+    }
+  }
+
+  function evidenceChips(inc) {
+    const ev = inc.evidence || {};
+    const notes = ev.notes || {};
+    const items = [
+      ["DO thấp nhất", ev.min_do, 2, "mg/L"],
+      ["DO giảm", ev.do_drop_rate_mg_per_l_per_min, 3, "mg/L/phút"],
+      ["Công suất quạt TB", ev.avg_pump_power_watts, 0, "W"],
+      ["ORP", ev.last_orp_mv, 0, "mV"],
+      ["NH₃", ev.nh3_mg_per_l, 3, "mg/L"],
+      ["Biên độ pH 24h", ev.ph_swing_24h, 2, ""],
+      ["Nhiệt độ TB", notes.avg_temperature, 1, "°C"],
+      ["pH TB", notes.avg_ph, 2, ""],
+      ["Độ mặn TB", notes.avg_salinity, 1, "ppt"],
+      ["CO₂", notes.co2, 1, "mg/L"],
+      ["TAN", notes.tan, 2, "mg/L"],
+      ["Nitrite", notes.nitrite, 2, "mg/L"],
+      ["Độ kiềm", notes.alkalinity, 0, "mg/L"],
+    ].filter(([, v]) => v != null);
+    const chips = items.map(([k, v, d, u]) => el("span", { class: "chip" }, [`${k}: `, el("b", { text: `${Number(v).toFixed(d)} ${u}`.trim() })]));
+    if (ev.minutes_to_do_critical != null && inc.state !== "recovered") {
+      chips.unshift(el("span", { class: "chip forecast", text: `Dự báo ≈ ${Math.round(ev.minutes_to_do_critical)} phút nữa DO < ${catalog.thresholds.do_critical} mg/L` }));
+    }
+    if (notes.detected_by === "ingest") chips.push(el("span", { class: "chip", text: "Phát hiện ngay khi nhận dữ liệu (quạt báo tắt 2 lần liên tiếp)" }));
+    return chips;
+  }
+
+  function timingChips(inc) {
+    const slo = catalog.thresholds.detection_slo_sec;
+    const chips = [];
+    if (inc.detection_delay_sec != null) {
+      chips.push(el("span", { class: `chip ${inc.detection_delay_sec <= slo ? "good" : "bad"}` },
+        ["Phát hiện sau ", el("b", { text: fmtDuration(inc.detection_delay_sec) }), " kể từ khi xảy ra lỗi"]));
+    }
+    chips.push(el("span", { class: "chip" }, ["Tiếp nhận sau ", el("b", { text: inc.acknowledged_at ? fmtDuration(seconds(inc.created_at, inc.acknowledged_at)) : "chưa tiếp nhận" })]));
+    if (inc.recovered_at) chips.push(el("span", { class: "chip good" }, ["Hồi phục sau ", el("b", { text: fmtDuration(seconds(inc.created_at, inc.recovered_at)) })]));
+    return chips;
+  }
+
+  const labelIn = (items, type) => (items.find((x) => x.type === type) || {}).label || type;
+
+  function timelineText(e) {
+    const d = e.details || {};
+    switch (e.event) {
+      case "incident_open": return ["Mở sự cố", `${SEVERITIES[d.severity] || d.severity} · ${d.title || ""}`];
+      case "incident_escalated": return ["Nâng mức", `${ROOT_CAUSES[d.from_root_cause] || d.from_root_cause} → ${ROOT_CAUSES[d.to_root_cause] || d.to_root_cause}`];
+      case "incident_action": return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
+      case "incident_recovered": return ["Tự hồi phục", "Worker xác nhận từ dữ liệu: DO an toàn, quạt chạy"];
+      case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
+      case "condition_start": return ["Bắt đầu điều kiện", labelIn(catalog.conditions, d.condition), true];
+      case "condition_clear": return ["Kết thúc điều kiện", d.condition === "all" ? "tất cả" : labelIn(catalog.conditions, d.condition), true];
+      case "scenario_start": return ["Bắt đầu kịch bản", METRIC[d.scenario] || d.scenario, true];
+      case "scenario_clear": return ["Kết thúc kịch bản", d.scenario === "all" ? "tất cả" : METRIC[d.scenario] || d.scenario, true];
+      case "remedy_applied": return ["Xử lý", labelIn(catalog.remedies, d.remedy), true];
+      default: return [e.event, ""];
+    }
+  }
+
+  function renderDetail(inc, draft) {
+    const active = inc.state !== "recovered";
+    const note = el("textarea", { id: "inc-note", placeholder: "Ghi chú: đã kiểm tra gì, làm gì (lưu vào sự cố)", "aria-label": "Ghi chú xử lý" });
+    note.value = draft || "";
+    const close = el("button", { class: "btn small", type: "button", text: "Đóng", "aria-label": "Đóng chi tiết sự cố" });
+    close.addEventListener("click", () => $("#inc-dialog").close());
+
+    const send = (button, fn, message) => act(button, async () => { await fn(); note.value = ""; }, message).then(refreshDetail);
+    const stateButtons = (NEXT[inc.state] || []).map(([state, label]) => {
+      const b = el("button", { class: `btn small${state === "recovered" ? "" : " primary"}`, type: "button", text: label });
+      b.addEventListener("click", () => send(b, () => api("PATCH", `/incidents/${inc._id}?state=${state}${note.value.trim() ? `&action=${encodeURIComponent(note.value.trim())}` : ""}`), `${pondName(inc.pond_id)}: ${STATES[state]}`));
+      return b;
+    });
+    if (active) {
+      const save = el("button", { class: "btn small", type: "button", text: "Lưu ghi chú" });
+      save.addEventListener("click", () => {
+        if (!note.value.trim()) return toast("Nhập ghi chú trước", true);
+        send(save, () => api("PATCH", `/incidents/${inc._id}?state=${inc.state}&action=${encodeURIComponent(note.value.trim())}`), "Đã lưu ghi chú");
+      });
+      stateButtons.push(save);
+    }
+    const remedyButtons = (inc.suggested_remedies || []).map((r) => {
+      const b = el("button", { class: "btn small primary", type: "button", text: r.label, title: r.description });
+      b.addEventListener("click", () => send(b, () => api("POST", `/incidents/${inc._id}/remedies/${r.remedy}${note.value.trim() ? `?note=${encodeURIComponent(note.value.trim())}` : ""}`), `${pondName(inc.pond_id)}: ${r.label}, chờ dữ liệu xác nhận hồi phục`));
+      return b;
+    });
+    const links = inc.links || {};
+    const linkItems = [["dashboard", "Dashboard ao"], ["logs", "Logs"], ["traces", "Traces"], ["events", "Events"]]
+      .filter(([k]) => links[k])
+      .map(([k, label]) => el("a", { href: links[k], target: "_blank", rel: "noopener" }, [`${label} ↗`]));
+
+    $("#inc-body").replaceChildren(
+      el("div", { class: "inc-top" }, [
+        el("div", { class: "inc-head" }, [
+          el("h2", { id: "inc-title", text: `${pondName(inc.pond_id)} · ${inc.title}` }),
+          el("div", { class: "meta" }, [
+            el("span", { class: `pill ${inc.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[inc.severity] || inc.severity }),
+            el("span", { class: "pill state", text: STATES[inc.state] || inc.state }),
+            el("span", { class: "muted", text: `${ROOT_CAUSES[inc.root_cause] || inc.root_cause || ""} · mở lúc ${hhmm(inc.created_at)} · ${inc._id}` }),
+          ]),
+        ]),
+        close,
+      ]),
+      el("p", { class: "inc-desc", text: inc.description }),
+      el("div", { class: "chips" }, timingChips(inc)),
+      el("div", { class: "inc-section" }, [el("span", { class: "label", text: "Bằng chứng" }), el("div", { class: "chips" }, evidenceChips(inc))]),
+      ...(active ? [el("div", { class: "inc-section" }, [
+        el("span", { class: "label", text: "Xử lý" }),
+        remedyButtons.length
+          ? el("div", { class: "inc-actions" }, [el("span", { class: "muted", text: "Đề xuất theo nguyên nhân:" }), ...remedyButtons])
+          : el("span", { class: "muted", text: "Chưa có cách xử lý đề xuất cho nguyên nhân này: ghi lại việc đã làm." }),
+        note,
+        el("div", { class: "inc-actions" }, stateButtons),
+        el("span", { class: "muted", text: "Sau khi xử lý, sự cố chuyển sang Đang xử lý; worker tự đóng khi dữ liệu cho thấy ao đã ổn." }),
+      ])] : []),
+      el("div", { class: "inc-section" }, [el("span", { class: "label", text: "Điều tra trên Datadog" }), el("div", { class: "inc-actions links" }, linkItems)]),
+      el("div", { class: "inc-section" }, [
+        el("span", { class: "label", text: "Dòng thời gian" }),
+        el("ol", { class: "tl" }, (inc.timeline || []).map((e) => {
+          const [what, detail, pondEvent] = timelineText(e);
+          return el("li", {}, [el("time", { text: hhmm(e.timestamp) }), el("span", { class: pondEvent ? "sys" : "" }, [el("b", { text: what }), detail ? ` · ${detail}` : ""])]);
+        })),
+      ]),
+    );
+  }
+
   async function refresh() {
     try {
-      const [ponds, readings, manual, open, investigating, resolving] = await Promise.all([
+      const [ponds, readings, manual, open, investigating, resolving, recovered] = await Promise.all([
         api("GET", "/ponds"),
         api("GET", "/ponds/readings"),
         api("GET", "/ponds/manual-readings"),
         api("GET", "/incidents?state=open"),
         api("GET", "/incidents?state=investigating"),
         api("GET", "/incidents?state=resolving"),
+        api("GET", "/incidents?state=recovered&limit=10"),
       ]);
       const incidents = {};
       for (const i of [...open, ...investigating, ...resolving]) incidents[i.pond_id] = i;
@@ -571,6 +844,9 @@
         updateCard(cards.get(pond._id), pond, pondReadings, incidents[pond._id]);
       }
       if (added) applyFilter();
+      renderIncidents([...open, ...investigating, ...resolving].sort((a, b) => toDate(b.created_at) - toDate(a.created_at)), recovered);
+      // Keep an open detail current, but never under the operator's cursor while they type a note
+      if (openIncidentId && document.activeElement?.id !== "inc-note") refreshDetail();
       $("#health-dot").className = "dot ok";
       $("#health-text").textContent = `${ponds.length} ao`;
       $("#updated").textContent = `Cập nhật lúc ${new Date().toLocaleTimeString("vi-VN")}`;

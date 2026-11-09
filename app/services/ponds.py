@@ -191,6 +191,7 @@ def scenario_catalog() -> dict:
             "nitrite_warn": settings.NITRITE_WARN,
             "tan_warn": settings.TAN_WARN,
             "pump_failed_max_watts": settings.PUMP_FAILED_MAX_WATTS,
+            "detection_slo_sec": settings.DETECTION_SLO_SEC,
         },
     }
 

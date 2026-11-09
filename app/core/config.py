@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     DD_SITE: str = "datadoghq.com"
     DD_ENV: str = "development"
     DD_SERVICE: str = "shrimpwatch"
+    # Dashboard id (from its URL or `python -m app.cli.datadog_push`): the incident panel links straight to it
+    DD_DASHBOARD_ID: str = ""
 
     DD_AGENT_HOST: str = "localhost"
     DD_TRACE_AGENT_PORT: int = 8126
