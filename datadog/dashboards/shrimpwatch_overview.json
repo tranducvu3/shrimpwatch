@@ -174,7 +174,7 @@
               "title_size": "16",
               "title_align": "left",
               "time": {"type": "live", "unit": "minute", "value": 2},
-              "has_search_bar": "never",
+              "has_search_bar": "always",
               "requests": [
                 {
                   "response_format": "scalar",
@@ -290,7 +290,7 @@
               "title_size": "16",
               "title_align": "left",
               "time": {"type": "live", "unit": "minute", "value": 2},
-              "has_search_bar": "never",
+              "has_search_bar": "always",
               "requests": [
                 {
                   "response_format": "scalar",

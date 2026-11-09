@@ -109,6 +109,8 @@ def test_dashboard_tables_read_the_series_the_worker_sends():
             # Datadog fills a gap for 5 minutes by default: an ended incident would stay on the table
             assert query.endswith(".fill(null)")
             assert set(group_by) <= sent_tags
+    # Both tables can be searched like the control panel list
+    assert widgets[801]["has_search_bar"] == widgets[802]["has_search_bar"] == "always"
     # Links only use the grouped tags, and a host placeholder that datadog_push fills in
     for link in widgets[801]["custom_links"] + widgets[802]["custom_links"]:
         assert link["link"].startswith(("$DD_APP_URL/", "$PUBLIC_BASE_URL/"))
