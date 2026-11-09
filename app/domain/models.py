@@ -103,3 +103,7 @@ class Incident(BaseModel):
     detection_delay_sec: float | None = None
     acknowledged_at: datetime | None = None
     recovered_at: datetime | None = None
+    # Remedies applied since the last "investigate again", and the check of the latest one
+    # ({metric, baseline, applied_at, outcome[, value, checked_at]}, see services.incidents.check_remedy)
+    remedies: list[str] = []
+    remedy_check: dict | None = None

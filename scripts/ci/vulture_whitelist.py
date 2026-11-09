@@ -40,3 +40,5 @@ Incident.acknowledged_at
 Incident.recovered_at
 # Pydantic field: the DO forecast stored in incidents.evidence (shown in the incident panel and farmer alert email).
 IncidentEvidence.minutes_to_do_critical
+# Pydantic field: the check of the latest remedy, written by services.incidents and shown in the incident detail.
+Incident.remedy_check

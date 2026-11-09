@@ -350,7 +350,7 @@ Open [http://localhost:8000/control](http://localhost:8000/control) to create ab
   | Heavy rain (*Mưa lớn*) | salinity −6 ppt, temperature −2 °C, pH −0.4, alkalinity −30 | NH₃ ↓, CO₂ ↑ |
   | Hot sun (*Nắng nóng*) | temperature +4 °C, DO −1, pH +0.3 | ORP ↓, NH₃ ↑, CO₂ ↓ |
   | Overfeeding (*Cho ăn dư*) | DO −1.5, pH −0.2, TAN +1.2, nitrite +0.6 | ORP ↓, NH₃ ↑, CO₂ ↑ |
-  | Algae bloom (*Tảo nở hoa*) | pH +0.6, DO +1 | ORP ↑, NH₃ ↑, CO₂ ↓ |
+  | Algae bloom (*Tảo phát triển*) | pH +0.6, DO +1 | ORP ↑, NH₃ ↑, CO₂ ↓ |
   | Aerator failure (*Quạt nước hỏng*) | aerator stops: power 0 W, DO falls steadily | ORP ↓ |
   | Cloudy weather (*Trời âm u*) | DO −1.5, pH −0.3, temperature −1 °C | ORP ↓, NH₃ ↓, CO₂ ↑ |
   | High stocking density (*Mật độ nuôi cao*) | DO −1.5, pH −0.15, TAN +0.6, nitrite +0.2 | ORP ↓, NH₃ ↑, CO₂ ↑ |

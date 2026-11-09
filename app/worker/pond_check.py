@@ -103,3 +103,6 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
         incident_service.open_or_update(pond_id, finding, evidence)
     elif has_recovered(snapshot, thresholds):
         incident_service.auto_recover(pond_id)
+        return
+    # After a remedy: back to normal, or (a minute later) is the root-cause metric getting better?
+    incident_service.check_remedy(pond_id, now, still_abnormal=finding is not None)

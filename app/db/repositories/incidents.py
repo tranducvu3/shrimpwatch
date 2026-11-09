@@ -74,6 +74,23 @@ def set_state(
     incidents_collection().update_one({"_id": incident_id}, update)
 
 
+def add_remedy(incident_id: str, remedy: str, check: dict[str, Any]) -> None:
+    """Record a remedy as applied (once) and restart the check of whether it works."""
+    incidents_collection().update_one(
+        {"_id": incident_id},
+        {"$addToSet": {"remedies": remedy}, "$set": {"updated_at": utcnow(), "remedy_check": check}},
+    )
+
+
+def set_remedy_outcome(incident_id: str, applied_at: datetime, fields: dict[str, Any]) -> bool:
+    """Write the check's result; False when the operator applied another remedy or reinvestigated meanwhile."""
+    result = incidents_collection().update_one(
+        {"_id": incident_id, "state": IncidentState.RESOLVING.value, "remedy_check.applied_at": applied_at},
+        {"$set": {"updated_at": utcnow(), **{f"remedy_check.{k}": v for k, v in fields.items()}}},
+    )
+    return result.modified_count == 1
+
+
 def timeline(incident_id: str) -> dict | None:
     rows = list(incidents_collection().aggregate(incident_timeline_pipeline(incident_id)))
     return rows[0] if rows else None
