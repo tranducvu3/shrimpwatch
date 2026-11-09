@@ -230,10 +230,9 @@
   .picker .dd { flex: 1 1 260px; min-width: 0; }
   .inc .dd-menu { position: static; margin-top: 4px; max-height: none; box-shadow: none; }
   .dd-opt.suggested { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
-  .dd-opt.applied { cursor: default; }
+  .picker .dd-btn.locked { flex: 1 1 260px; min-width: 0; cursor: not-allowed; background: var(--surface-2); color: var(--muted); }
   .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
   .tag.hl { color: var(--accent-text); background: var(--accent); }
-  .tag.done { color: var(--ok); background: var(--ok-bg); }
   button.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
   button.btn.ghost.danger { color: var(--crit); }
   button.link {
@@ -825,10 +824,9 @@
     return `. ${when} ${METRIC[check.metric] || check.metric} có cải thiện không${start}.`;
   }
 
-  // Every remedy as a checklist, the ones that fit the root cause first and highlighted; applied ones stay ticked
+  // Every remedy as a checklist, the ones that fit the root cause first and highlighted
   function remedyPicker(inc, onApply) {
     const suggested = (inc.suggested_remedies || []).map((r) => r.remedy);
-    const applied = new Set(inc.remedies || []);
     const rank = (type) => (suggested.includes(type) ? suggested.indexOf(type) : suggested.length);
     const all = [...catalog.remedies].sort((a, b) => rank(a.type) - rank(b.type));
     const picked = (detailUi.picked ??= new Set());
@@ -838,23 +836,17 @@
       const names = all.filter((r) => picked.has(r.type)).map((r) => r.label);
       const hint = suggested.length ? ` · đề xuất: ${suggested.map((t) => labelIn(catalog.remedies, t)).join(", ")}` : "";
       value.className = `dd-value${names.length ? "" : " placeholder"}`;
-      value.textContent = names.length ? names.join(", ") : `${applied.size ? "Thêm cách xử lý" : "Chọn cách xử lý"}${hint}`;
+      value.textContent = names.length ? names.join(", ") : `Chọn cách xử lý${hint}`;
       apply.textContent = picked.size > 1 ? `Áp dụng (${picked.size})` : "Áp dụng";
     };
     const options = all.map((r) => {
-      const done = applied.has(r.type);
       const box = el("input", { type: "checkbox", value: r.type });
-      box.checked = done || picked.has(r.type);
-      box.disabled = done;
+      box.checked = picked.has(r.type);
       box.addEventListener("change", () => { box.checked ? picked.add(r.type) : picked.delete(r.type); sync(); });
-      return el("label", { class: `dd-opt${suggested.includes(r.type) ? " suggested" : ""}${done ? " applied" : ""}` }, [
+      return el("label", { class: `dd-opt${suggested.includes(r.type) ? " suggested" : ""}` }, [
         box,
         el("span", { class: "dd-text" }, [
-          el("span", { class: "name" }, [
-            r.label,
-            suggested.includes(r.type) ? el("span", { class: "tag hl", text: "Đề xuất" }) : null,
-            done ? el("span", { class: "tag done", text: "Đã áp dụng" }) : null,
-          ]),
+          el("span", { class: "name" }, [r.label, suggested.includes(r.type) ? el("span", { class: "tag hl", text: "Đề xuất" }) : null]),
           el("span", { class: "sub", text: r.description }),
         ]),
       ]);
@@ -875,7 +867,7 @@
       case "incident_open": return ["Mở sự cố", `${SEVERITIES[d.severity] || d.severity} · ${d.title || ""}`];
       case "incident_escalated": return ["Nâng mức", `${ROOT_CAUSES[d.from_root_cause] || d.from_root_cause} → ${ROOT_CAUSES[d.to_root_cause] || d.to_root_cause}`];
       case "incident_action":
-        if (d.state === "investigating" && d.from_state === "resolving") return ["Điều tra lại", d.action || ""];
+        if (d.state === "investigating" && d.from_state === "resolving") return ["Xử lý lại", d.action || ""];
         return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
       case "incident_recovered": return ["Xử lý xong", "Dữ liệu xác nhận ao đã ổn: DO an toàn, quạt chạy"];
       case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
@@ -941,6 +933,8 @@
         continue;
       }
       const [what, detail, sys] = timelineText(e);
+      const retried = e.event === "incident_action" && d.state === "investigating" && d.from_state === "resolving";
+      if (retried && current.remedies.length && !current.result) current.result = { cls: "muted", text: "đã dừng, chọn cách khác" };
       if (e.event === "incident_recovered") {
         if (current.remedies.length && !current.result) current.result = { cls: "good", text: "✓ hiệu quả" };
         finalRow = { ts: e.timestamp, what, detail };
@@ -1028,15 +1022,20 @@
     const appliedNames = (inc.remedies || []).map((t) => labelIn(catalog.remedies, t)).join(", ");
     let statusText;
     let main;
+    // Back to Investigating: the API clears the remedies, so the dropdown opens again for a new attempt
+    const retry = (cls) => button(cls, "Xử lý lại", (b) => {
+      detailUi.picked = new Set();
+      send(b, () => setState("investigating"), `${pond}: chọn cách xử lý mới`);
+    });
+    // While a remedy runs or after it failed, the dropdown only shows what was applied
+    const locked = el("div", { class: "dd-btn locked", "aria-disabled": "true", title: "Bấm Xử lý lại để chọn cách khác" },
+      [el("span", { class: "dd-value", text: appliedNames })]);
     if (status === "failed") {
       statusText = `${appliedNames} chưa có tác dụng: ${metricChange(check.metric, check.baseline, check.value)} sau ${fmtDuration(seconds(check.applied_at, check.checked_at))}. Tìm nguyên nhân khác rồi chọn cách xử lý mới.`;
-      main = el("div", { class: "inc-actions" }, [button("primary", "Điều tra lại", (b) => {
-        detailUi.picked = new Set();
-        send(b, () => setState("investigating"), `${pond}: điều tra lại, chọn cách xử lý mới`);
-      })]);
+      main = el("div", { class: "picker" }, [locked, retry("primary")]);
     } else if (status === "doing") {
       statusText = `${appliedNames}${remedyProgress(check, checkSec)}`;
-      main = remedyPicker(inc, applyRemedies);
+      main = el("div", { class: "picker" }, [locked, retry("")]);
     } else {
       statusText = "Chọn một hoặc nhiều cách xử lý. Cách phù hợp với nguyên nhân được đánh dấu Đề xuất.";
       main = remedyPicker(inc, applyRemedies);
