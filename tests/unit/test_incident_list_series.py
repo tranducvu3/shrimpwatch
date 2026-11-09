@@ -106,6 +106,7 @@ def test_dashboard_tables_read_the_series_the_worker_sends():
     for queries, sent_tags in ((open_queries, open_tags), (recovered_queries, recovered_tags)):
         for query in queries:
             group_by = re.search(r" by \{([^}]*)\}", query).group(1).split(",")
+            assert group_by[0] == "incident_id"  # first column, the id shown in the control panel
             # Datadog fills a gap for 5 minutes by default: an ended incident would stay on the table
             assert query.endswith(".fill(null)")
             assert set(group_by) <= sent_tags

@@ -183,19 +183,19 @@
                       "name": "open",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:open,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:open,$trang_trai,$ao} by {incident_id,pond,title,opened_at}.fill(null)"
                     },
                     {
                       "name": "investigating",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:investigating,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:investigating,$trang_trai,$ao} by {incident_id,pond,title,opened_at}.fill(null)"
                     },
                     {
                       "name": "resolving",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.open_minutes{state:resolving,$trang_trai,$ao} by {pond,title,opened_at,incident_id}.fill(null)"
+                      "query": "max:shrimpwatch.incident.open_minutes{state:resolving,$trang_trai,$ao} by {incident_id,pond,title,opened_at}.fill(null)"
                     }
                   ],
                   "formulas": [
@@ -299,7 +299,7 @@
                       "name": "recovered",
                       "data_source": "metrics",
                       "aggregator": "last",
-                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {pond,title,opened_at,recovered_at,incident_id}.fill(null)"
+                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {incident_id,pond,title,opened_at,recovered_at}.fill(null)"
                     }
                   ],
                   "formulas": [
