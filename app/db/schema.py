@@ -114,6 +114,8 @@ def _init_incidents(db: Database, force: bool) -> None:
     incidents.create_index([("pond_id", 1), ("state", 1)])
     incidents.create_index([("state", 1), ("created_at", -1)])
     incidents.create_index([("created_at", -1)])
+    # Incidents recovered in the last 24 hours, listed by the worker every cycle for the Datadog table
+    incidents.create_index([("state", 1), ("recovered_at", -1)])
     # At most one active incident per pond, enforced by MongoDB: the ingest check and the worker can both open one.
     try:
         incidents.create_index(

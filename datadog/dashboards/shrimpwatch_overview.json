@@ -116,6 +116,242 @@
       "layout": {"x": 0, "y": 0, "width": 12, "height": 3}
     },
     {
+      "id": 8,
+      "definition": {
+        "type": "group",
+        "layout_type": "ordered",
+        "title": "Sự cố: đang mở và đã hồi phục trong 24 giờ",
+        "show_title": true,
+        "widgets": [
+          {
+            "id": 803,
+            "definition": {
+              "type": "query_value",
+              "title": "Đang mở",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"type": "live", "unit": "minute", "value": 2},
+              "autoscale": true,
+              "precision": 0,
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "count_not_null(query1)"
+                    }
+                  ],
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.open_minutes{$trang_trai,$ao} by {incident_id}"
+                    }
+                  ],
+                  "conditional_formats": [
+                    {
+                      "comparator": ">",
+                      "value": 0,
+                      "palette": "white_on_red"
+                    },
+                    {
+                      "comparator": "<=",
+                      "value": 0,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ]
+            },
+            "layout": {"x": 0, "y": 0, "width": 2, "height": 3}
+          },
+          {
+            "id": 801,
+            "definition": {
+              "type": "query_table",
+              "title": "Sự cố đang mở: số phút kể từ khi mở, theo trạng thái xử lý",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"type": "live", "unit": "minute", "value": 2},
+              "has_search_bar": "never",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "open",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.open_minutes{state:open,$trang_trai,$ao} by {pond,title,incident_id}"
+                    },
+                    {
+                      "name": "investigating",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.open_minutes{state:investigating,$trang_trai,$ao} by {pond,title,incident_id}"
+                    },
+                    {
+                      "name": "resolving",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.open_minutes{state:resolving,$trang_trai,$ao} by {pond,title,incident_id}"
+                    }
+                  ],
+                  "formulas": [
+                    {
+                      "formula": "open",
+                      "alias": "Mở, chưa tiếp nhận (phút)",
+                      "limit": {"count": 50, "order": "desc"},
+                      "conditional_formats": [{"comparator": ">=", "value": 0, "palette": "white_on_red"}]
+                    },
+                    {
+                      "formula": "investigating",
+                      "alias": "Đang điều tra (phút)",
+                      "conditional_formats": [{"comparator": ">=", "value": 0, "palette": "black_on_light_yellow"}]
+                    },
+                    {
+                      "formula": "resolving",
+                      "alias": "Đang xử lý (phút)",
+                      "conditional_formats": [{"comparator": ">=", "value": 0, "palette": "black_on_light_green"}]
+                    }
+                  ]
+                }
+              ],
+              "custom_links": [
+                {
+                  "label": "Xử lý trong bảng điều khiển",
+                  "link": "$PUBLIC_BASE_URL/control?ao={{pond.value}}"
+                },
+                {
+                  "label": "Sự kiện của sự cố",
+                  "link": "$DD_APP_URL/event/explorer?query=incident_id%3A{{incident_id.value}}"
+                },
+                {
+                  "label": "Logs của ao",
+                  "link": "$DD_APP_URL/logs?query=service%3Ashrimpwatch%20%40pond%3A{{pond.value}}"
+                },
+                {
+                  "label": "Traces của ao",
+                  "link": "$DD_APP_URL/apm/traces?query=service%3Ashrimpwatch%20%40pond%3A{{pond.value}}"
+                }
+              ]
+            },
+            "layout": {"x": 2, "y": 0, "width": 10, "height": 3}
+          },
+          {
+            "id": 804,
+            "definition": {
+              "type": "query_value",
+              "title": "Đã hồi phục trong 24 giờ",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"type": "live", "unit": "minute", "value": 2},
+              "autoscale": true,
+              "precision": 0,
+              "requests": [
+                {
+                  "formulas": [
+                    {
+                      "formula": "count_not_null(query1)"
+                    }
+                  ],
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {incident_id}"
+                    }
+                  ],
+                  "conditional_formats": [
+                    {
+                      "comparator": ">",
+                      "value": 0,
+                      "palette": "white_on_gray"
+                    },
+                    {
+                      "comparator": "<=",
+                      "value": 0,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ]
+            },
+            "layout": {"x": 0, "y": 3, "width": 2, "height": 3}
+          },
+          {
+            "id": 802,
+            "definition": {
+              "type": "query_table",
+              "title": "Sự cố đã hồi phục trong 24 giờ: mở bao lâu thì hồi phục",
+              "title_size": "16",
+              "title_align": "left",
+              "time": {"type": "live", "unit": "minute", "value": 2},
+              "has_search_bar": "never",
+              "requests": [
+                {
+                  "response_format": "scalar",
+                  "queries": [
+                    {
+                      "name": "recovered",
+                      "data_source": "metrics",
+                      "aggregator": "last",
+                      "query": "max:shrimpwatch.incident.recovered_minutes{$trang_trai,$ao} by {pond,title,incident_id}"
+                    }
+                  ],
+                  "formulas": [
+                    {
+                      "formula": "recovered",
+                      "alias": "Hồi phục sau (phút)",
+                      "limit": {"count": 50, "order": "desc"},
+                      "conditional_formats": [{"comparator": ">=", "value": 0, "palette": "white_on_green"}]
+                    }
+                  ]
+                }
+              ],
+              "custom_links": [
+                {
+                  "label": "Xử lý trong bảng điều khiển",
+                  "link": "$PUBLIC_BASE_URL/control?ao={{pond.value}}"
+                },
+                {
+                  "label": "Sự kiện của sự cố",
+                  "link": "$DD_APP_URL/event/explorer?query=incident_id%3A{{incident_id.value}}"
+                },
+                {
+                  "label": "Logs của ao",
+                  "link": "$DD_APP_URL/logs?query=service%3Ashrimpwatch%20%40pond%3A{{pond.value}}"
+                },
+                {
+                  "label": "Traces của ao",
+                  "link": "$DD_APP_URL/apm/traces?query=service%3Ashrimpwatch%20%40pond%3A{{pond.value}}"
+                }
+              ]
+            },
+            "layout": {"x": 2, "y": 3, "width": 10, "height": 3}
+          },
+          {
+            "id": 805,
+            "definition": {
+              "type": "note",
+              "content": "Giống danh sách **Sự cố** trong bảng điều khiển, cập nhật mỗi 30 giây. Tên sự cố bắt đầu bằng *sự_cố* là nghiêm trọng, *cảnh_báo* là cảnh báo. Bấm vào một dòng để mở bảng điều khiển của ao (tiếp nhận, xử lý), sự kiện của sự cố, logs hoặc traces. Sự cố vừa đổi trạng thái có thể hiện ở cả hai cột trong tối đa 2 phút.",
+              "background_color": "white",
+              "font_size": "14",
+              "text_align": "left",
+              "vertical_align": "center",
+              "show_tick": false,
+              "has_padding": true
+            },
+            "layout": {"x": 0, "y": 6, "width": 12, "height": 1}
+          }
+        ]
+      },
+      "layout": {"x": 0, "y": 3, "width": 12, "height": 7}
+    },
+    {
       "id": 6,
       "definition": {
         "type": "group",
@@ -357,7 +593,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 3, "width": 12, "height": 7}
+      "layout": {"x": 0, "y": 10, "width": 12, "height": 7}
     },
     {
       "id": 2,
@@ -513,7 +749,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 10, "width": 12, "height": 7}
+      "layout": {"x": 0, "y": 17, "width": 12, "height": 7}
     },
     {
       "id": 3,
@@ -638,7 +874,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 17, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 24, "width": 12, "height": 5}
     },
     {
       "id": 4,
@@ -783,7 +1019,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 22, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 29, "width": 12, "height": 5}
     },
     {
       "id": 5,
@@ -1069,7 +1305,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 27, "width": 12, "height": 9}
+      "layout": {"x": 0, "y": 34, "width": 12, "height": 9}
     },
     {
       "id": 7,
@@ -1180,7 +1416,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 36, "width": 12, "height": 3}
+      "layout": {"x": 0, "y": 43, "width": 12, "height": 3}
     }
   ]
 }

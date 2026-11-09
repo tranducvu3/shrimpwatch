@@ -148,3 +148,29 @@ def test_escalation_text_names_both_severities_and_omits_an_unset_link(sent, mon
         "- Sửa quạt nước",
         "%%%",
     ]
+
+
+def test_worker_reports_active_and_recently_recovered_incidents(monkeypatch):
+    """The Datadog incident table lists what the control panel lists: active, and recovered in the last 24 hours."""
+    gauges = []
+    monkeypatch.setattr(incident_service, "gauge", lambda name, value, tags=None: gauges.append((name, value, tags)))
+    pond = "pond-list"  # not used by other tests: it ends with an active incident until the cleanup below
+    old_id = incident_service.open_or_update(pond, WARNING, IncidentEvidence(min_do=5.0))
+    incident_service.auto_recover(pond)
+    long_ago = utcnow() - timedelta(hours=25)
+    incidents_collection().update_one({"_id": old_id}, {"$set": {"created_at": long_ago, "recovered_at": long_ago}})
+    recent_id = incident_service.open_or_update(pond, WARNING, IncidentEvidence(min_do=5.0))
+    incident_service.auto_recover(pond)
+    active_id = incident_service.open_or_update(pond, CRITICAL, IncidentEvidence(min_do=4.0))
+
+    incident_service.report_active([pond])
+
+    by_id = {tags["incident_id"]: (name, tags) for name, _, tags in gauges if "incident_id" in (tags or {})}
+    assert old_id not in by_id
+    assert by_id[recent_id][0] == "incident.recovered_minutes"
+    assert by_id[active_id] == (
+        "incident.open_minutes",
+        {"pond": pond, "severity": "critical", "state": "open", "title": "quat_hong", "incident_id": active_id},
+    )
+    assert ("incident.active", 1, {"pond": pond}) in gauges
+    incident_service.auto_recover(pond)

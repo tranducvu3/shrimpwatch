@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from app.core.config import settings
+from app.core.datadog_links import app_base_url
 from app.core.log import get_logger
 
 logger = get_logger("datadog_push")
@@ -85,11 +86,40 @@ def with_notify_handles(payload: dict, emails: Sequence[str]) -> dict:
     return {**payload, "message": f"{payload.get('message', '')}\n\n{handles}"}
 
 
+def link_bases() -> dict[str, str]:
+    """Placeholders the dashboard JSON uses in widget custom links (the repo cannot know the hosts)."""
+    return {"$DD_APP_URL": app_base_url(), "$PUBLIC_BASE_URL": settings.PUBLIC_BASE_URL.rstrip("/")}
+
+
+def with_link_bases(payload: dict, bases: dict[str, str]) -> dict:
+    """Fill the placeholders in every widget's custom links; a link whose base is not configured is dropped."""
+
+    def fill(widget: dict) -> dict:
+        definition = dict(widget["definition"])
+        if "widgets" in definition:
+            definition["widgets"] = [fill(w) for w in definition["widgets"]]
+        if "custom_links" in definition:
+            definition["custom_links"] = [
+                {**link, "link": url} for link in definition["custom_links"] if (url := fill_url(link["link"]))
+            ]
+        return {**widget, "definition": definition}
+
+    def fill_url(url: str) -> str:
+        for placeholder, base in bases.items():
+            if url.startswith(placeholder):
+                return f"{base}{url[len(placeholder) :]}" if base else ""
+        return url
+
+    return {**payload, "widgets": [fill(w) for w in payload.get("widgets", [])]}
+
+
 def _push(kind: str, path: Path, emails: Sequence[str] = ()):
     """kind: 'dashboard', 'monitor' or 'slo' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if kind == "monitor":
         payload = with_notify_handles(payload, emails)
+    elif kind == "dashboard":
+        payload = with_link_bases(payload, link_bases())
     existing = _existing_id(kind, payload)
     if existing is None:
         resp = httpx.post(f"{_base_url()}/{kind}", headers=_headers(), json=payload, timeout=30)

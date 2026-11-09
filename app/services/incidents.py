@@ -9,7 +9,7 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.datadog_links import incident_links
 from app.core.log import get_logger
-from app.core.telemetry import distribution, event, gauge, increment, set_span_tags
+from app.core.telemetry import distribution, event, gauge, increment, set_span_tags, tag_value
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
 from app.domain.conditions import REMEDIES, Remedy
@@ -288,11 +288,57 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     }
 
 
+# The Datadog incident table lists what the control panel lists: active incidents and those recovered in 24 hours
+RECENT_RECOVERED = timedelta(hours=24)
+
+
+def _minutes(start: datetime, end: datetime) -> float:
+    return round((end - start).total_seconds() / 60, 1)
+
+
+def incident_list_series(active: list[dict], recovered: list[dict], now: datetime) -> list[tuple[str, float, dict]]:
+    """One gauge per listed incident, so a Datadog query table can show the control panel's incident list.
+
+    Active: incident.open_minutes = minutes since it opened, tagged with its state. Recovered:
+    incident.recovered_minutes = minutes it took to recover. The incident id tag keeps repeats of the same
+    cause in one pond on separate rows.
+    """
+    series = []
+    for inc in active:
+        if inc.get("created_at"):  # a malformed document must not stop the other rows
+            series.append(("incident.open_minutes", _minutes(inc["created_at"], now), _list_tags(inc)))
+    for inc in recovered:
+        if inc.get("created_at") and inc.get("recovered_at"):
+            series.append(
+                ("incident.recovered_minutes", _minutes(inc["created_at"], inc["recovered_at"]), _list_tags(inc))
+            )
+    return series
+
+
+def _list_tags(incident: dict) -> dict:
+    return {
+        "pond": incident["pond_id"],
+        "severity": incident.get("severity"),
+        "state": incident["state"],
+        "title": tag_value(incident.get("title") or ""),
+        "incident_id": incident["_id"],
+    }
+
+
 def report_active(pond_ids: list[str]) -> None:
-    """0/1 gauge per pond per cycle: the dashboard counts CURRENTLY active incidents (the incident.open counter only counts openings)."""
-    active = incidents_repo.active_pond_ids()
+    """Sent every worker cycle, so Datadog shows what is CURRENTLY going on (incident.open only counts openings).
+
+    incident.active: 0/1 per pond, for the counts. incident.open_minutes / recovered_minutes: one series per
+    incident, for the incident table; a series stops when its incident leaves the list.
+    """
+    now = utcnow()
+    active = incidents_repo.list_active()
+    active_ponds = {inc["pond_id"] for inc in active}
     for pid in pond_ids:
-        gauge("incident.active", 1 if pid in active else 0, tags={"pond": pid})
+        gauge("incident.active", 1 if pid in active_ponds else 0, tags={"pond": pid})
+    recovered = incidents_repo.recovered_since(now - RECENT_RECOVERED)
+    for metric, value, tags in incident_list_series(active, recovered, now):
+        gauge(metric, value, tags=tags)
 
 
 def list_incidents(state: IncidentState | None = None, limit: int = 50) -> list[dict]:

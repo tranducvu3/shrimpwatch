@@ -20,10 +20,22 @@ def find_active(pond_id: str) -> dict | None:
     return incidents_collection().find_one({"pond_id": pond_id, "state": {"$in": [s.value for s in ACTIVE_STATES]}})
 
 
+_PANEL_FIELDS = {"pond_id": 1, "state": 1, "severity": 1, "title": 1, "created_at": 1, "recovered_at": 1}
+
+
+def list_active() -> list[dict]:
+    """Unrecovered incidents (at most 1 per pond, so few rows), with the fields the incident lists show."""
+    return list(incidents_collection().find({"state": {"$in": [s.value for s in ACTIVE_STATES]}}, _PANEL_FIELDS))
+
+
 def active_pond_ids() -> set[str]:
-    """Ponds with an unrecovered incident (at most 1 incident per pond, so few rows)."""
-    cursor = incidents_collection().find({"state": {"$in": [s.value for s in ACTIVE_STATES]}}, {"pond_id": 1})
-    return {doc["pond_id"] for doc in cursor}
+    return {doc["pond_id"] for doc in list_active()}
+
+
+def recovered_since(since: datetime, limit: int = 100) -> list[dict]:
+    """Incidents recovered since `since`, newest first (index state + recovered_at)."""
+    query = {"state": IncidentState.RECOVERED.value, "recovered_at": {"$gte": since}}
+    return list(incidents_collection().find(query, _PANEL_FIELDS).sort("recovered_at", -1).limit(limit))
 
 
 def list_recent(state: IncidentState | None = None, limit: int = 50) -> list[dict]:
