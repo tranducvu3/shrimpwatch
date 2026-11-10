@@ -174,7 +174,14 @@
   }
   /* Handling status: Chưa xử lý -> Đang xử lý -> Xử lý xong, or Xử lý không thành công */
   .pill.status-todo { color: var(--muted); background: var(--surface-2); }
-  .pill.status-doing { color: var(--accent); background: var(--info-bg); }
+  .pill.status-doing { color: var(--accent); background: var(--info-bg); display: inline-flex; align-items: center; gap: 6px; }
+  /* Spinner: the remedy is running until the worker's check passes or fails */
+  .pill.status-doing::before {
+    content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .pill.status-doing::before { animation-duration: 2.4s; } }
   .pill.status-done { color: var(--ok); background: var(--ok-bg); }
   .pill.status-failed { color: var(--crit); background: var(--crit-bg); }
   button.incident { cursor: pointer; font: inherit; font-size: 13px; text-align: left; border: 0; width: 100%; }
