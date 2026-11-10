@@ -393,7 +393,6 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
 | DO forecast | Datadog seasonal `forecast()` of DO (daily seasonality, so it learns the day/night cycle) reaches ≤ 4 mg/L (warning) or ≤ 3 mg/L (critical) within the next 12 hours, the shortest horizon Datadog allows; it needs a few days of history before it is meaningful | Early warning for the night-time dip; the worker's minute-level forecast opens `do_out_of_range` when ≤ 30 min remain |
-
 | Toxic NH₃ | `nh3` > 0.1 mg/L | `nh3_out_of_range` (warning) |
 | Low ORP | `orp` < 100 mV | `orp_out_of_range` (warning) |
 | High CO₂ | `co2` > 10 mg/L | `co2_out_of_range` (warning) |
@@ -498,7 +497,7 @@ The action notes above are the Vietnamese strings that `demo_incident` sends: "C
 | 12:03:24 | **Low salinity** monitor goes *Triggered* on `pond:pond-03` | Datadog |
 | 12:03:56 | **The same** pond 1 incident is escalated to `critical / pump_failure` (5-minute average power 0 W), with an `incident_escalated` event — no duplicate incident opened | Worker |
 | 12:04:59 | **Fast DO drop** monitor goes *Triggered* on `pond:pond-01` | Datadog |
-| 12:05:10 | Moved to `investigating` → Atlas Vector Search suggests past incident `hist-pump-01` (score 0.70) with its handling "Replaced the aerator capacitor, restarted the aerator" and a recovery time of 30 minutes | API + `$vectorSearch` |
+| 12:05:10 | Moved to `investigating` → Atlas Vector Search suggests past incident `hist-pump-01` (score 0.70) with its handling "Replaced the aerator capacitor, restarted the aerator" and a recovery time of 30 minutes (this suggestion was removed later, see [Declaration](#declaration-of-reused-components-datasets--ai-tools)) | API + `$vectorSearch` |
 | 12:05:44 | Click **Restore all ponds** (aerators back on, scenarios cleared) | Control panel |
 | 12:07:27 | Worker closes the pond 3 incident by itself (`recovered`, event `incident_recovered`) | Worker |
 | 12:09:24 · 12:10:59 | Both monitors go *Recovered* | Datadog |
@@ -600,7 +599,8 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
 | Agent Observability | Monitors Datadog Agent health via `agent status` and `http_check` | [http_check conf.yaml](datadog/conf.d/http_check.d/conf.yaml) |
-| AI Observability | Uses Watchdog Insights to detect anomalies in logs | — |
+| ML-based detection | Two early warnings for the same night-time DO dip: the worker forecasts *minutes until DO < 3 mg/L* from the MongoDB `$derivative` rate, and a Datadog monitor runs a seasonal `forecast()` (daily seasonality, learns the day/night DO cycle) over the next 12 hours. Datadog Watchdog also scans the same metrics, logs and traces for anomalies without any setup | [do_forecast.json](datadog/monitors/do_forecast.json) · [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`) |
+| AI Observability (LLM Observability) | Not used: ShrimpWatch does not call an AI model at runtime, so there is no LLM to observe | — |
 
 ---
 
@@ -633,7 +633,7 @@ As required by the contest rules, the team declares the parts that existed befor
 |---|---|---|
 | 07/10 – 09/10/2026 | Prototype v1.0 (the first commits of the repo): FastAPI ingest API, 6-pond simulator, worker computing the DO drop rate with `$setWindowFields`, Time Series Collection + TTL, metrics/logs/traces pushed to Datadog, a basic 4-state incident lifecycle, 9 tests | Written as one file per part (`app/db.py`, `app/worker.py`, `app/simulator.py`, …). Full history in `git log` |
 
-Done during the build period (20/10 – 31/10/2026): moved to MongoDB Atlas; split the architecture into layers (`core`/`domain`/`db`/`services`/`api`/`worker`); new metrics (salinity, ORP, TAN, nitrite, NH₃, 24h pH swing) and the hourly `$merge` rollup; incident state transition validation (409) and incident escalation without opening duplicates; **Atlas Vector Search** suggesting similar incidents; the **simulator control panel** and scenario API; 6 environment monitors + a dashboard pushed as upserts; CI (lint, MongoDB 7 tests, Docker Compose smoke test); the test suite grew from 9 to 106.
+Done during the build period (20/10 – 31/10/2026): moved to MongoDB Atlas; split the architecture into layers (`core`/`domain`/`db`/`services`/`api`/`worker`); new metrics (salinity, ORP, TAN, nitrite, NH₃, 24h pH swing) and the hourly `$merge` rollup; incident state transition validation (409) and incident escalation without opening duplicates; **Atlas Vector Search** suggesting similar incidents (removed on 08/11, replaced by suggested remedies per condition); the **simulator control panel** and scenario API; 6 environment monitors + a dashboard pushed as upserts; CI (lint, MongoDB 7 tests, Docker Compose smoke test); the test suite grew from 9 to 106.
 
 ### Open-Source Libraries & Components
 
