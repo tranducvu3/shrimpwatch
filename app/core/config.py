@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Shared secret the Datadog auto-remediation workflow sends in X-Automation-Token; empty = automation disabled.
     # Kept in .env only; datadog_push writes it into the workflow's request header.
     AUTOMATION_TOKEN: str = ""
+    # Datadog RUM for the control panel (Digital Experience -> RUM Applications); both empty = no RUM.
+    # The client token is public by design (it only sends browser events), the application id is not a secret.
+    DD_RUM_APPLICATION_ID: str = ""
+    DD_RUM_CLIENT_TOKEN: str = ""
 
     DD_AGENT_HOST: str = "localhost"
     DD_TRACE_AGENT_PORT: int = 8126

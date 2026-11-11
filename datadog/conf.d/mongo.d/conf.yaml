@@ -1,0 +1,31 @@
+# Datadog Database Monitoring (DBM) for the Compose MongoDB: query samples with explain plans, slow operations,
+# per-collection and per-index stats, so an incident's slow worker cycle can be traced to the query behind it.
+# Uses the read-only `datadog` user created by mongo-init.js (local container credentials, like shrimp_app;
+# see SECURITY.md). MongoDB Atlas M0 has no DBM: on Atlas, DBM needs a dedicated (M10+) cluster.
+init_config:
+
+instances:
+  - hosts:
+      - mongodb:27017
+    username: datadog
+    password: datadog_pass
+    options:
+      authSource: admin
+      directConnection: "true"
+    dbm: true
+    cluster_name: shrimpwatch-local
+    reported_database_hostname: shrimpwatch-mongodb
+    database_autodiscovery:
+      enabled: true
+      include:
+        - shrimpwatch
+    # Explain plans of the sampled operations (the worker's $setWindowFields / $densify aggregates)
+    operation_samples:
+      enabled: true
+    slow_operations:
+      enabled: true
+    schemas:
+      enabled: true
+    tags:
+      - service:shrimpwatch-mongodb
+      - farm_id:farm-001

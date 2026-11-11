@@ -64,6 +64,21 @@ def test_forecast_monitors_follow_datadog_rules():
         assert "threshold_windows" not in monitor["options"], path.name
 
 
+def test_anomaly_monitors_follow_datadog_rules():
+    """Datadog requires threshold_windows on anomaly monitors, with the trigger window equal to the alert_window."""
+    import re
+
+    found = 0
+    for path in (datadog_push.ROOT / "datadog" / "monitors").glob("*.json"):
+        monitor = json.loads(path.read_text(encoding="utf-8"))
+        if "anomalies(" not in monitor["query"]:
+            continue
+        found += 1
+        alert_window = re.search(r"alert_window='(last_\w+)'", monitor["query"]).group(1)
+        assert monitor["options"]["threshold_windows"]["trigger_window"] == alert_window, path.name
+    assert found
+
+
 def test_slo_is_updated_by_name_and_created_otherwise(tmp_path, monkeypatch):
     log: list[tuple[str, str]] = []
     slos = {"data": [{"id": "abc123", "name": "[ShrimpWatch] Detection"}]}

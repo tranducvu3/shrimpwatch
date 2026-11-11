@@ -746,10 +746,39 @@
               "yaxis": {"min": "0", "include_zero": true}
             },
             "layout": {"x": 0, "y": 4, "width": 12, "height": 2}
+          },
+          {
+            "id": 207,
+            "definition": {
+              "type": "timeseries",
+              "title": "DO so với mức thường thấy cùng giờ (Datadog anomaly detection) - vùng xám là bình thường",
+              "title_size": "16",
+              "title_align": "left",
+              "show_legend": true,
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [
+                    {"formula": "anomalies(query1, 'agile', 3, direction='below', interval=60, seasonality='daily')"}
+                  ],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.metric.do{source:sensor,$trang_trai,$ao} by {pond}"
+                    }
+                  ],
+                  "style": {"palette": "classic"},
+                  "display_type": "line"
+                }
+              ]
+            },
+            "layout": {"x": 0, "y": 6, "width": 12, "height": 2}
           }
         ]
       },
-      "layout": {"x": 0, "y": 17, "width": 12, "height": 7}
+      "layout": {"x": 0, "y": 17, "width": 12, "height": 9}
     },
     {
       "id": 3,
@@ -874,7 +903,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 24, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 26, "width": 12, "height": 5}
     },
     {
       "id": 4,
@@ -1019,7 +1048,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 29, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 31, "width": 12, "height": 5}
     },
     {
       "id": 7,
@@ -1158,7 +1187,7 @@
           }
         ]
       },
-      "layout": {"x": 0, "y": 34, "width": 12, "height": 5}
+      "layout": {"x": 0, "y": 36, "width": 12, "height": 5}
     }
   ]
 }

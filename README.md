@@ -298,6 +298,18 @@ docker compose up -d --build
 
 > **Note:** a `mongodb+srv://` string needs the `dnspython` library — it is already in [requirements.txt](requirements.txt).
 
+### Optional: Datadog Database Monitoring and RUM
+
+- **Database Monitoring (DBM) for MongoDB.** The agent's [mongo.d/conf.yaml](datadog/conf.d/mongo.d/conf.yaml) turns on DBM for the Compose MongoDB: query samples with explain plans, slow operations, collection and index stats, under *APM → Database Monitoring → MongoDB* (cluster `shrimpwatch-local`). It logs in as the read-only `datadog` user that [mongo-init.js](mongo-init.js) creates on a fresh volume. On an existing volume create it once, then restart the agent:
+
+  ```bash
+  docker compose exec mongodb mongosh -u admin -p admin_pass --authenticationDatabase admin /docker-entrypoint-initdb.d/mongo-init.js
+  docker compose restart datadog-agent
+  ```
+
+  Checked with `agent check mongo` (agent 7.59, MongoDB 7.0): the check runs `[OK]` and emits DBM metadata and activity samples. Atlas M0 has no DBM; when `.env` points at Atlas, DBM watches the local container only (Atlas needs a dedicated M10+ cluster for DBM).
+- **RUM for the control panel.** Create a RUM application (*Digital Experience → RUM Applications*, type JavaScript) and put its `DD_RUM_APPLICATION_ID` and `DD_RUM_CLIENT_TOKEN` in `.env`. The API then adds the Browser SDK to `/control` (service `shrimpwatch-control`, session replay with input masking). The panel's own API calls carry trace headers (`allowedTracingUrls`), so a click on *Sửa quạt nước* in a RUM session opens the backend trace of that request, down to the MongoDB transaction. Both empty, or not well formed: no RUM script at all.
+
 ### Running on GitHub Codespaces (free, for demos)
 
 Nothing to install locally: the repo ships a [.devcontainer/](.devcontainer/), and the Codespace builds and runs the whole stack by itself.
@@ -398,6 +410,7 @@ Monitors in [datadog/monitors/](datadog/monitors/) (same thresholds as `app/core
 | Temperature out of range | outside 26–32 °C | `temperature_out_of_range` (warning) |
 | pH out of range | outside 7.5–8.5 | `ph_out_of_range` (warning) |
 | Low salinity | < 10 ppt | `salinity_out_of_range` (warning) |
+| DO unusually low for the hour | Datadog `anomalies()` (agile, daily seasonality) of DO, below its expected band for 15 minutes, by `pond` ([do_anomaly.json](datadog/monitors/do_anomaly.json)) | The fixed rules only fire under 4 mg/L; this catches a pond still above 4 but falling away from what is normal for that hour. The *Oxy và quạt nước* group shows the same band |
 | DO forecast | Datadog seasonal `forecast()` of DO (daily seasonality, so it learns the day/night cycle) reaches ≤ 4 mg/L (warning) or ≤ 3 mg/L (critical) within the next 12 hours, the shortest horizon Datadog allows; it needs a few days of history before it is meaningful | Early warning for the night-time dip; the worker's minute-level forecast opens `do_out_of_range` when ≤ 30 min remain |
 | Toxic NH₃ | `nh3` > 0.1 mg/L | `nh3_out_of_range` (warning) |
 | Low ORP | `orp` < 100 mV | `orp_out_of_range` (warning) |
@@ -624,15 +637,17 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 |---|---|---|---|
 | 1 | **At least 1 dashboard** | Health overview dashboard for the 6 ponds: incident KPIs, a per-pond status table with the firing monitors, temperature, DO, pH, alkalinity, CO₂, aerator power, heatmap | [shrimpwatch_overview.json](datadog/dashboards/shrimpwatch_overview.json) |
 | 2 | **At least 1 monitor/alert** | **CRITICAL** monitor when an aerator fails (`pump_power < 50W`) and **WARNING** when oxygen drops abnormally | [pump_failure_critical.json](datadog/monitors/pump_failure_critical.json) |
-| 3 | **Additional capabilities** | Metrics (DogStatsD), Log Management, APM and Distributed Tracing integrated together | [telemetry.py](app/core/telemetry.py) · [log.py](app/core/log.py) |
+| 3 | **Additional capabilities** | Metrics (DogStatsD), Log Management, APM and Distributed Tracing integrated together; **Database Monitoring** for MongoDB, **RUM** on the control panel (linked to backend traces), **Anomaly Detection** and **Workflow Automation** (below) | [telemetry.py](app/core/telemetry.py) · [log.py](app/core/log.py) · [mongo.d](datadog/conf.d/mongo.d/conf.yaml) · [control.py](app/api/routers/control.py) |
 | 4 | **Connected Metrics/Logs/Traces** | Every log carries `dd.trace_id`; spans are tagged with `pond`, `device_type` → investigate from the alert down to the line of code | [log.py](app/core/log.py) |
 
 #### Advanced Optional
 
 | Organizers' requirement | How ShrimpWatch meets it | Evidence |
 |---|---|---|
-| Agent Observability | Monitors Datadog Agent health via `agent status` and `http_check` | [http_check conf.yaml](datadog/conf.d/http_check.d/conf.yaml) |
-| ML-based detection | Two early warnings for the same night-time DO dip: the worker forecasts *minutes until DO < 3 mg/L* from the MongoDB `$derivative` rate, and a Datadog monitor runs a seasonal `forecast()` (daily seasonality, learns the day/night DO cycle) over the next 12 hours. Datadog Watchdog also scans the same metrics, logs and traces for anomalies without any setup | [do_forecast.json](datadog/monitors/do_forecast.json) · [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`) |
+| Agent Observability (AI agents) | Not used: ShrimpWatch runs no AI agent. (The Datadog Agent's own health is watched with `http_check` on the API, see [http_check conf.yaml](datadog/conf.d/http_check.d/conf.yaml)) | — |
+| Anomaly Detection / ML-based detection | Three views of the night-time DO dip: an `anomalies()` monitor flags DO that is unusually low **for that hour** while still above the fixed 4 mg/L rule; a seasonal `forecast()` monitor looks 12 hours ahead; the worker forecasts *minutes until DO < 3 mg/L* from the MongoDB `$derivative` rate. Watchdog also scans the same metrics, logs and traces | [do_anomaly.json](datadog/monitors/do_anomaly.json) · [do_forecast.json](datadog/monitors/do_forecast.json) · [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`) |
+| Database Monitoring | DBM for MongoDB: explain plans of the worker's `$setWindowFields` / `$densify` aggregates, slow operations, index usage of `pond_metric_ts` | [mongo.d/conf.yaml](datadog/conf.d/mongo.d/conf.yaml) |
+| RUM | Browser SDK on the control panel, with trace headers on its API calls: a farmer's click links to the backend trace and its MongoDB spans | [control.py](app/api/routers/control.py) (`rum_snippet`) |
 | Workflow Automation (self-healing) | A monitor on `pump_failure` incident events starts a Datadog Workflow that calls `POST /automation/remediate` to switch on the backup aerator; the worker confirms recovery from MongoDB data | [auto_remediate.json](datadog/workflows/auto_remediate.json) · [automation.py](app/api/routers/automation.py) |
 | AI Observability (LLM Observability) | Not used: ShrimpWatch does not call an AI model at runtime, so there is no LLM to observe | — |
 
