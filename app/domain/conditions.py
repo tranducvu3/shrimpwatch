@@ -169,6 +169,7 @@ class Remedy(str, Enum):
     CLEAN_BOTTOM = "clean_bottom"
     CUT_FEED = "cut_feed"
     THIN_STOCK = "thin_stock"
+    LIME = "lime"
 
 
 @dataclass(frozen=True)
@@ -183,6 +184,13 @@ REMEDIES: dict[Remedy, RemedyInfo] = {
     Remedy.CLEAN_BOTTOM: RemedyInfo("Hút bùn đáy", "Siphon bùn, dọn đáy ao", (ConditionType.DIRTY_BOTTOM,)),
     Remedy.CUT_FEED: RemedyInfo("Ngừng cho ăn", "Dừng cho ăn, vớt thức ăn thừa", (ConditionType.OVERFEEDING,)),
     Remedy.THIN_STOCK: RemedyInfo("Thu tỉa tôm", "Giảm mật độ nuôi", (ConditionType.HIGH_DENSITY,)),
+    # Simplified for the demo: liming undoes the whole dilution (rain, water exchange) at once instead of the
+    # slow real-world recovery, so the farmer sees the remedy work in the next test-kit reading
+    Remedy.LIME: RemedyInfo(
+        "Bón vôi",
+        "Rải vôi nâng độ kiềm và pH bị mưa hoặc thay nước pha loãng",
+        (ConditionType.HEAVY_RAIN, ConditionType.WATER_EXCHANGE),
+    ),
 }
 
 

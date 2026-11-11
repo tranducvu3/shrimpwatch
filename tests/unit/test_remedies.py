@@ -11,6 +11,11 @@ def test_waste_causes_suggest_cutting_feed_first():
         assert suggested_remedies(cause)[0] == Remedy.CUT_FEED
 
 
+def test_low_alkalinity_suggests_liming():
+    assert suggested_remedies("alkalinity_out_of_range") == [Remedy.LIME]
+    assert suggested_remedies("co2_out_of_range")[0] == Remedy.LIME
+
+
 def test_causes_without_a_matching_remedy_suggest_nothing():
     assert suggested_remedies("salinity_out_of_range") == []
     assert suggested_remedies(None) == []

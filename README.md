@@ -324,14 +324,14 @@ Go to [http://localhost:8000/docs](http://localhost:8000/docs):
 | `POST /ponds/{pond_id}/scenarios` | Starts a metric-offset scenario: `{"scenario": "do\|temperature\|ph\|salinity", "offset": -3, "duration_min": 15}` |
 | `DELETE /ponds/{pond_id}/scenarios[/{scenario}]` | Stops one or all scenarios of a pond |
 | `POST /ponds/{pond_id}/conditions/{condition}` | Turns on a condition until it is stopped: `heavy_rain`, `hot_sun`, `overfeeding`, `algae_bloom`, `aerator_failure`, `cloudy`, `high_density`, `water_exchange`, `algae_crash`, `dirty_bottom`, `salinity_rise`, `liming` (several can run at once). `?severity=light\|medium\|severe` (default `medium`) scales the offsets by 0.5 / 1 / 1.5. The effect builds up over the condition's ramp (5 to 30 min, aerator failure at once); liming and water exchange are one-off actions that fade out and end by themselves |
-| `POST /ponds/{pond_id}/remedies/{remedy}` | A farmer's fix that ends the conditions it solves: `repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock` |
+| `POST /ponds/{pond_id}/remedies/{remedy}` | A farmer's fix that ends the conditions it solves: `repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock`, `lime` |
 | `DELETE /ponds/{pond_id}/conditions[/{condition}]` | Stops one or all conditions of a pond |
 | `GET /ponds/scenarios/catalog` | Conditions (with ramp and duration) and the metrics each one changes, severities, remedies, scenario offset limits, alert thresholds |
 | `GET /control` | Simulator control panel (see section 5.2) |
 | `GET /stream/incidents` | Server-sent events from a MongoDB Change Stream on `incidents` and `events` (503 when MongoDB is not a replica set) |
 | `GET /incidents?state=open` | Queries incidents by state |
 | `PATCH /incidents/{id}?state=...&action=...` | Updates the incident lifecycle |
-| `POST /incidents/{id}/remedies/{remedy}?note=...` | Applies a remedy to an incident (`repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock`): recorded as an action with an `incident_action` event, the incident moves to `resolving`, and on the simulated farm the cause ends (for `repair_aerator` also the aerator flag set by `/pump/fail`). Recovery is left to the worker, from new readings |
+| `POST /incidents/{id}/remedies/{remedy}?note=...` | Applies a remedy to an incident (`repair_aerator`, `clean_bottom`, `cut_feed`, `thin_stock`, `lime`): recorded as an action with an `incident_action` event, the incident moves to `resolving`, and on the simulated farm the cause ends (for `repair_aerator` also the aerator flag set by `/pump/fail`). Recovery is left to the worker, from new readings |
 | `GET /incidents/{id}/timeline` | The incident, its events and the pond's aerator, condition, scenario and remedy events around it, plus `suggested_remedies` for its root cause |
 
 ```powershell
