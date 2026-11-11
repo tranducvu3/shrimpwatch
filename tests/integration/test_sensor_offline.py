@@ -47,14 +47,14 @@ def test_coverage_counts_missing_slots_and_carries_the_last_value():
     # fall in the window, depending on where `now` is within the current 30 s slot.
     assert dead["slots"] == 10 and dead["received"] <= 3 and dead["last_value"] == 6.1
 
-    health = sensor_health(rows, [ALIVE, FLAKY, DEAD], utcnow(), 300)
+    health = sensor_health(rows, [ALIVE, FLAKY, DEAD], utcnow(), 300, 120)
     assert health[DEAD].silent_sec > 200 and health[ALIVE].silent_sec < 90
 
 
 def test_dead_and_flaky_probes_open_sensor_offline_incidents():
     _seed()
     rows = sensor_coverage([ALIVE, FLAKY, DEAD], window_sec=300, step_sec=30)
-    health = sensor_health(rows, [ALIVE, FLAKY, DEAD], utcnow(), 300)
+    health = sensor_health(rows, [ALIVE, FLAKY, DEAD], utcnow(), 300, 120)
     for pond in (ALIVE, FLAKY, DEAD):
         incident_service.auto_recover(pond)
         check_pond(pond, {"do_drop_rate_mg_per_l_per_min": 0.0, "min_do": 6.0}, health[pond])

@@ -11,7 +11,7 @@ def test_probe_health_per_pond():
         "pond-01": {"completeness": 1.0, "last_seen": NOW - timedelta(seconds=40), "last_value": 6.2},
         "pond-02": {"completeness": 0.4, "last_seen": NOW - timedelta(seconds=200)},
     }
-    health = sensor_health(coverage, PONDS, NOW, window_sec=300)
+    health = sensor_health(coverage, PONDS, NOW, window_sec=300, stale_sec=120)
     assert health["pond-01"] == SensorHealth(1.0, 40.0, 6.2)
     assert health["pond-02"] == SensorHealth(0.4, 200.0)
     # Nothing in the whole window: silent at least that long
@@ -19,4 +19,10 @@ def test_probe_health_per_pond():
 
 
 def test_whole_feed_down_is_not_a_probe_problem():
-    assert sensor_health({}, PONDS, NOW, window_sec=300) == {}
+    assert sensor_health({}, PONDS, NOW, window_sec=300, stale_sec=120) == {}
+
+
+def test_every_pond_stale_at_once_is_the_feed_not_the_probes():
+    # A backfill after a restart (or a pipeline outage) leaves every pond's latest reading minutes old at once
+    stale = {p: {"completeness": 0.2, "last_seen": NOW - timedelta(seconds=270)} for p in PONDS}
+    assert sensor_health(stale, PONDS, NOW, window_sec=300, stale_sec=120) == {}

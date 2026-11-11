@@ -17,12 +17,13 @@ class SensorHealth:
 
 
 def sensor_health(
-    coverage: dict[str, dict], pond_ids: list[str], now: datetime, window_sec: int
+    coverage: dict[str, dict], pond_ids: list[str], now: datetime, window_sec: int, stale_sec: float
 ) -> dict[str, SensorHealth]:
     """Per pond, from the coverage rows of `sensor_coverage_pipeline` (a pond with no row sent nothing).
 
-    Empty when no pond sent anything: then the whole feed is down (simulator, network, ingest API), which the
-    "sensor data stopped" monitor reports once, rather than as one probe incident per pond.
+    Empty when no pond has a reading newer than `stale_sec`: then the whole feed is down or catching up (simulator,
+    network, ingest API, a backfill after a restart), which the "sensor data stopped" monitor reports once, rather
+    than as one probe incident per pond. A probe problem is one pond going quiet while the others still report.
     """
     if not coverage:
         return {}
@@ -34,4 +35,6 @@ def sensor_health(
         else:
             silent = max(0.0, (now - row["last_seen"]).total_seconds())
             result[pond_id] = SensorHealth(round(row["completeness"], 3), round(silent, 1), row.get("last_value"))
+    if all(h.silent_sec > stale_sec for h in result.values()):
+        return {}
     return result
