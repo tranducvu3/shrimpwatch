@@ -152,7 +152,7 @@ def test_remedies_end_the_conditions_they_fix():
         {"aerator_failure": build_condition(NOW), "dirty_bottom": build_condition(NOW), "cloudy": build_condition(NOW)},
         NOW,
     )
-    assert applicable_remedies(running) == [Remedy.REPAIR_AERATOR, Remedy.CLEAN_BOTTOM]
+    assert applicable_remedies(running) == [Remedy.REPAIR_AERATOR, Remedy.CLEAN_BOTTOM, Remedy.BACKUP_AERATOR]
     assert applicable_remedies([]) == []
     assert all(info.clears and info.label for info in REMEDIES.values())
 

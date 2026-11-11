@@ -83,6 +83,40 @@ def test_every_datadog_file_is_valid_json_with_a_name():
     for folder, key in (("monitors", "name"), ("slos", "name"), ("dashboards", "title")):
         for path in (datadog_push.ROOT / "datadog" / folder).glob("*.json"):
             assert json.loads(path.read_text(encoding="utf-8"))[key].startswith(("[ShrimpWatch]", "ShrimpWatch")), path
+    for path in (datadog_push.ROOT / "datadog" / "workflows").glob("*.json"):
+        assert json.loads(path.read_text(encoding="utf-8"))["data"]["attributes"]["name"].startswith("[ShrimpWatch]")
+
+
+def _workflow_file():
+    return datadog_push.ROOT / "datadog" / "workflows" / "auto_remediate.json"
+
+
+def test_workflow_is_skipped_until_automation_is_configured(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "AUTOMATION_TOKEN", "")
+    assert datadog_push._push("workflow", _workflow_file()) == (0, "skipped")
+
+
+def test_workflow_gets_the_url_and_token_and_is_upserted_by_name(monkeypatch):
+    monkeypatch.setattr(datadog_push.settings, "PUBLIC_BASE_URL", "https://farm.example/")
+    monkeypatch.setattr(datadog_push.settings, "AUTOMATION_TOKEN", 'to"ken')
+    name = json.loads(_workflow_file().read_text(encoding="utf-8"))["data"]["attributes"]["name"]
+    existing = {"data": [{"id": "wf-1", "attributes": {"name": name}}]}
+    sent = []
+    monkeypatch.setattr(datadog_push.httpx, "get", lambda url, **_kw: _Resp(existing))
+    monkeypatch.setattr(datadog_push.httpx, "patch", lambda url, json, **_kw: sent.append((url, json)) or _Resp({}))
+
+    datadog_push._push("workflow", _workflow_file())
+    [(url, payload)] = sent
+    assert url == "https://api.datadoghq.com/api/v2/workflows/wf-1"
+    params = {p["name"]: p["value"] for p in payload["data"]["attributes"]["spec"]["steps"][0]["parameters"]}
+    assert params["url"] == "https://farm.example/automation/remediate"
+    assert {"key": "X-Automation-Token", "value": ['to"ken']} in params["requestHeaders"]
+
+
+def test_monitor_starts_the_workflow_by_its_handle():
+    handle = json.loads(_workflow_file().read_text(encoding="utf-8"))["data"]["attributes"]["spec"]["handle"]
+    monitor = json.loads((datadog_push.ROOT / "datadog" / "monitors" / "auto_remediate_pump.json").read_text("utf-8"))
+    assert f"@workflow-{handle}(pond_id={{{{pond.name}}}})" in monitor["message"]
 
 
 def test_farmer_alert_emails_are_split_trimmed_and_validated(monkeypatch):

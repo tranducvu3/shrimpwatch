@@ -411,6 +411,7 @@ The worker also opens a warning incident, with no Datadog monitor, when the test
 |---|---|---|
 | Sensor data stopped | no `shrimpwatch.ingest.records` for 5 minutes (`default_zero`, so silence counts as 0; no-data alert as a backup) | Without data no incident can open |
 | API error rate | APM `trace.fastapi.request.errors / hits` > 5% over 10 minutes (warning > 2%) | Lost sensor batches or operator actions |
+| Auto-remediation: aerator stopped | event monitor on `root_cause:pump_failure` incident events, by `pond` ([auto_remediate_pump.json](datadog/monitors/auto_remediate_pump.json)) | Starts the self-healing workflow that switches on the backup aerator |
 | Pond probe silent | `shrimpwatch.sensor.silent_seconds` > 120 s for 2 minutes, by `pond` ([sensor_offline.json](datadog/monitors/sensor_offline.json)) | One pond is unwatched while the others still report: the probe, not the pipeline |
 | Worker slow or stopped | `shrimpwatch.worker.cycle_seconds` (sent every cycle) > 25 s, or no data for 5 minutes | Incidents would open and close late, or not at all |
 | SLO: critical incidents detected within 2 minutes | `shrimpwatch.incident.detected{severity:critical,within_slo:true}` / all critical, 99% over 7 days ([datadog/slos/](datadog/slos/)) | The promise behind fast aerator detection |
@@ -468,6 +469,31 @@ The core feature, showing MongoDB and Datadog working together.
 | 2. **Investigate** | `investigating` | The technician checks the aerator's power supply and records an action note |
 | 3. **Resolve** | `resolving` | Apply the suggested remedy (`pump_failure` → *repair aerator*; waste causes → *cut feed*, *clean bottom*; see `app/domain/remedies.py`) with one call, or replace the parts and restore aerator power by hand. The worker keeps tracking the incident: if the fault persists, the worker updates this same incident (no duplicate incident is opened) |
 | 4. **Recover** | `recovered` | The aerator runs again and DO is stable (5 minutes) → **the worker closes** the incident by itself from `open`/`investigating`/`resolving`. Every transition writes an event to `events` |
+
+### Self-healing: Datadog switches on the backup aerator
+
+A stopped aerator kills a pond within the hour, often at night when nobody is watching. So for this one cause the system responds by itself, and Datadog is where that decision lives:
+
+```mermaid
+sequenceDiagram
+    participant API as ShrimpWatch API
+    participant DD as Datadog
+    participant WF as Datadog Workflow
+    participant W as Worker
+    API->>API: aerator off twice → pump_failure incident (MongoDB transaction: incident + event)
+    API->>DD: Datadog Event incident_open, root_cause:pump_failure
+    DD->>WF: event monitor "Auto-remediation: aerator stopped" mentions @workflow-shrimpwatch-auto-remediate(pond_id=…)
+    WF->>API: POST /automation/remediate {pond_id, run_id} + X-Automation-Token
+    API->>API: backup aerator on, incident → resolving, action by datadog_workflow
+    W->>W: new readings: DO back above 4.5 mg/L → recovered
+```
+
+1. **Detect**: the ingest API opens the `pump_failure` incident within 60 s and sends a Datadog Event tagged `root_cause:pump_failure`.
+2. **Decide (Datadog)**: the event monitor [auto_remediate_pump.json](datadog/monitors/auto_remediate_pump.json) fires per pond and mentions the workflow's handle, passing the pond as an input.
+3. **Act (Datadog Workflow Automation)**: [auto_remediate.json](datadog/workflows/auto_remediate.json) makes one HTTP request to `POST /automation/remediate`. The API checks the shared `AUTOMATION_TOKEN`, applies the pond's **automatic remedy** (only `pump_failure` → *Bật quạt dự phòng*, a remotely switched backup aerator; feeding, liming or siphoning still need a person, see `automatic_remedy` in [remedies.py](app/domain/remedies.py)) and moves the incident to *Resolving*. The call is idempotent: a workflow retry or a second alert answers `skipped: already_applied`.
+4. **Verify**: the worker closes the incident only when new readings prove DO is safe, as for a farmer's remedy. The panel timeline marks the step *🤖 Tự động*, the `incident_action` event carries `by: datadog_workflow` and the workflow run id, and Datadog gets `shrimpwatch.remediation.auto` and `shrimpwatch.incident.time_to_auto_remediate`. The farmer still gets the alert email, to repair the main aerator.
+
+Set it up: put `AUTOMATION_TOKEN` (any long random string) and `PUBLIC_BASE_URL` (an address Datadog's cloud can reach, such as the Codespace's forwarded port) in `.env`, restart the API, then run `python -m app.cli.datadog_push`, which creates or updates the workflow with the URL and token filled in, then the monitor. Without them the endpoint answers `503` and the workflow is not pushed. The token sits in the workflow's request header, visible to members of the Datadog organization; for a real farm use an HTTP connection with token auth instead.
 
 Run the automated demo (acts on pond 3):
 
@@ -607,6 +633,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 |---|---|---|
 | Agent Observability | Monitors Datadog Agent health via `agent status` and `http_check` | [http_check conf.yaml](datadog/conf.d/http_check.d/conf.yaml) |
 | ML-based detection | Two early warnings for the same night-time DO dip: the worker forecasts *minutes until DO < 3 mg/L* from the MongoDB `$derivative` rate, and a Datadog monitor runs a seasonal `forecast()` (daily seasonality, learns the day/night DO cycle) over the next 12 hours. Datadog Watchdog also scans the same metrics, logs and traces for anomalies without any setup | [do_forecast.json](datadog/monitors/do_forecast.json) · [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`) |
+| Workflow Automation (self-healing) | A monitor on `pump_failure` incident events starts a Datadog Workflow that calls `POST /automation/remediate` to switch on the backup aerator; the worker confirms recovery from MongoDB data | [auto_remediate.json](datadog/workflows/auto_remediate.json) · [automation.py](app/api/routers/automation.py) |
 | AI Observability (LLM Observability) | Not used: ShrimpWatch does not call an AI model at runtime, so there is no LLM to observe | — |
 
 ---

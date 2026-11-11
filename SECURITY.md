@@ -13,7 +13,7 @@ repository, or contact the code owners listed in `.github/CODEOWNERS` directly.
 
 - Real values live only in `.env` (git-ignored) or in GitHub Actions / Codex secrets. `.env.example` holds
   placeholders only.
-- Secrets in this project: `DD_API_KEY`, `DD_APP_KEY`, and any `MONGODB_URI` that contains a password
+- Secrets in this project: `DD_API_KEY`, `DD_APP_KEY`, `AUTOMATION_TOKEN`, and any `MONGODB_URI` that contains a password
   (especially MongoDB Atlas `mongodb+srv://` URIs).
 - If a secret is committed, rotate it first (Datadog → Organization Settings → API/Application Keys; Atlas →
   Database Access), then remove it from the code. Deleting the commit does not make it safe.
@@ -23,7 +23,9 @@ repository, or contact the code owners listed in `.github/CODEOWNERS` directly.
 Reviews should not re-report these unless a change makes them worse:
 
 - The API has no authentication, and CORS allows all origins (`app/api/__init__.py`). Anyone who can reach
-  port 8000 can ingest data, fail a pump, or change incident state.
+  port 8000 can ingest data, fail a pump, or change incident state. The one exception is
+  `POST /automation/remediate`, which needs the shared `AUTOMATION_TOKEN` (disabled when it is empty). That token
+  is a secret: `.env` only; `datadog_push` writes it into the Datadog workflow's request header.
 - Local Docker credentials are hard-coded: `admin` / `admin_pass` in `docker-compose.yml`, `shrimp_app` /
   `shrimp_pass` in `mongo-init.js`. They are for the local container only and must never be used for Atlas.
 - `shrimp_app` has `dbOwner` on `shrimpwatch` plus `readAnyDatabase`, which is more than the app needs.

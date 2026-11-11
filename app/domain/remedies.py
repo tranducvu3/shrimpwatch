@@ -24,3 +24,14 @@ _BY_ROOT_CAUSE: dict[str, tuple[Remedy, ...]] = {
 def suggested_remedies(root_cause: str | None) -> list[Remedy]:
     """Remedies that address the root cause, most likely first; empty when none of them helps."""
     return list(_BY_ROOT_CAUSE.get(root_cause or "", ()))
+
+
+# Remedies a machine may apply without a person: only ones that are switched remotely and cannot harm the pond.
+# A stopped aerator kills a pond within the hour, so the backup aerator is switched on at once; everything else
+# (feeding, liming, siphoning) needs someone at the pond.
+_AUTOMATIC: dict[str, Remedy] = {"pump_failure": Remedy.BACKUP_AERATOR}
+
+
+def automatic_remedy(root_cause: str | None) -> Remedy | None:
+    """The remedy the auto-remediation workflow applies for this root cause; None = leave it to the farmer."""
+    return _AUTOMATIC.get(root_cause or "")
