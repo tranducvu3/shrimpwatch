@@ -32,5 +32,5 @@ def test_mapped_root_causes_are_ones_the_rules_emit():
 
     from app.domain import incident_rules
 
-    emitted = set(re.findall(r'"(pump_failure|\w+_out_of_range)"', inspect.getsource(incident_rules)))
+    emitted = set(re.findall(r'"(pump_failure|sensor_offline|\w+_out_of_range)"', inspect.getsource(incident_rules)))
     assert set(_BY_ROOT_CAUSE) <= emitted

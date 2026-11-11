@@ -29,6 +29,10 @@ class PondSnapshot:
     pump_stopped: bool = False
     # Latest DO of the 5-minute window, for the forecast
     last_do: float | None = None
+    # Water-quality probe feed (see domain.sensor_health); None = not checked
+    sensor_completeness: float | None = None
+    sensor_silent_sec: float | None = None
+    sensor_last_do: float | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,10 @@ class Thresholds:
     alkalinity_warn_low: float
     # Warn when DO is forecast to reach do_critical within this many minutes
     do_forecast_warn_min: float = 30.0
+    # Probe silent longer than this = offline; fewer than this share of expected readings over the window = flaky
+    sensor_stale_sec: float = 120.0
+    sensor_min_completeness: float = 0.5
+    sensor_window_sec: int = 300
 
     @classmethod
     def from_settings(cls) -> Thresholds:
@@ -74,6 +82,9 @@ class Thresholds:
             nitrite_warn=settings.NITRITE_WARN,
             alkalinity_warn_low=settings.ALK_WARN,
             do_forecast_warn_min=settings.DO_FORECAST_WARN_MIN,
+            sensor_stale_sec=settings.SENSOR_STALE_SEC,
+            sensor_min_completeness=settings.SENSOR_MIN_COMPLETENESS,
+            sensor_window_sec=settings.SENSOR_WINDOW_SEC,
         )
 
 
@@ -169,7 +180,7 @@ def evaluate(s: PondSnapshot, t: Thresholds) -> Finding | None:
             f"Min DO = {s.min_do:.3f} mg/L < {t.do_warn}.{_forecast(s, t)}",
             "do_out_of_range",
         )
-    return _environment_finding(s, t) or _water_quality_finding(s, t)
+    return _environment_finding(s, t) or _water_quality_finding(s, t) or _sensor_finding(s, t)
 
 
 def _outside(value: float | None, low: float, high: float) -> bool:
@@ -247,6 +258,30 @@ def _water_quality_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
             "Cảnh báo: Độ kiềm thấp",
             f"Độ kiềm = {s.alkalinity:.0f} mg CaCO₃/L < ngưỡng {t.alkalinity_warn_low:.0f} (đo tay gần nhất).",
             "alkalinity_out_of_range",
+        )
+    return None
+
+
+def _sensor_finding(s: PondSnapshot, t: Thresholds) -> Finding | None:
+    """The water-quality probe is silent or drops readings: DO, pH and temperature go unwatched, and the rules above
+    stay quiet for lack of data, so say so. Checked last: a rule that still has data is more specific."""
+    if s.sensor_silent_sec is not None and s.sensor_silent_sec > t.sensor_stale_sec:
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: Mất tín hiệu đầu dò",
+            f"Đầu dò ao {s.pond_id} không gửi số đo {s.sensor_silent_sec / 60:.0f} phút nay: không theo dõi được DO, "
+            "pH, nhiệt độ, độ mặn."
+            + (f" DO đo được lần cuối: {s.sensor_last_do:.2f} mg/L." if s.sensor_last_do is not None else "")
+            + " Kiểm tra pin, dây và kết nối của đầu dò.",
+            "sensor_offline",
+        )
+    if s.sensor_completeness is not None and s.sensor_completeness < t.sensor_min_completeness:
+        return Finding(
+            Severity.WARNING,
+            "Cảnh báo: Đầu dò gửi số đo chập chờn",
+            f"Chỉ nhận {s.sensor_completeness:.0%} số lần đo trong {t.sensor_window_sec // 60} phút qua "
+            f"(dưới {t.sensor_min_completeness:.0%}): cảnh báo DO có thể đến trễ. Kiểm tra kết nối của đầu dò.",
+            "sensor_offline",
         )
     return None
 

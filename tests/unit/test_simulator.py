@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.domain.models import DeviceType, MetricType
 from app.domain.scenarios import ScenarioType
 from app.simulator.pond_model import PondSimulator
-from app.simulator.runner import BACKFILL_HOURS, backfill_start, warm_up
+from app.simulator.runner import BACKFILL_HOURS, backfill_start, tick, warm_up
 
 
 def test_step_emits_one_record_per_metric():
@@ -122,3 +122,30 @@ def test_warm_up_sends_only_gap_but_warms_model_state():
     warm_up({"pond-01": cold}, now, send_from=None)
     assert cold._do_last == warmed["pond-01"]._do_last
     assert cold._do_last_ts == now
+
+
+class _FakeClient:
+    def __init__(self, states):
+        self.states = states
+        self.sent = []
+
+    def pond_states(self):
+        return self.states
+
+    def ingest_batch(self, batch):
+        self.sent.extend(batch)
+
+        class _Resp:
+            status_code = 202
+
+        return _Resp()
+
+
+def test_offline_probe_sends_only_aerator_readings():
+    now = utcnow()
+    states = {"pond-01": {"conditions": {"sensor_offline": {"started_at": now}}}, "pond-02": {}}
+    client = _FakeClient(states)
+    tick(client, {p: PondSimulator(p) for p in states}, now)
+    by_pond = {p: {r["device_type"] for r in client.sent if r["pond_id"] == p} for p in states}
+    assert by_pond["pond-01"] == {DeviceType.PUMP.value}
+    assert by_pond["pond-02"] == {DeviceType.PUMP.value, DeviceType.WATER_NODE.value}

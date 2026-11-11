@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     FAULT_LOOKBACK_SEC: int = 2 * 3600
     # A remedy that has not moved the root-cause metric towards normal after this many seconds has failed
     REMEDY_CHECK_SEC: int = 60
+    # Sensor feed per pond: a water-quality probe silent for this long is offline, one that delivered fewer than
+    # this share of its expected readings over the window is flaky (the simulator sends one every 30 s)
+    SENSOR_WINDOW_SEC: int = 300
+    SENSOR_STEP_SEC: int = 30
+    SENSOR_STALE_SEC: int = 120
+    SENSOR_MIN_COMPLETENESS: float = 0.5
 
 
 settings = Settings()

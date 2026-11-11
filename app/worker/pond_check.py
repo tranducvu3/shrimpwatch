@@ -18,6 +18,7 @@ from app.domain.incident_rules import (
     pump_stopped,
 )
 from app.domain.models import DeviceType, IncidentEvidence, Source
+from app.domain.sensor_health import SensorHealth, sensor_health
 from app.services import derivations
 from app.services import incidents as incident_service
 
@@ -35,12 +36,22 @@ def load_do_windows(pond_ids: list[str]) -> dict[str, dict]:
     return rows
 
 
+def load_sensor_health(pond_ids: list[str]) -> dict[str, SensorHealth]:
+    """Feed completeness and silence of each pond's probe (one aggregate), also sent to Datadog per pond."""
+    coverage = metrics_repo.sensor_coverage(pond_ids, settings.SENSOR_WINDOW_SEC, settings.SENSOR_STEP_SEC)
+    health = sensor_health(coverage, pond_ids, utcnow(), settings.SENSOR_WINDOW_SEC, settings.SENSOR_STALE_SEC)
+    for pond_id, h in health.items():
+        gauge("sensor.completeness", h.completeness, tags={"pond": pond_id})
+        gauge("sensor.silent_seconds", h.silent_sec, tags={"pond": pond_id})
+    return health
+
+
 def _latest_manual(pond_id: str, metric: str, now):
     """Latest test-kit reading of the last 24 h (technicians test a few times a day)."""
     return metrics_repo.latest_value(pond_id, metric, now - derivations.MANUAL_FRESHNESS, source=Source.MANUAL.value)
 
 
-def check_pond(pond_id: str, do_row: dict | None = None) -> None:
+def check_pond(pond_id: str, do_row: dict | None = None, sensor: SensorHealth | None = None) -> None:
     set_span_tags(pond_id=pond_id, device_type=DeviceType.WORKER.value)
     if do_row is None:
         do_row = load_do_windows([pond_id]).get(pond_id)
@@ -72,6 +83,9 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
             metrics_repo.latest_values(pond_id, "pump_status", now - RECENT, settings.PUMP_STOPPED_READINGS),
             settings.PUMP_STOPPED_READINGS,
         ),
+        sensor_completeness=sensor.completeness if sensor else None,
+        sensor_silent_sec=sensor.silent_sec if sensor else None,
+        sensor_last_do=sensor.last_do if sensor else None,
     )
     thresholds = Thresholds.from_settings()
     minutes_left = minutes_to_do_critical(snapshot.last_do, snapshot.do_drop_rate, thresholds.do_critical)
@@ -98,6 +112,8 @@ def check_pond(pond_id: str, do_row: dict | None = None) -> None:
                 "tan": snapshot.tan,
                 "nitrite": snapshot.nitrite,
                 "alkalinity": snapshot.alkalinity,
+                "sensor_completeness": snapshot.sensor_completeness,
+                "sensor_silent_sec": snapshot.sensor_silent_sec,
             },
         )
         incident_service.open_or_update(pond_id, finding, evidence)

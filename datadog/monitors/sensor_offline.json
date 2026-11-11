@@ -1,0 +1,14 @@
+{
+  "name": "[ShrimpWatch] WARNING: Pond probe silent for 2 minutes · Đầu dò ao im lặng 2 phút",
+  "type": "metric alert",
+  "query": "min(last_2m):max:shrimpwatch.sensor.silent_seconds{*} by {pond} > 120",
+  "message": "## 📡 The water-quality probe of pond {{pond.name}} stopped sending ({{value}} s)\n\nDO, temperature, pH, salinity and ORP of this pond are no longer measured, so no oxygen alert can fire for it. The other ponds still report, so this is the probe, not the data pipeline (that is the *No sensor data received* monitor).\n\nCheck the probe's battery, cable and connection. Matches the worker's `sensor_offline` incident, found with MongoDB `$densify` + `$fill` over the last 5 minutes of readings; the *Đầu dò* chart shows how many expected readings arrived.\n\n---\n**Tiếng Việt**\n\n## 📡 Đầu dò đo nước của ao {{pond.name}} ngừng gửi số đo ({{value}} giây)\n\nDO, nhiệt độ, pH, độ mặn và ORP của ao không còn được đo, nên cảnh báo oxy của ao không thể bật. Các ao khác vẫn gửi, nên lỗi ở đầu dò chứ không ở đường truyền dữ liệu.\n\nKiểm tra pin, dây và kết nối của đầu dò. Đối chiếu sự cố `sensor_offline` của worker.",
+  "tags": ["shrimpwatch", "component:sensor", "sev:warning"],
+  "options": {
+    "thresholds": {"critical": 120},
+    "notify_no_data": false,
+    "renotify_interval": 30,
+    "evaluation_delay": 60,
+    "include_tags": true
+  }
+}

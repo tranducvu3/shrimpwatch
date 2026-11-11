@@ -12,7 +12,7 @@ from app.core.telemetry import gauge, init_metrics
 from app.db.repositories import metrics as metrics_repo
 from app.domain.ponds import pond_ids
 from app.services import incidents as incident_service
-from app.worker.pond_check import check_pond, load_do_windows
+from app.worker.pond_check import check_pond, load_do_windows, load_sensor_health
 
 logger = get_logger("worker")
 
@@ -42,10 +42,17 @@ def run_worker() -> None:
             logger.error("DO window failed", extra={"err": str(e)})
             do_rows = {}
 
+        try:
+            with tracer.trace("worker.sensor_coverage"):
+                sensors = load_sensor_health(ponds)
+        except Exception as e:
+            logger.error("sensor coverage failed", extra={"err": str(e)})
+            sensors = {}
+
         for pid in ponds:
             try:
                 with tracer.trace("worker.check_pond", resource=pid):
-                    check_pond(pid, do_rows.get(pid))
+                    check_pond(pid, do_rows.get(pid), sensors.get(pid))
             except Exception as e:
                 logger.error("check_pond failed", extra={"pond": pid, "err": str(e)})
 

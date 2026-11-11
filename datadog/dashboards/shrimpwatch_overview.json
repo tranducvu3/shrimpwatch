@@ -1026,7 +1026,7 @@
       "definition": {
         "type": "group",
         "layout_type": "ordered",
-        "title": "Sức khoẻ hệ thống: phát hiện kịp, worker và API",
+        "title": "Sức khoẻ hệ thống: phát hiện kịp, worker, API và đầu dò",
         "show_title": true,
         "widgets": [
           {
@@ -1127,10 +1127,38 @@
               "yaxis": {"min": "0", "include_zero": true}
             },
             "layout": {"x": 8, "y": 0, "width": 4, "height": 2}
+          },
+          {
+            "id": 704,
+            "definition": {
+              "type": "timeseries",
+              "title": "Đầu dò: % số đo nhận được trong 5 phút (MongoDB $densify) - cảnh báo dưới 50%",
+              "title_size": "16",
+              "title_align": "left",
+              "legend_layout": "auto",
+              "requests": [
+                {
+                  "formulas": [{"formula": "100 * query1"}],
+                  "response_format": "timeseries",
+                  "queries": [
+                    {
+                      "name": "query1",
+                      "data_source": "metrics",
+                      "query": "avg:shrimpwatch.sensor.completeness{$trang_trai,$ao} by {pond}.rollup(avg,30)"
+                    }
+                  ],
+                  "style": {"palette": "classic"},
+                  "display_type": "line"
+                }
+              ],
+              "markers": [{"value": "y = 50", "display_type": "warning dashed", "label": "Chập chờn dưới 50%"}],
+              "yaxis": {"min": "0", "max": "100", "include_zero": true}
+            },
+            "layout": {"x": 0, "y": 2, "width": 12, "height": 2}
           }
         ]
       },
-      "layout": {"x": 0, "y": 34, "width": 12, "height": 3}
+      "layout": {"x": 0, "y": 34, "width": 12, "height": 5}
     }
   ]
 }
