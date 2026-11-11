@@ -29,6 +29,12 @@ def test_unknown_metric_is_pending():
     assert outcome(None, 3.0, 2.0) == RemedyOutcome.PENDING
 
 
+def test_aerator_running_again_is_improving_even_if_do_has_not_moved():
+    # A short stop: DO never left the safe range, so only the aerator's power tells whether the fix worked
+    assert outcome(MetricType.PUMP_POWER, 0.0, 1517.8) == RemedyOutcome.IMPROVING
+    assert outcome(MetricType.PUMP_POWER, 0.0, 0.0) == RemedyOutcome.FAILED
+
+
 def test_do_rising_after_aerator_repair_is_improving():
     assert outcome(MetricType.DO, 2.8, 3.0) == RemedyOutcome.IMPROVING
 
@@ -52,7 +58,7 @@ def test_ph_improves_towards_the_middle_of_its_range_from_either_side():
 
 
 def test_root_causes_map_to_their_metric():
-    assert watched_metric("pump_failure") == MetricType.DO
+    assert watched_metric("pump_failure") == MetricType.PUMP_POWER
     assert watched_metric("nh3_out_of_range") == MetricType.NH3
     assert watched_metric(None) is None
 

@@ -1,5 +1,5 @@
 from app.domain.conditions import REMEDIES, Remedy
-from app.domain.remedies import _BY_ROOT_CAUSE, suggested_remedies
+from app.domain.remedies import _BY_ROOT_CAUSE, automatic_remedy, suggested_remedies
 
 
 def test_aerator_failure_suggests_repairing_it():
@@ -34,3 +34,9 @@ def test_mapped_root_causes_are_ones_the_rules_emit():
 
     emitted = set(re.findall(r'"(pump_failure|sensor_offline|\w+_out_of_range)"', inspect.getsource(incident_rules)))
     assert set(_BY_ROOT_CAUSE) <= emitted
+
+
+def test_only_a_stopped_aerator_is_remediated_automatically():
+    assert automatic_remedy("pump_failure") == Remedy.BACKUP_AERATOR
+    assert automatic_remedy("do_out_of_range") is None
+    assert automatic_remedy(None) is None

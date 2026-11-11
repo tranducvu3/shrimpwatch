@@ -1,4 +1,4 @@
-"""Push the dashboards, monitors and SLOs in datadog/ to the Datadog API (update by name if they already exist)."""
+"""Push the dashboards, monitors, SLOs and workflows in datadog/ to the Datadog API (update by name if they exist)."""
 
 from __future__ import annotations
 
@@ -34,6 +34,13 @@ def _base_url() -> str:
     return f"https://api.{settings.DD_SITE or 'datadoghq.com'}/api/v1"
 
 
+def _url(kind: str) -> str:
+    """Collection endpoint: /api/v1/<kind>, except workflows (Workflow Automation is a v2 API)."""
+    if kind == "workflow":
+        return f"https://api.{settings.DD_SITE or 'datadoghq.com'}/api/v2/workflows"
+    return f"{_base_url()}/{kind}"
+
+
 def _existing_id(kind: str, payload: dict) -> str | int | None:
     """Find an existing one with the same name (monitor: name, dashboard: title) to update instead of creating a duplicate.
 
@@ -49,6 +56,12 @@ def _existing_id(kind: str, payload: dict) -> str | int | None:
             )
             resp.raise_for_status()
             matches = [m["id"] for m in resp.json() if m.get("query") == payload.get("query")]
+    elif kind == "workflow":
+        name = payload["data"]["attributes"]["name"]
+        params = {"filter[query]": "ShrimpWatch", "filter[include_unpublished]": "true", "limit": 100}
+        resp = httpx.get(_url(kind), headers=_headers(), params=params, timeout=30)
+        resp.raise_for_status()
+        matches = [w["id"] for w in resp.json().get("data") or [] if w.get("attributes", {}).get("name") == name]
     elif kind == "slo":
         # All ShrimpWatch SLOs by tag, then an exact name match (name search is fuzzy with brackets and diacritics)
         params = {"tags_query": "service:shrimpwatch", "limit": 1000}
@@ -113,18 +126,47 @@ def with_link_bases(payload: dict, bases: dict[str, str]) -> dict:
     return {**payload, "widgets": [fill(w) for w in payload.get("widgets", [])]}
 
 
+def workflow_settings() -> dict[str, str] | None:
+    """Values the workflow JSON leaves as placeholders; None when automation is not configured.
+
+    The workflow calls the API from Datadog's cloud, so it needs an address Datadog can reach (PUBLIC_BASE_URL,
+    e.g. the Codespace's forwarded port) and the shared AUTOMATION_TOKEN, which stays out of this public repo.
+    """
+    if not settings.PUBLIC_BASE_URL or not settings.AUTOMATION_TOKEN:
+        return None
+    return {"$PUBLIC_BASE_URL": settings.PUBLIC_BASE_URL.rstrip("/"), "$AUTOMATION_TOKEN": settings.AUTOMATION_TOKEN}
+
+
+def with_workflow_settings(payload: dict, values: dict[str, str]) -> dict:
+    text = json.dumps(payload)
+    for placeholder, value in values.items():
+        text = text.replace(placeholder, json.dumps(value)[1:-1])  # escaped for a JSON string
+    return json.loads(text)
+
+
 def _push(kind: str, path: Path, emails: Sequence[str] = ()):
-    """kind: 'dashboard', 'monitor' or 'slo' (endpoint /api/v1/<kind>). PUT if it exists, otherwise POST."""
+    """kind: 'dashboard', 'monitor', 'slo' or 'workflow'. Update if it exists, otherwise create.
+
+    A workflow is skipped (status 0) until PUBLIC_BASE_URL and AUTOMATION_TOKEN are set.
+    """
     payload = json.loads(path.read_text(encoding="utf-8"))
     if kind == "monitor":
         payload = with_notify_handles(payload, emails)
     elif kind == "dashboard":
         payload = with_link_bases(payload, link_bases())
+    elif kind == "workflow":
+        values = workflow_settings()
+        if values is None:
+            logger.info("workflow skipped: set PUBLIC_BASE_URL and AUTOMATION_TOKEN", extra={"file": path.name})
+            return 0, "skipped"
+        payload = with_workflow_settings(payload, values)
     existing = _existing_id(kind, payload)
     if existing is None:
-        resp = httpx.post(f"{_base_url()}/{kind}", headers=_headers(), json=payload, timeout=30)
+        resp = httpx.post(_url(kind), headers=_headers(), json=payload, timeout=30)
+    elif kind == "workflow":
+        resp = httpx.patch(f"{_url(kind)}/{existing}", headers=_headers(), json=payload, timeout=30)
     else:
-        resp = httpx.put(f"{_base_url()}/{kind}/{existing}", headers=_headers(), json=payload, timeout=30)
+        resp = httpx.put(f"{_url(kind)}/{existing}", headers=_headers(), json=payload, timeout=30)
     logger.info(
         f"push {kind}",
         extra={"file": path.name, "id": existing, "status": resp.status_code, "body": resp.text[:500]},
@@ -142,7 +184,9 @@ def main():
     if not emails:
         logger.info("FARMER_ALERT_EMAILS not set: the farmer alert monitors email nobody")
     failed = []
-    for kind, folder in (("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos")):
+    # Workflows first: a monitor that mentions @workflow-<handle> needs the workflow to exist
+    kinds = (("workflow", "workflows"), ("dashboard", "dashboards"), ("monitor", "monitors"), ("slo", "slos"))
+    for kind, folder in kinds:
         for p in sorted((ROOT / "datadog" / folder).glob("*.json")):
             status, _ = _push(kind, p, emails)
             if status >= 400:

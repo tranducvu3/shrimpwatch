@@ -164,7 +164,7 @@ def test_condition_severity_remedy_and_expiry(client: TestClient):
 
     pond = next(p for p in client.get("/ponds").json() if p["_id"] == POND)
     assert {a["type"]: a["severity"] for a in pond["active"]} == {"dirty_bottom": "severe", "aerator_failure": "medium"}
-    assert pond["remedies"] == ["repair_aerator", "clean_bottom"]
+    assert pond["remedies"] == ["repair_aerator", "clean_bottom", "backup_aerator"]
     # The panel shows the destination (0.9 * 1.5), not the current ramp step
     assert {c["metric"]: c for c in pond["changes"]}["tan"]["offset"] == 1.35
 

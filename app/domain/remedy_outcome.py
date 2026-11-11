@@ -57,10 +57,14 @@ _WATCHES: dict[MetricType, _Watch] = {
     MetricType.SALINITY: _Watch(_low_is_bad, 0.2),
     MetricType.TEMPERATURE: _Watch(_temperature_off_centre, 0.3),
     MetricType.PH: _Watch(_ph_off_centre, 0.05),
+    # An aerator either runs (~1500 W) or not: anything under a few hundred watts is not a repair
+    MetricType.PUMP_POWER: _Watch(_low_is_bad, 300.0),
 }
 
 _ROOT_CAUSE_METRIC: dict[str, MetricType] = {
-    "pump_failure": MetricType.DO,
+    # Judged on the aerator itself: DO lags, and after a short stop it may never have left the safe range,
+    # so "DO barely rose" would call a working repair a failure
+    "pump_failure": MetricType.PUMP_POWER,
     "do_out_of_range": MetricType.DO,
     "orp_out_of_range": MetricType.ORP,
     "nh3_out_of_range": MetricType.NH3,

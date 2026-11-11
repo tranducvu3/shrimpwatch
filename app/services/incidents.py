@@ -25,7 +25,7 @@ from app.domain.conditions import REMEDIES, Remedy
 from app.domain.incident_lifecycle import ensure_transition, is_escalation
 from app.domain.incident_rules import Finding, Thresholds
 from app.domain.models import MANUAL_METRIC_UNITS, Incident, IncidentEvidence, IncidentState, MetricType
-from app.domain.remedies import suggested_remedies
+from app.domain.remedies import automatic_remedy, suggested_remedies
 from app.domain.remedy_outcome import RemedyOutcome, remedy_outcome, watched_metric
 from app.services import derivations
 from app.services import ponds as pond_service
@@ -263,7 +263,7 @@ def auto_recover(pond_id: str) -> str | None:
 
 
 def _write_transition(
-    incident_id: str, state: IncidentState, action: str | None, remedy: Remedy | None
+    incident_id: str, state: IncidentState, action: str | None, remedy: Remedy | None, by: str | None = None
 ) -> tuple[dict, dict]:
     """Validate and write a state change and its `incident_action` event. Returns (incident before, fields set).
 
@@ -282,6 +282,8 @@ def _write_transition(
         details["action"] = action
     if remedy:
         details["remedy"] = remedy.value
+    if by:
+        details["by"] = by
     events_repo.record("incident_action", pond_id, incident_id=incident_id, details=details)
 
     now = utcnow()
@@ -319,7 +321,7 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
     _report_transition(incident, state, action, fields)
 
 
-def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> dict:
+def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None, by: str | None = None) -> dict:
     """The operator applies a remedy to an incident: recorded on the incident, which moves to Resolving.
 
     Only new readings can prove the pond recovered, so the worker (not this call) moves it to Recovered.
@@ -343,7 +345,7 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     }
 
     def record() -> tuple[dict, dict]:
-        written = _write_transition(incident_id, IncidentState.RESOLVING, action, remedy)
+        written = _write_transition(incident_id, IncidentState.RESOLVING, action, remedy, by)
         incidents_repo.add_remedy(incident_id, remedy.value, check)
         return written
 
@@ -360,6 +362,45 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     }
 
 
+AUTOMATION = "datadog_workflow"
+
+
+def auto_remediate(pond_id: str, run_id: str | None = None) -> dict:
+    """Datadog Workflow Automation applies the pond's automatic remedy (see domain.remedies.automatic_remedy).
+
+    Safe to call again: a workflow retry, or a second alert for the same incident, finds the remedy already applied
+    and does nothing. The worker still decides recovery from new readings, exactly as for a farmer's remedy.
+    """
+    set_span_tags(pond_id=pond_id)
+    incident = incidents_repo.find_active(pond_id)
+    if incident is None:
+        return _auto_skip(pond_id, "no_active_incident")
+    remedy = automatic_remedy(incident.get("root_cause"))
+    if remedy is None:
+        return _auto_skip(pond_id, "no_automatic_remedy", incident)
+    if remedy.value in incident.get("remedies", []):
+        return _auto_skip(pond_id, "already_applied", incident)
+    note = "tự động bởi Datadog Workflow"
+    if run_id:
+        note += f" ({run_id})"
+    result = apply_remedy(incident["_id"], remedy, note, by=AUTOMATION)
+    seconds = _seconds(incident["created_at"], utcnow())
+    tags = {**_timing_tags(incident), "remedy": remedy.value}
+    distribution("incident.time_to_auto_remediate", seconds, tags=tags)
+    increment("remediation.auto", tags={**tags, "outcome": "applied"})
+    logger.warning(
+        "auto-remediation applied",
+        extra={"pond": pond_id, "incident_id": incident["_id"], "remedy": remedy.value, "run_id": run_id},
+    )
+    return {"status": "applied", "seconds_after_open": seconds, **result}
+
+
+def _auto_skip(pond_id: str, reason: str, incident: dict | None = None) -> dict:
+    increment("remediation.auto", tags={"pond": pond_id, "outcome": "skipped", "reason": reason})
+    logger.info("auto-remediation skipped", extra={"pond": pond_id, "reason": reason})
+    return {"status": "skipped", "reason": reason, "incident_id": incident["_id"] if incident else None}
+
+
 # Sensor readings older than this do not describe the pond now
 CURRENT_VALUE_WINDOW = timedelta(minutes=10)
 
@@ -370,7 +411,15 @@ def _current_value(pond_id: str, metric: MetricType, now: datetime) -> float | N
     return metrics_repo.latest_value(pond_id, metric.value, now - window)
 
 
-_METRIC_VI = {"do": "DO", "nh3": "NH₃", "co2": "CO₂", "orp": "ORP", "ph": "pH", "tan": "TAN"}
+_METRIC_VI = {
+    "do": "DO",
+    "nh3": "NH₃",
+    "co2": "CO₂",
+    "orp": "ORP",
+    "ph": "pH",
+    "tan": "TAN",
+    "pump_power": "Công suất quạt",
+}
 
 
 def check_remedy(pond_id: str, now: datetime | None = None, still_abnormal: bool = True) -> RemedyOutcome | None:

@@ -35,6 +35,14 @@ class ManualInput(BaseModel):
     tester_id: str = "tech-001"
 
 
+class RemediationRequest(BaseModel):
+    """Sent by the Datadog auto-remediation workflow."""
+
+    pond_id: str = Field(pattern=r"^pond-\d{2}$")
+    # The workflow instance id, recorded with the action so Datadog and the timeline point at each other
+    run_id: str | None = Field(default=None, max_length=100, pattern=r"^[\w\-]*$")
+
+
 class ScenarioRequest(BaseModel):
     scenario: ScenarioType
     offset: float

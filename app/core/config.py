@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     FARMER_ALERT_EMAILS: str = ""
     # Where the farmer opens the control panel from the alert (a URL their phone can reach); empty = no link
     PUBLIC_BASE_URL: str = ""
+    # Shared secret the Datadog auto-remediation workflow sends in X-Automation-Token; empty = automation disabled.
+    # Kept in .env only; datadog_push writes it into the workflow's request header.
+    AUTOMATION_TOKEN: str = ""
 
     DD_AGENT_HOST: str = "localhost"
     DD_TRACE_AGENT_PORT: int = 8126

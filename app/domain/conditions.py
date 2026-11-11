@@ -181,6 +181,7 @@ class Remedy(str, Enum):
     THIN_STOCK = "thin_stock"
     LIME = "lime"
     FIX_SENSOR = "fix_sensor"
+    BACKUP_AERATOR = "backup_aerator"
 
 
 @dataclass(frozen=True)
@@ -204,6 +205,13 @@ REMEDIES: dict[Remedy, RemedyInfo] = {
     ),
     Remedy.FIX_SENSOR: RemedyInfo(
         "Sửa đầu dò", "Thay pin, nối lại dây hoặc thay đầu dò đo nước", (ConditionType.SENSOR_OFFLINE,)
+    ),
+    # Switched on remotely through the aerator's relay, so Datadog can apply it without a person (see
+    # domain.remedies.automatic_remedy); the main aerator still has to be repaired
+    Remedy.BACKUP_AERATOR: RemedyInfo(
+        "Bật quạt dự phòng",
+        "Bật quạt dự phòng qua rơ-le từ xa để giữ oxy, trong lúc chờ sửa quạt chính",
+        (ConditionType.AERATOR_FAILURE,),
     ),
 }
 

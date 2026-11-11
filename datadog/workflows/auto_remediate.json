@@ -1,0 +1,48 @@
+{
+  "data": {
+    "type": "workflows",
+    "attributes": {
+      "name": "[ShrimpWatch] Auto-remediation: backup aerator · Tự động bật quạt dự phòng",
+      "description": "Started by the 'Auto-remediation: aerator stopped' monitor. Calls ShrimpWatch to switch on the pond's backup aerator; the incident moves to Resolving and the worker closes it once new readings show DO is safe. The farmer still gets the alert email to repair the main aerator.",
+      "published": true,
+      "tags": ["service:shrimpwatch", "team:shrimpwatch"],
+      "spec": {
+        "handle": "shrimpwatch-auto-remediate",
+        "inputSchema": {
+          "parameters": [
+            {
+              "name": "pond_id",
+              "type": "STRING",
+              "label": "Pond",
+              "description": "Pond whose aerator stopped, from the monitor group ({{pond.name}}), e.g. pond-01"
+            }
+          ]
+        },
+        "triggers": [
+          {
+            "monitorTrigger": {"rateLimit": {"count": 12, "interval": "600s"}},
+            "startStepNames": ["Switch_on_backup_aerator"]
+          }
+        ],
+        "steps": [
+          {
+            "name": "Switch_on_backup_aerator",
+            "actionId": "com.datadoghq.http.request",
+            "parameters": [
+              {"name": "verb", "value": "POST"},
+              {"name": "url", "value": "$PUBLIC_BASE_URL/automation/remediate"},
+              {
+                "name": "requestHeaders",
+                "value": [
+                  {"key": "Content-Type", "value": ["application/json"]},
+                  {"key": "X-Automation-Token", "value": ["$AUTOMATION_TOKEN"]}
+                ]
+              },
+              {"name": "body", "value": "{\"pond_id\": \"{{ Trigger.pond_id }}\", \"run_id\": \"{{ InstanceId }}\"}"}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
