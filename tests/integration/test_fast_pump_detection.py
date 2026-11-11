@@ -90,7 +90,16 @@ def test_worker_does_not_auto_recover_while_aerator_is_stopped(client):
 
 def test_database_rejects_a_second_active_incident_for_a_pond():
     pond = "pond-86"
-    base = {"farm_id": settings.FARM_ID, "pond_id": pond, "severity": "warning", "title": "t", "description": "d"}
+    now = utcnow()
+    base = {
+        "farm_id": settings.FARM_ID,
+        "pond_id": pond,
+        "severity": "warning",
+        "title": "t",
+        "description": "d",
+        "created_at": now,
+        "updated_at": now,
+    }
     incidents_collection().insert_one({"_id": "inc-dup-1", "state": "open", **base})
     with pytest.raises(DuplicateKeyError):
         incidents_collection().insert_one({"_id": "inc-dup-2", "state": "investigating", **base})

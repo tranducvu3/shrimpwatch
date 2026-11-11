@@ -13,6 +13,7 @@ from app.core.log import get_logger
 from app.db.mongo import get_db
 from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS
 from app.domain.incident_lifecycle import ACTIVE_STATES
+from app.domain.models import IncidentState, Severity
 from app.domain.ponds import pond_ids
 
 logger = get_logger("db.schema")
@@ -108,8 +109,68 @@ def _init_metrics_hourly(db: Database, force: bool) -> None:
     hourly.create_index([("hour", 1)], expireAfterSeconds=settings.ROLLUP_TTL_SECONDS)
 
 
+# $jsonSchema validators: MongoDB rejects a write that would break the shape the services and the dashboard rely on.
+# Only the fields every reader needs are required; new optional fields need no change here.
+_DATE = {"bsonType": "date"}
+_STRING = {"bsonType": "string"}
+_OPTIONAL_STRING = {"bsonType": ["string", "null"]}
+INCIDENT_VALIDATOR = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "farm_id", "pond_id", "state", "severity", "title", "created_at", "updated_at"],
+        "properties": {
+            "_id": _STRING,
+            "farm_id": _STRING,
+            "pond_id": _STRING,
+            "state": {"enum": [s.value for s in IncidentState]},
+            "severity": {"enum": [s.value for s in Severity]},
+            "title": _STRING,
+            "description": _STRING,
+            "root_cause": _OPTIONAL_STRING,
+            "created_at": _DATE,
+            "updated_at": _DATE,
+            "acknowledged_at": {"bsonType": ["date", "null"]},
+            "recovered_at": {"bsonType": ["date", "null"]},
+            "fault_started_at": {"bsonType": ["date", "null"]},
+            "detection_delay_sec": {"bsonType": ["double", "int", "long", "null"]},
+            "evidence": {"bsonType": "object"},
+            "actions": {"bsonType": "array"},
+            "remedies": {"bsonType": "array", "items": _STRING},
+        },
+    }
+}
+EVENT_VALIDATOR = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["timestamp", "event", "pond_id"],
+        "properties": {
+            "timestamp": _DATE,
+            "event": _STRING,
+            "pond_id": _OPTIONAL_STRING,
+            "incident_id": _STRING,
+            "details": {"bsonType": "object"},
+        },
+    }
+}
+
+
+def _set_validator(db: Database, name: str, validator: dict) -> bool:
+    """Apply a validator to a collection. `moderate`: documents written before it are not rejected on update.
+
+    collMod needs a dbAdmin-like role; without it the app still runs (the services keep the shape), so only warn.
+    Undo with collMod validator={} if needed. Returns True when applied.
+    """
+    try:
+        db.command("collMod", name, validator=validator, validationLevel="moderate", validationAction="error")
+    except OperationFailure as e:
+        logger.warning("validator not applied", extra={"collection": name, "err": str(e)})
+        return False
+    return True
+
+
 def _init_incidents(db: Database, force: bool) -> None:
     _ensure_collection(db, INCIDENTS, force)
+    _set_validator(db, INCIDENTS, INCIDENT_VALIDATOR)
     incidents = db[INCIDENTS]
     incidents.create_index([("pond_id", 1), ("state", 1)])
     incidents.create_index([("state", 1), ("created_at", -1)])
@@ -174,6 +235,7 @@ def _init_ponds(db: Database, force: bool) -> list[dict]:
 
 def _init_events(db: Database, force: bool) -> None:
     _ensure_collection(db, EVENTS, force)
+    _set_validator(db, EVENTS, EVENT_VALIDATOR)
     events = db[EVENTS]
     # Older versions stored incident_action with details.incident_id -> move it to top level like other events.
     events.update_many(

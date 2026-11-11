@@ -233,6 +233,8 @@ The system is **write-light, read-heavy**: every 30 seconds there is only 1 `ins
 | **1 aggregate for all 6 ponds** (`partitionBy: pond_id`) | 1 round-trip instead of 6. |
 | **Hourly rollup** (`$group` → `$merge`, idempotent) | The 24h pH swing reads ~24 rollup rows instead of ~2,880 raw points per pond every 30 seconds; long-term history survives the 7-day TTL. |
 | **Incident timeline** `GET /incidents/{id}/timeline` | 1 aggregate: `$lookup` of the incident's events + the pond's aerator events before/during the incident, sorted with `$sortArray` — serves the *Investigate* step. |
+| **Multi-document transactions** for every incident change | The incident and its `events` entry are written in one transaction (`run_in_transaction` in [mongo.py](app/db/mongo.py): snapshot reads, majority writes, retried on a write conflict). The timeline can never miss a change, or show one that was rolled back. The state check of `PATCH /incidents/{id}` reads from the same snapshot it writes over, so two operators racing on one incident cannot both pass it: the loser gets `409`. Datadog metrics and events are sent only after the commit |
+| **`$jsonSchema` validators** on `incidents` and `events` | MongoDB itself rejects an incident with an unknown `state`/`severity`, a missing `pond_id` or a non-date timestamp, whatever code writes it. `validationLevel: moderate`, so documents written before the validator are not rejected on update; applied with `collMod` by `init_db` ([schema.py](app/db/schema.py), `INCIDENT_VALIDATOR`, `EVENT_VALIDATOR`) |
 
 Run [scripts/step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) in mongosh to see which index is used, how many buckets were read and the average number of records per bucket.
 
@@ -574,7 +576,7 @@ Logs reach Datadog: the query `service:shrimpwatch` (last 30 minutes) returns re
 | 3 | **Aggregation & Window Functions** | `$setWindowFields` + `$derivative` compute the DO drop rate over a 5-minute time window; `$group` + `$merge` build the hourly rollup; `$lookup` + `$sortArray` build the incident timeline | [pipelines.py](app/db/pipelines.py) (`compute_do_drop_rate_pipeline`, `rollup_hourly_pipeline`, `incident_timeline_pipeline`) |
 | 4 | **expireAfterSeconds (TTL)** | TTL automatically deletes raw telemetry after 7 days (`604800` seconds); the `metrics_hourly` rollup is kept for 1 year | [schema.py](app/db/schema.py) (`init_collections`) |
 | 5 | **Efficient modeling & access** | Time Series (engine-managed buckets), ESR compound index `pond_metric_ts`, 1 aggregate for all 6 ponds, rollups instead of scanning raw data — see [Access Patterns & Design Decisions](#access-patterns--design-decisions) | [schema.py](app/db/schema.py) · [pipelines.py](app/db/pipelines.py) · [step6_index_and_buckets.js](scripts/step6_index_and_buckets.js) |
-| 6 | **Tied closely to operations** | MongoDB drives the entire incident state machine (`open → investigating → resolving → recovered`) | [incident_lifecycle.py](app/domain/incident_lifecycle.py) · [incidents.py](app/services/incidents.py) |
+| 6 | **Tied closely to operations** | MongoDB drives the entire incident state machine (`open → investigating → resolving → recovered`); each change and its `events` entry are committed in one **multi-document transaction**, and `$jsonSchema` validators guard both collections | [incident_lifecycle.py](app/domain/incident_lifecycle.py) · [incidents.py](app/services/incidents.py) |
 
 #### Optional
 

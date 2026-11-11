@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.core.clock import utcnow
-from app.db.mongo import events_collection
+from app.db.mongo import events_collection, session
 
 
 def record(event: str, pond_id: str | None, incident_id: str | None = None, details: dict | None = None) -> None:
@@ -14,7 +14,7 @@ def record(event: str, pond_id: str | None, incident_id: str | None = None, deta
         doc["incident_id"] = incident_id
     if details is not None:
         doc["details"] = details
-    events_collection().insert_one(doc)
+    events_collection().insert_one(doc, session=session())
 
 
 # Events that start a fault in the (simulated) pond

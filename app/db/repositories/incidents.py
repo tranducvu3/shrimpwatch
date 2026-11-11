@@ -3,21 +3,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pymongo.errors import DuplicateKeyError
-
 from app.core.clock import utcnow
-from app.db.mongo import incidents_collection
+from app.db.mongo import incidents_collection, session
 from app.db.pipelines import incident_timeline_pipeline
 from app.domain.incident_lifecycle import ACTIVE_STATES
 from app.domain.models import IncidentState
 
 
 def get(incident_id: str) -> dict | None:
-    return incidents_collection().find_one({"_id": incident_id})
+    return incidents_collection().find_one({"_id": incident_id}, session=session())
 
 
 def find_active(pond_id: str) -> dict | None:
-    return incidents_collection().find_one({"pond_id": pond_id, "state": {"$in": [s.value for s in ACTIVE_STATES]}})
+    return incidents_collection().find_one(
+        {"pond_id": pond_id, "state": {"$in": [s.value for s in ACTIVE_STATES]}}, session=session()
+    )
 
 
 _PANEL_FIELDS = {"pond_id": 1, "state": 1, "severity": 1, "title": 1, "created_at": 1, "recovered_at": 1}
@@ -43,17 +43,18 @@ def list_recent(state: IncidentState | None = None, limit: int = 50) -> list[dic
     return list(incidents_collection().find(query).sort("created_at", -1).limit(limit))
 
 
-def insert(doc: dict[str, Any]) -> bool:
-    """False if the pond already has an active incident (unique index one_active_incident_per_pond)."""
-    try:
-        incidents_collection().insert_one(doc)
-    except DuplicateKeyError:
-        return False
-    return True
+def insert(doc: dict[str, Any]) -> None:
+    """Raises DuplicateKeyError if the pond already has an active incident (unique index one_active_incident_per_pond).
+
+    Raised, not caught: inside a transaction the error has already aborted it, so nothing else may be written.
+    """
+    incidents_collection().insert_one(doc, session=session())
 
 
 def update_fields(incident_id: str, fields: dict[str, Any]) -> None:
-    incidents_collection().update_one({"_id": incident_id}, {"$set": {"updated_at": utcnow(), **fields}})
+    incidents_collection().update_one(
+        {"_id": incident_id}, {"$set": {"updated_at": utcnow(), **fields}}, session=session()
+    )
 
 
 def last_closed_at(pond_id: str) -> datetime | None:
@@ -71,7 +72,7 @@ def set_state(
     update: dict[str, Any] = {"$set": {"updated_at": now, "state": state.value, **(fields or {})}}
     if action:
         update["$push"] = {"actions": {"time": now, "state": state.value, "action": action}}
-    incidents_collection().update_one({"_id": incident_id}, update)
+    incidents_collection().update_one({"_id": incident_id}, update, session=session())
 
 
 def add_remedy(incident_id: str, remedy: str, check: dict[str, Any]) -> None:
@@ -79,6 +80,7 @@ def add_remedy(incident_id: str, remedy: str, check: dict[str, Any]) -> None:
     incidents_collection().update_one(
         {"_id": incident_id},
         {"$addToSet": {"remedies": remedy}, "$set": {"updated_at": utcnow(), "remedy_check": check}},
+        session=session(),
     )
 
 
@@ -87,6 +89,7 @@ def set_remedy_outcome(incident_id: str, applied_at: datetime, fields: dict[str,
     result = incidents_collection().update_one(
         {"_id": incident_id, "state": IncidentState.RESOLVING.value, "remedy_check.applied_at": applied_at},
         {"$set": {"updated_at": utcnow(), **{f"remedy_check.{k}": v for k, v in fields.items()}}},
+        session=session(),
     )
     return result.modified_count == 1
 
