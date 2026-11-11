@@ -30,8 +30,14 @@ def _changes(*conditions: ConditionType) -> dict[str, tuple[str, float | None]]:
 
 def test_every_condition_changes_something():
     for condition in ConditionType:
-        assert metric_changes([condition]), condition
+        assert metric_changes([condition]) or CONDITIONS[condition].sensor_offline, condition
         assert CONDITIONS[condition].label
+
+
+def test_sensor_offline_silences_the_probe_and_the_fix_ends_it():
+    assert combined_effects([ConditionType.SENSOR_OFFLINE]).sensor_offline
+    assert not combined_effects([ConditionType.HEAVY_RAIN]).sensor_offline
+    assert applicable_remedies([ConditionType.SENSOR_OFFLINE]) == [Remedy.FIX_SENSOR]
 
 
 def test_active_conditions_stay_on_and_skip_unknown_and_malformed():

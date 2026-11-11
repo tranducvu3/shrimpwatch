@@ -33,6 +33,7 @@ class ConditionType(str, Enum):
     DIRTY_BOTTOM = "dirty_bottom"
     SALINITY_RISE = "salinity_rise"
     LIMING = "liming"
+    SENSOR_OFFLINE = "sensor_offline"
 
 
 class Severity(str, Enum):
@@ -54,6 +55,8 @@ class Condition:
     effects: dict[MetricType, float] = field(default_factory=dict)
     # Stops the aerator: DO falls steadily, ORP follows, pump power drops to 0
     pump_failed: bool = False
+    # The water-quality probe stops sending (DO, temperature, pH, salinity, ORP); the pond itself does not change
+    sensor_offline: bool = False
     # Minutes for the effect to build up from 0 to full (0 = at once)
     ramp_min: int = DEFAULT_RAMP_MIN
     # One-off actions (liming, water exchange) fade out linearly over this many minutes, then end; None = until cleared
@@ -141,6 +144,12 @@ CONDITIONS: dict[ConditionType, Condition] = {
         ramp_min=0,
         duration_min=240,
     ),
+    ConditionType.SENSOR_OFFLINE: Condition(
+        "Đầu dò mất kết nối",
+        "Đầu dò đo nước hết pin hoặc đứt dây: không còn số đo DO, pH, nhiệt độ, độ mặn, ORP",
+        sensor_offline=True,
+        ramp_min=0,
+    ),
 }
 
 # Sensor metrics the simulator offsets directly; the rest of `effects` are test-kit metrics
@@ -160,6 +169,7 @@ class Effects:
     sensor_offsets: dict[ScenarioType, float]
     manual_offsets: dict[MetricType, float]
     pump_failed: bool
+    sensor_offline: bool = False
 
 
 class Remedy(str, Enum):
@@ -170,6 +180,7 @@ class Remedy(str, Enum):
     CUT_FEED = "cut_feed"
     THIN_STOCK = "thin_stock"
     LIME = "lime"
+    FIX_SENSOR = "fix_sensor"
 
 
 @dataclass(frozen=True)
@@ -190,6 +201,9 @@ REMEDIES: dict[Remedy, RemedyInfo] = {
         "Bón vôi",
         "Rải vôi nâng độ kiềm và pH bị mưa hoặc thay nước pha loãng",
         (ConditionType.HEAVY_RAIN, ConditionType.WATER_EXCHANGE),
+    ),
+    Remedy.FIX_SENSOR: RemedyInfo(
+        "Sửa đầu dò", "Thay pin, nối lại dây hoặc thay đầu dò đo nước", (ConditionType.SENSOR_OFFLINE,)
     ),
 }
 
@@ -298,7 +312,12 @@ def combined_effects(conditions: list[ConditionLike]) -> Effects:
             limit = SCENARIO_LIMITS[scenario]
             sensor[scenario] = round(min(limit.max_offset, max(limit.min_offset, totals[metric])), 3)
     manual = {m: round(v, 3) for m, v in totals.items() if m not in SENSOR_SCENARIOS}
-    return Effects(sensor, manual, any(CONDITIONS[a.type].pump_failed and a.intensity > 0 for a in active))
+    return Effects(
+        sensor,
+        manual,
+        any(CONDITIONS[a.type].pump_failed and a.intensity > 0 for a in active),
+        any(CONDITIONS[a.type].sensor_offline for a in active),
+    )
 
 
 def metric_changes(conditions: list[ConditionLike]) -> list[dict[str, Any]]:

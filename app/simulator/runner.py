@@ -9,7 +9,7 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
 from app.domain.conditions import ConditionType, active_conditions, combined_effects
-from app.domain.models import MetricRecord, MetricType
+from app.domain.models import DeviceType, MetricRecord, MetricType
 from app.domain.ponds import pond_ids
 from app.domain.scenarios import active_offsets
 from app.simulator.api_client import ShrimpWatchClient
@@ -123,7 +123,11 @@ def tick(
         for scenario, offset in effects.sensor_offsets.items():
             offsets[scenario] = offsets.get(scenario, 0.0) + offset
         pump_failed = bool(state.get("pump", {}).get("failed", False)) or effects.pump_failed
-        batch.extend(_dump(sim.step(now, pump_failed, offsets)))
+        records = sim.step(now, pump_failed, offsets)
+        if effects.sensor_offline:
+            # The pond goes on (the model keeps its state), only the water-quality probe stops reporting
+            records = [r for r in records if r.device_type != DeviceType.WATER_NODE]
+        batch.extend(_dump(records))
         if pid in states:
             manual_offsets[pid] = effects.manual_offsets
             running[pid] = frozenset(c.type for c in conditions)

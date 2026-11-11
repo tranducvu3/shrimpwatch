@@ -64,6 +64,75 @@ def compute_do_drop_rate_pipeline(
     ]
 
 
+def sensor_coverage_pipeline(
+    pond_ids: list[str], window_sec: int = 300, step_sec: int = 30, now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """How complete each pond's water-quality feed (its DO readings) was over the last window, one row per pond.
+
+    Readings are grouped into `step_sec` slots, one expected reading each. `$densify` adds the slots that got no
+    reading, so a probe that drops packets shows up as missing slots rather than simply fewer documents, and `$fill`
+    carries the last known value into them (last observation carried forward). The current, unfinished slot is left
+    out. A pond with no reading in the whole window has no partition to densify, so it has no row.
+    """
+    now = now or utcnow()
+    # Slot boundaries on the grid $dateTrunc uses (whole multiples of step_sec, which must divide a day)
+    second_of_day = now.hour * 3600 + now.minute * 60 + now.second
+    end = now.replace(microsecond=0) - timedelta(seconds=second_of_day % step_sec)
+    start = end - timedelta(seconds=window_sec)
+    return [
+        {
+            "$match": {
+                "metadata.pond_id": {"$in": pond_ids},
+                "metadata.metric": "do",
+                "timestamp": {"$gte": start, "$lt": end},
+                "metadata.source": "sensor",
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "pond_id": "$metadata.pond_id",
+                    "slot": {"$dateTrunc": {"date": "$timestamp", "unit": "second", "binSize": step_sec}},
+                },
+                "value": {"$avg": "$value"},
+                "last_ts": {"$max": "$timestamp"},
+            }
+        },
+        {"$project": {"_id": 0, "pond_id": "$_id.pond_id", "slot": "$_id.slot", "value": 1, "last_ts": 1}},
+        {
+            "$densify": {
+                "field": "slot",
+                "partitionByFields": ["pond_id"],
+                "range": {"step": step_sec, "unit": "second", "bounds": [start, end]},
+            }
+        },
+        # Slots $densify added have no value: they are the readings that never arrived
+        {"$set": {"received": {"$cond": [{"$eq": [{"$type": "$value"}, "missing"]}, 0, 1]}}},
+        {"$fill": {"partitionByFields": ["pond_id"], "sortBy": {"slot": 1}, "output": {"value": {"method": "locf"}}}},
+        {"$sort": {"pond_id": 1, "slot": 1}},
+        {
+            "$group": {
+                "_id": "$pond_id",
+                "slots": {"$sum": 1},
+                "received": {"$sum": "$received"},
+                "last_seen": {"$max": "$last_ts"},
+                "last_value": {"$last": "$value"},
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "pond_id": "$_id",
+                "slots": 1,
+                "received": 1,
+                "completeness": {"$divide": ["$received", "$slots"]},
+                "last_seen": 1,
+                "last_value": 1,
+            }
+        },
+    ]
+
+
 def rollup_hourly_pipeline(since: datetime, until: datetime | None = None) -> list[dict[str, Any]]:
     """Roll raw data up into hourly min/max/avg and $merge into metrics_hourly.
 

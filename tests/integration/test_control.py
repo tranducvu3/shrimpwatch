@@ -148,7 +148,9 @@ def test_scenario_catalog_and_control_page(client: TestClient):
     assert {s["type"] for s in catalog["scenarios"]} == {"do", "temperature", "ph", "salinity"}
     assert catalog["thresholds"]["do_critical"] == settings.DO_CRITICAL
     assert catalog["thresholds"]["tan_warn"] == settings.TAN_WARN
-    assert len(catalog["conditions"]) == 12 and all(c["changes"] for c in catalog["conditions"])
+    assert len(catalog["conditions"]) == 13
+    # A silent probe changes no reading of the water: it only stops them
+    assert all(c["changes"] for c in catalog["conditions"] if c["type"] != "sensor_offline")
     r = client.get("/control")
     assert r.status_code == 200
     assert "ShrimpWatch" in r.text

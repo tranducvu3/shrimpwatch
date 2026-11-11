@@ -11,6 +11,7 @@ from app.db.pipelines import (
     compute_ph_swing_pipeline,
     latest_readings_pipeline,
     rollup_hourly_pipeline,
+    sensor_coverage_pipeline,
 )
 from app.domain.models import MetricRecord
 
@@ -84,6 +85,12 @@ def average_value(pond_id: str, metric: str, since: datetime, limit: int = 30) -
 def do_windows(pond_ids: list[str], window_sec: int) -> dict[str, dict]:
     """5-minute DO window results for many ponds in a single aggregate, keyed by pond_id."""
     pipeline = compute_do_drop_rate_pipeline(pond_ids, window_sec=window_sec)
+    return {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
+
+
+def sensor_coverage(pond_ids: list[str], window_sec: int, step_sec: int) -> dict[str, dict]:
+    """Feed completeness and last reading per pond (ponds silent for the whole window are absent), one aggregate."""
+    pipeline = sensor_coverage_pipeline(pond_ids, window_sec=window_sec, step_sec=step_sec)
     return {row["pond_id"]: row for row in metrics_collection().aggregate(pipeline)}
 
 

@@ -5,6 +5,7 @@ from app.db.pipelines import (
     compute_ph_swing_pipeline,
     latest_readings_pipeline,
     rollup_hourly_pipeline,
+    sensor_coverage_pipeline,
 )
 
 NOW = datetime(2026, 10, 31, 12, 34, 56)
@@ -37,3 +38,18 @@ def test_latest_readings_filter_matches_compound_index():
         "metadata.metric": {"$in": ["do", "ph"]},
         "timestamp": {"$gte": NOW},
     }
+
+
+def test_sensor_coverage_uses_the_index_and_densifies_whole_slots():
+    pipeline = sensor_coverage_pipeline(["pond-01"], window_sec=300, step_sec=30, now=NOW)
+    match = pipeline[0]["$match"]
+    # 12:34:56 -> the unfinished 12:34:30 slot is left out; 10 whole slots before it
+    assert match["timestamp"] == {"$gte": datetime(2026, 10, 31, 12, 29, 30), "$lt": datetime(2026, 10, 31, 12, 34, 30)}
+    assert (match["metadata.pond_id"], match["metadata.metric"]) == ({"$in": ["pond-01"]}, "do")
+    densify = next(stage["$densify"] for stage in pipeline if "$densify" in stage)
+    assert densify["range"] == {
+        "step": 30,
+        "unit": "second",
+        "bounds": [datetime(2026, 10, 31, 12, 29, 30), datetime(2026, 10, 31, 12, 34, 30)],
+    }
+    assert any("$fill" in stage for stage in pipeline)

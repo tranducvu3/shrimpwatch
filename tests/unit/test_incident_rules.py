@@ -213,3 +213,30 @@ def test_pump_failure_description_carries_the_forecast():
 def test_forecast_warning_says_when_do_is_already_below_the_warning_level():
     finding = evaluate(replace(snap(drop_rate=0.04, min_do=3.8), last_do=3.8), T)
     assert "dưới ngưỡng cảnh báo 4" in finding.description and "≈ 20 phút nữa" in finding.description
+
+
+def test_silent_probe_is_a_sensor_offline_warning():
+    # A dead probe: no DO, temperature, pH or salinity data, only the aerator still reports
+    s = replace(
+        snap(drop_rate=None, min_do=None, temp=None, ph=None, salinity=None),
+        sensor_silent_sec=300.0,
+        sensor_last_do=6.1,
+    )
+    finding = evaluate(s, T)
+    assert (finding.severity, finding.root_cause) == (Severity.WARNING, "sensor_offline")
+    assert "5 phút" in finding.description and "6.10 mg/L" in finding.description
+
+
+def test_flaky_probe_is_a_sensor_offline_warning():
+    finding = evaluate(replace(snap(), sensor_completeness=0.3, sensor_silent_sec=20.0), T)
+    assert finding.root_cause == "sensor_offline" and "30%" in finding.description
+
+
+def test_probe_feed_within_limits_or_unchecked_is_normal():
+    assert evaluate(replace(snap(), sensor_completeness=0.5, sensor_silent_sec=120.0), T) is None
+    assert evaluate(snap(), T) is None
+
+
+def test_rules_with_data_take_priority_over_a_flaky_probe():
+    finding = evaluate(replace(snap(min_do=2.5), sensor_completeness=0.3), T)
+    assert finding.root_cause == "do_out_of_range"
