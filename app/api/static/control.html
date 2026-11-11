@@ -172,27 +172,6 @@
     button.btn.small { padding: 6px 12px; font-size: 13px; }
     .dd-opt { padding: 10px 12px; }
   }
-  /* Incident section: what needs the operator now, above the pond cards */
-  .incidents { margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
-  .incidents-head { display: flex; align-items: baseline; gap: 8px; }
-  .incidents-head h2 { font-size: 16px; margin: 0; }
-  /* About 5½ rows, then the list scrolls on its own (the half row shows there is more) */
-  .inc-list {
-    display: flex; flex-direction: column; gap: 6px; max-height: 270px; overflow-y: auto; overscroll-behavior: contain;
-    padding: 2px 6px 2px 2px; scrollbar-gutter: stable;
-  }
-  .inc-row { flex: none; }
-  .inc-row {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; text-align: left; width: 100%; cursor: pointer;
-    font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border);
-    border-left: 4px solid var(--warn); border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow);
-  }
-  .inc-row.critical { border-left-color: var(--crit); }
-  .inc-row.recovered { border-left-color: var(--ok); opacity: .8; }
-  .inc-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  @media (hover: hover) { .inc-row:hover { background: var(--surface-2); } }
-  .inc-row .t { font-weight: 600; flex: 1 1 260px; min-width: 0; }
-  .inc-row .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
   /* Handling status: Chưa xử lý -> Đang xử lý -> Xử lý xong, or Xử lý không thành công */
   .pill.status-todo { color: var(--muted); background: var(--surface-2); }
   .pill.status-doing { color: var(--accent); background: var(--info-bg); }
@@ -301,13 +280,6 @@
     báo. DO đổi dần và đạt gần mức mới sau khoảng 20 phút; độ kiềm, TAN, nitrite được đo lại ngay khi bật hoặc tắt
     một điều kiện.
   </div>
-  <section class="incidents" id="incidents" aria-labelledby="incidents-title">
-    <div class="incidents-head">
-      <h2 id="incidents-title">Sự cố</h2>
-      <span class="muted" id="incidents-count"></span>
-    </div>
-    <div class="inc-list" id="inc-list"></div>
-  </section>
   <div class="grid" id="ponds"></div>
 </main>
 <dialog class="inc" id="inc-dialog" aria-labelledby="inc-title">
@@ -657,14 +629,12 @@
   });
 
 
-  // ---------- Incidents: list, detail, actions ----------
+  // ---------- Incidents: detail, actions ----------
   const ROOT_CAUSES = {
     pump_failure: "Quạt nước hỏng", do_out_of_range: "DO", temperature_out_of_range: "Nhiệt độ", ph_out_of_range: "pH",
     salinity_out_of_range: "Độ mặn", orp_out_of_range: "ORP", nh3_out_of_range: "NH₃", co2_out_of_range: "CO₂",
     tan_out_of_range: "TAN", nitrite_out_of_range: "Nitrite", alkalinity_out_of_range: "Độ kiềm",
   };
-  const RECENT_RECOVERED_MS = 24 * 3600 * 1000;
-  let incidentList = [];
   let openIncidentId = null;
 
   // The API sends naive UTC ("2026-11-08T12:00:00"); accept an explicit Z or offset too
@@ -686,25 +656,6 @@
   }
 
   const pondName = (id) => (lastPonds.find((p) => p._id === id) || {}).name || id;
-
-  function renderIncidents(active, recovered) {
-    const recent = recovered.filter((i) => Date.now() - toDate(i.recovered_at || i.updated_at) < RECENT_RECOVERED_MS).slice(0, 5);
-    incidentList = [...active, ...recent];
-    $("#incidents-count").textContent = active.length
-      ? `${active.length} đang mở${recent.length ? ` · ${recent.length} đã hồi phục trong 24 giờ` : ""}`
-      : recent.length ? `Không có sự cố đang mở · ${recent.length} đã hồi phục trong 24 giờ` : "Không có sự cố trong 24 giờ";
-    $("#inc-list").replaceChildren(...incidentList.map((i) => {
-      const done = i.state === "recovered";
-      const row = el("button", { class: `inc-row ${done ? "recovered" : i.severity}`, type: "button" }, [
-        el("span", { class: `pill ${i.severity === "critical" ? "crit" : "warn"}`, text: SEVERITIES[i.severity] || i.severity }),
-        el("span", { class: `pill status-${statusOf(i)}`, text: STATUS[statusOf(i)] }),
-        el("span", { class: "t", text: `${pondName(i.pond_id)} · ${i.title}` }),
-        el("span", { class: "when", text: done ? `hồi phục sau ${fmtDuration(seconds(i.created_at, i.recovered_at))}` : `mở ${hhmm(i.created_at)} · ${ago(i.created_at)}` }),
-      ]);
-      row.addEventListener("click", () => openIncident(i._id));
-      return row;
-    }));
-  }
 
   const seconds = (a, b) => (a && b ? (toDate(b) - toDate(a)) / 1000 : null);
 
@@ -1071,14 +1022,13 @@
 
   async function refresh() {
     try {
-      const [ponds, readings, manual, open, investigating, resolving, recovered] = await Promise.all([
+      const [ponds, readings, manual, open, investigating, resolving] = await Promise.all([
         api("GET", "/ponds"),
         api("GET", "/ponds/readings"),
         api("GET", "/ponds/manual-readings"),
         api("GET", "/incidents?state=open"),
         api("GET", "/incidents?state=investigating"),
         api("GET", "/incidents?state=resolving"),
-        api("GET", "/incidents?state=recovered&limit=10"),
       ]);
       const incidents = {};
       for (const i of [...open, ...investigating, ...resolving]) incidents[i.pond_id] = i;
@@ -1099,7 +1049,6 @@
         updateCard(cards.get(pond._id), pond, pondReadings, incidents[pond._id]);
       }
       if (added) applyFilter();
-      renderIncidents([...open, ...investigating, ...resolving].sort((a, b) => toDate(b.created_at) - toDate(a.created_at)), recovered);
       // Keep an open detail current, but not while the operator is picking remedies
       if (openIncidentId && !detailUi.menu) refreshDetail();
       $("#health-dot").className = "dot ok";
