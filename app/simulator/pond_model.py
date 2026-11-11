@@ -11,6 +11,12 @@ from app.core.config import settings
 from app.domain.models import DeviceType, MetricRecord, MetricType, Source
 from app.domain.scenarios import ScenarioType
 
+# Time constants (minutes) of DO and ORP moving towards their target. Both climb back quicker than a real pond once
+# the cause is removed, so the farmer sees a remedy work during the demo
+DO_FALL_TAU_MIN = 10.0
+ORP_FALL_TAU_MIN = 5.0
+RECOVERY_TAU_MIN = 2.0
+
 
 def _hour_fraction(dt: datetime) -> float:
     return (dt.hour * 3600 + dt.minute * 60 + dt.second) / 86400.0
@@ -48,7 +54,7 @@ class PondSimulator:
         # Daily swing 0.30 + small sensor noise: a healthy pond's 24h pH swing < PH_SWING_WARN (0.5), no false alert
         ph = self._ph_base + ph_amp * 0.30 + offsets.get(ScenarioType.PH, 0.0) + self._rng.gauss(0, 0.02)
 
-        # DO scenario shifts the baseline: DO is pulled gradually to the new level (time constant ~10 min), no instant jump
+        # DO scenario shifts the baseline: DO is pulled gradually to the new level, no instant jump
         do_amp = diurnal_amplitude(hf, phase_offset_hours=18)
         do_baseline = self._do_base + do_amp * 0.8 + offsets.get(ScenarioType.DO, 0.0)
 
@@ -58,7 +64,8 @@ class PondSimulator:
             drift = 0.0
             aeration = -0.1 + self._rng.gauss(0, 0.005)
         else:
-            drift = (do_baseline - self._do_last) * min(1.0, delta_min / 10.0)
+            tau_min = RECOVERY_TAU_MIN if do_baseline > self._do_last else DO_FALL_TAU_MIN
+            drift = (do_baseline - self._do_last) * min(1.0, delta_min / tau_min)
             aeration = +0.04 + self._rng.gauss(0, 0.005)
         do = max(0.5, min(10.0, self._do_last + drift + aeration * delta_min + self._rng.gauss(0, 0.03)))
         self._do_last = do
@@ -66,7 +73,8 @@ class PondSimulator:
 
         # ORP falls with DO: oxygen-poor pond bottom -> anaerobic decomposition, H2S risk
         orp_target = 60.0 * (do - 3.0) + 120.0
-        self._orp_last += (orp_target - self._orp_last) * min(1.0, delta_min / 5.0)
+        orp_tau = RECOVERY_TAU_MIN if orp_target > self._orp_last else ORP_FALL_TAU_MIN
+        self._orp_last += (orp_target - self._orp_last) * min(1.0, delta_min / orp_tau)
         orp = self._orp_last + self._rng.gauss(0, 4)
 
         self._salinity_last += self._rng.gauss(0, 0.02)

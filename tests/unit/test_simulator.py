@@ -37,6 +37,20 @@ def test_simulator_do_and_orp_fall_when_pump_fails():
     assert "salinity" in last
 
 
+def test_do_and_orp_recover_within_minutes_once_the_aerator_is_repaired():
+    sim = PondSimulator("pond-03")
+    t = datetime(2026, 1, 1, 12, 0)
+    before = _values(sim.step(t, pump_failed=False))
+    for i in range(1, 41):  # 20 min without aerator
+        failed = _values(sim.step(t + timedelta(seconds=30 * i), pump_failed=True))
+    assert failed["do"] < before["do"] - 1.5
+    t += timedelta(minutes=20)
+    for i in range(1, 11):  # 5 min after the repair
+        repaired = _values(sim.step(t + timedelta(seconds=30 * i), pump_failed=False))
+    assert repaired["do"] > before["do"] - 0.3, f"DO should be back near normal: {before['do']} -> {repaired['do']}"
+    assert repaired["orp"] > before["orp"] - 40
+
+
 def _values(records):
     return {r.metric.value: r.value for r in records}
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
-from app.domain.conditions import active_conditions, combined_effects
+from app.domain.conditions import ConditionType, active_conditions, combined_effects
 from app.domain.models import MetricRecord, MetricType
 from app.domain.ponds import pond_ids
 from app.domain.scenarios import active_offsets
@@ -108,14 +108,17 @@ def backfill(client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: dat
 
 def tick(
     client: ShrimpWatchClient, sims: dict[str, PondSimulator], now: datetime
-) -> dict[str, dict[MetricType, float]]:
-    """Send one sensor reading per pond; return the test-kit offsets of each pond whose state was read."""
+) -> tuple[dict[str, dict[MetricType, float]], dict[str, frozenset[ConditionType]]]:
+    """Send one sensor reading per pond; return the test-kit offsets and the running conditions of each pond whose
+    state was read."""
     states = client.pond_states()
     batch: list[dict] = []
     manual_offsets: dict[str, dict[MetricType, float]] = {}
+    running: dict[str, frozenset[ConditionType]] = {}
     for pid, sim in sims.items():
         state = states.get(pid, {})
-        effects = combined_effects(active_conditions(state.get("conditions"), now))
+        conditions = active_conditions(state.get("conditions"), now)
+        effects = combined_effects(conditions)
         offsets = active_offsets(state.get("scenarios"), now)
         for scenario, offset in effects.sensor_offsets.items():
             offsets[scenario] = offsets.get(scenario, 0.0) + offset
@@ -123,13 +126,14 @@ def tick(
         batch.extend(_dump(sim.step(now, pump_failed, offsets)))
         if pid in states:
             manual_offsets[pid] = effects.manual_offsets
+            running[pid] = frozenset(c.type for c in conditions)
     try:
         resp = client.ingest_batch(batch)
         if resp.status_code >= 400:
             logger.error("ingest failed", extra={"status": resp.status_code, "body": resp.text})
     except Exception as e:
         logger.warning("ingest POST failed", extra={"err": str(e)})
-    return manual_offsets
+    return manual_offsets, running
 
 
 def ponds_to_retest(
@@ -137,15 +141,17 @@ def ponds_to_retest(
     manual_last: dict[str, dict[MetricType, float]],
     last_test_at: dict[str, datetime],
     now: datetime,
+    ended: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
     """Ponds where a condition moved the test-kit metrics since the last test: test the water now, not at the next
-    slot. A condition that is still ramping up changes them every tick, so wait MANUAL_RETEST_MIN between tests."""
+    slot. A condition that is still ramping up changes them every tick, so wait MANUAL_RETEST_MIN between tests.
+    Ponds in `ended` (a remedy just ended a condition) are tested at once, so the remedy check sees the new water."""
     due = []
     for pid, offsets in manual_now.items():
         if offsets == manual_last.get(pid, {}):
             continue
         last = last_test_at.get(pid)
-        if last is None or now - last >= timedelta(minutes=MANUAL_RETEST_MIN):
+        if pid in ended or last is None or now - last >= timedelta(minutes=MANUAL_RETEST_MIN):
             due.append(pid)
     return due
 
@@ -165,15 +171,18 @@ async def run_simulation() -> None:
     post_manual_readings(client, ponds, now)
 
     manual_last: dict[str, dict[MetricType, float]] = {}
+    running_last: dict[str, frozenset[ConditionType]] = {}
     last_test_at = dict.fromkeys(ponds, now)
     while True:
         t0 = time.time()
         now = utcnow()
-        manual_now = tick(client, sims, now)
+        manual_now, running_now = tick(client, sims, now)
+        ended = {pid for pid, types in running_now.items() if running_last.get(pid, frozenset()) - types}
+        running_last.update(running_now)
         if _is_manual_reading_time(now):
             tested = list(ponds)
         else:
-            tested = ponds_to_retest(manual_now, manual_last, last_test_at, now)
+            tested = ponds_to_retest(manual_now, manual_last, last_test_at, now, ended)
         if tested:
             post_manual_readings(client, tested, now, manual_now)
         for pid in tested:

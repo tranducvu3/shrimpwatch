@@ -159,6 +159,16 @@ def test_retest_the_water_when_conditions_change_but_not_every_tick():
     assert ponds_to_retest({"p1": off}, {"p1": off}, last_test, NOW) == []  # unchanged since the last test
     # A condition that ended is a change too
     assert ponds_to_retest({"p1": {}}, {"p1": off}, last_test, NOW) == ["p1"]
+    # A remedy that ended a condition: test at once, even right after the last test
+    assert ponds_to_retest({"p2": {}}, {"p2": off}, last_test, NOW) == []
+    assert ponds_to_retest({"p2": {}}, {"p2": off}, last_test, NOW, ended={"p2"}) == ["p2"]
+
+
+def test_liming_ends_the_rain_that_lowered_alkalinity():
+    running = active_conditions({"heavy_rain": build_condition(NOW - timedelta(minutes=10), Severity.SEVERE)}, NOW)
+    assert combined_effects(running).manual_offsets[MetricType.ALKALINITY] < 0
+    assert applicable_remedies(running) == [Remedy.LIME]
+    assert set(REMEDIES[Remedy.LIME].clears) == {ConditionType.HEAVY_RAIN, ConditionType.WATER_EXCHANGE}
 
 
 def test_contradicting_conditions_are_exclusive():

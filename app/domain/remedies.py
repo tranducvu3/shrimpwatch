@@ -15,7 +15,8 @@ _BY_ROOT_CAUSE: dict[str, tuple[Remedy, ...]] = {
     "tan_out_of_range": (Remedy.CUT_FEED, Remedy.CLEAN_BOTTOM),
     "nitrite_out_of_range": (Remedy.CUT_FEED, Remedy.CLEAN_BOTTOM),
     "orp_out_of_range": (Remedy.CLEAN_BOTTOM,),
-    "co2_out_of_range": (Remedy.CUT_FEED, Remedy.THIN_STOCK),
+    "co2_out_of_range": (Remedy.LIME, Remedy.CUT_FEED, Remedy.THIN_STOCK),
+    "alkalinity_out_of_range": (Remedy.LIME,),
 }
 
 
