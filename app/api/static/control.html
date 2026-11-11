@@ -814,8 +814,6 @@
       case "incident_escalated": return ["Nâng mức", `${ROOT_CAUSES[d.from_root_cause] || d.from_root_cause} → ${ROOT_CAUSES[d.to_root_cause] || d.to_root_cause}`];
       case "incident_action":
         if (d.state === "investigating" && d.from_state === "resolving") return ["Xử lý lại", d.action || ""];
-        // Applied by the Datadog auto-remediation workflow, not by a person
-        if (d.by === "datadog_workflow") return [`🤖 Tự động → ${STATES[d.state] || d.state}`, d.action || ""];
         return [`→ ${STATES[d.state] || d.state}`, d.action || ""];
       case "incident_recovered": return ["Xử lý xong", "Dữ liệu xác nhận ao đã ổn: DO an toàn, quạt chạy"];
       case "pump_state_change": return [d.failed ? "Quạt dừng" : "Quạt chạy lại", "", true];
@@ -871,7 +869,9 @@
         const label = labelIn(catalog.remedies, d.remedy);
         const note = d.action && d.action.startsWith(`${label}: `) ? d.action.slice(label.length + 2) : "";
         current.remedies.push(label);
-        current.rows.push({ ts: e.timestamp, what: "Chọn cách xử lý", detail: note ? `${label} · ${note}` : label });
+        // Applied by the Datadog auto-remediation workflow, not by a person
+        const what = d.by === "datadog_workflow" ? "🤖 Datadog tự xử lý" : "Chọn cách xử lý";
+        current.rows.push({ ts: e.timestamp, what, detail: note ? `${label} · ${note}` : label });
         continue;
       }
       if (REMEDY_RESULTS.includes(e.event)) {
