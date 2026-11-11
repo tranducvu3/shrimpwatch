@@ -767,7 +767,9 @@
     const start = check.baseline != null
       ? ` (lúc áp dụng: ${`${fmtReading(check.metric, check.baseline)} ${METRIC_UNIT[check.metric] || ""}`.trim()})`
       : "";
-    return `. ${when} ${METRIC[check.metric] || check.metric} có cải thiện không${start}.`;
+    // An aerator is not "better": it runs again or not
+    const question = check.metric === "pump_power" ? "quạt có chạy lại không" : `${METRIC[check.metric] || check.metric} có cải thiện không`;
+    return `. ${when} ${question}${start}.`;
   }
 
   // Every remedy as a checklist, the ones that fit the root cause first and highlighted

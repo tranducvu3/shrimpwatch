@@ -411,7 +411,15 @@ def _current_value(pond_id: str, metric: MetricType, now: datetime) -> float | N
     return metrics_repo.latest_value(pond_id, metric.value, now - window)
 
 
-_METRIC_VI = {"do": "DO", "nh3": "NH₃", "co2": "CO₂", "orp": "ORP", "ph": "pH", "tan": "TAN"}
+_METRIC_VI = {
+    "do": "DO",
+    "nh3": "NH₃",
+    "co2": "CO₂",
+    "orp": "ORP",
+    "ph": "pH",
+    "tan": "TAN",
+    "pump_power": "Công suất quạt",
+}
 
 
 def check_remedy(pond_id: str, now: datetime | None = None, still_abnormal: bool = True) -> RemedyOutcome | None:
