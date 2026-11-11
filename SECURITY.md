@@ -27,7 +27,8 @@ Reviews should not re-report these unless a change makes them worse:
   `POST /automation/remediate`, which needs the shared `AUTOMATION_TOKEN` (disabled when it is empty). That token
   is a secret: `.env` only; `datadog_push` writes it into the Datadog workflow's request header.
 - Local Docker credentials are hard-coded: `admin` / `admin_pass` in `docker-compose.yml`, `shrimp_app` /
-  `shrimp_pass` in `mongo-init.js`. They are for the local container only and must never be used for Atlas.
+  `shrimp_pass` and the read-only Datadog DBM user `datadog` / `datadog_pass` in `mongo-init.js` (also in
+  `datadog/conf.d/mongo.d/conf.yaml`). They are for the local container only and must never be used for Atlas.
 - `shrimp_app` has `dbOwner` on `shrimpwatch` plus `readAnyDatabase`, which is more than the app needs.
 - MongoDB and the Datadog agent ports are published on the host by Docker Compose.
 

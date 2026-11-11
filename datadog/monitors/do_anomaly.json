@@ -1,0 +1,15 @@
+{
+  "name": "[ShrimpWatch] WARNING: DO unusually low for this time of day · DO thấp bất thường so với cùng giờ",
+  "type": "query alert",
+  "query": "avg(last_4h):anomalies(avg:shrimpwatch.metric.do{source:sensor} by {pond}, 'agile', 3, direction='below', interval=60, alert_window='last_15m', count_default_zero='true', seasonality='daily') >= 1",
+  "message": "## 📉 DO in pond {{pond.name}} is unusually low for this time of day\n\nDatadog anomaly detection (agile algorithm, daily seasonality) learned the pond's normal day/night DO curve, and DO has been below its expected band for 15 minutes. The fixed rules only fire under 4 mg/L; this catches a pond that is still above 4 but falling away from its normal level for this hour, often the first sign of overfeeding, a dying algae bloom or a weak aerator.\n\nCompare with the other ponds on the *Oxy và quạt nước* charts and check the aerator and the feeding log.\n\n---\n**Tiếng Việt**\n\n## 📉 DO ao {{pond.name}} thấp bất thường so với cùng giờ mọi ngày\n\nDatadog học đường DO ngày/đêm bình thường của ao, và DO đã nằm dưới vùng dự kiến 15 phút. Quy tắc cố định chỉ báo khi DO dưới 4 mg/L; cảnh báo này bắt được ao vẫn trên 4 nhưng đang lệch khỏi mức thường thấy vào giờ này, thường là dấu hiệu sớm của cho ăn dư, tảo tàn hoặc quạt yếu.\n\nSo với các ao khác trên biểu đồ *Oxy và quạt nước*, kiểm tra quạt và nhật ký cho ăn.",
+  "tags": ["shrimpwatch", "metric:do", "sev:warning", "detection:anomaly"],
+  "options": {
+    "thresholds": {"critical": 1, "critical_recovery": 0},
+    "threshold_windows": {"trigger_window": "last_15m", "recovery_window": "last_15m"},
+    "notify_no_data": false,
+    "renotify_interval": 60,
+    "include_tags": true,
+    "require_full_window": false
+  }
+}
