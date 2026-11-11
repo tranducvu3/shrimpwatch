@@ -221,6 +221,22 @@
   .picker .dd-btn.locked { flex: 1 1 260px; min-width: 0; cursor: not-allowed; background: var(--surface-2); color: var(--muted); }
   .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
   .tag.hl { color: var(--accent-text); background: var(--accent); }
+  /* System faults: break ShrimpWatch itself to show the Datadog "Sức khoẻ hệ thống" group react */
+  .sys {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .sys-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .sys-head h2 { font-size: 16px; margin: 0; }
+  .sys-head .hint { color: var(--muted); font-size: 13px; flex: 1; min-width: 220px; }
+  .sys-head a { color: var(--accent); font-weight: 600; font-size: 13px; text-decoration: none; }
+  .sys-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .fault { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .fault.on { border-color: var(--warn); background: var(--warn-bg); }
+  .fault-top { display: flex; align-items: center; gap: 8px; }
+  .fault-top strong { flex: 1; }
+  .fault p { margin: 0; font-size: 13px; }
+  .fault .watch { color: var(--muted); }
   button.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
   button.btn.ghost.danger { color: var(--crit); }
   button.link {
@@ -287,6 +303,14 @@
     báo. DO đổi dần và đạt gần mức mới sau khoảng 20 phút; độ kiềm, TAN, nitrite được đo lại ngay khi bật hoặc tắt
     một điều kiện.
   </div>
+  <section class="sys" aria-labelledby="sys-title">
+    <div class="sys-head">
+      <h2 id="sys-title">Sự cố hệ thống</h2>
+      <span class="hint">Làm hỏng chính ShrimpWatch để xem Datadog phát hiện ở nhóm "Sức khoẻ hệ thống". Mỗi lỗi tự tắt sau 10 phút.</span>
+      <a id="sys-dashboard" target="_blank" rel="noopener" hidden>Mở dashboard ↗</a>
+    </div>
+    <div class="sys-list" id="sys-list"></div>
+  </section>
   <div class="grid" id="ponds"></div>
 </main>
 <dialog class="inc" id="inc-dialog" aria-labelledby="inc-title">
@@ -1079,6 +1103,46 @@
     ].filter(Boolean))), "Đã khôi phục tất cả ao: tắt mọi điều kiện, bật quạt");
   });
 
+  // System faults: their own poll, so the controls keep working while the "API errors" fault fails the pond calls
+  const faultRefs = new Map();
+  function buildFault(f) {
+    const btn = el("button", { class: "btn small", type: "button" });
+    const left = el("span", { class: "pill warn" });
+    const box = el("div", { class: "fault" }, [
+      el("div", { class: "fault-top" }, [el("strong", { text: f.label }), left, btn]),
+      el("p", { text: f.description }),
+      el("p", { class: "watch", text: `Datadog: ${f.watch}` }),
+    ]);
+    btn.addEventListener("click", () => {
+      const on = btn.getAttribute("aria-pressed") === "true";
+      act(btn, async () => { await api(on ? "DELETE" : "POST", `/system-faults/${f.type}`); await refreshFaults(); },
+        on ? `Đã tắt: ${f.label}` : `Đã bật: ${f.label} (tự tắt sau ${f.duration_min} phút)`);
+    });
+    $("#sys-list").append(box);
+    return { box, btn, left };
+  }
+
+  async function refreshFaults() {
+    try {
+      const data = await api("GET", "/system-faults");
+      const link = $("#sys-dashboard");
+      link.href = data.dashboard;
+      link.hidden = false;
+      for (const f of data.faults) {
+        if (!faultRefs.has(f.type)) faultRefs.set(f.type, buildFault(f));
+        const r = faultRefs.get(f.type);
+        r.box.classList.toggle("on", f.active);
+        r.btn.setAttribute("aria-pressed", String(f.active));
+        r.btn.textContent = f.active ? "Tắt" : "Bật";
+        r.btn.className = f.active ? "btn small primary" : "btn small";
+        r.left.hidden = !f.active;
+        r.left.textContent = f.active ? `còn ${fmtDuration(f.remaining_sec)}` : "";
+      }
+    } catch (e) {
+      // Shown by the pond refresh's health line; the next poll retries
+    }
+  }
+
   async function start() {
     try {
       catalog = await api("GET", "/ponds/scenarios/catalog");
@@ -1088,8 +1152,9 @@
       setTimeout(start, POLL_MS);
       return;
     }
-    await refresh();
+    await Promise.all([refresh(), refreshFaults()]);
     setInterval(refresh, POLL_MS);
+    setInterval(refreshFaults, POLL_MS);
     connectLive();
   }
 

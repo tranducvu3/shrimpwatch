@@ -39,7 +39,14 @@ def load_do_windows(pond_ids: list[str]) -> dict[str, dict]:
 def load_sensor_health(pond_ids: list[str]) -> dict[str, SensorHealth]:
     """Feed completeness and silence of each pond's probe (one aggregate), also sent to Datadog per pond."""
     coverage = metrics_repo.sensor_coverage(pond_ids, settings.SENSOR_WINDOW_SEC, settings.SENSOR_STEP_SEC)
-    health = sensor_health(coverage, pond_ids, utcnow(), settings.SENSOR_WINDOW_SEC, settings.SENSOR_STALE_SEC)
+    health = sensor_health(
+        coverage,
+        pond_ids,
+        utcnow(),
+        settings.SENSOR_WINDOW_SEC,
+        settings.SENSOR_STALE_SEC,
+        settings.SENSOR_MIN_COMPLETENESS,
+    )
     for pond_id, h in health.items():
         gauge("sensor.completeness", h.completeness, tags={"pond": pond_id})
         gauge("sensor.silent_seconds", h.silent_sec, tags={"pond": pond_id})

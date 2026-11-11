@@ -69,8 +69,9 @@ METRICS_HOURLY = "metrics_hourly"
 INCIDENTS = "incidents"
 PONDS = "ponds"
 EVENTS = "events"
+SYSTEM_FAULTS = "system_faults"
 
-ALL = [METRICS, METRICS_HOURLY, INCIDENTS, PONDS, EVENTS]
+ALL = [METRICS, METRICS_HOURLY, INCIDENTS, PONDS, EVENTS, SYSTEM_FAULTS]
 
 
 def metrics_collection() -> Collection:
@@ -91,3 +92,7 @@ def ponds_collection() -> Collection:
 
 def events_collection() -> Collection:
     return get_db()[EVENTS]
+
+
+def system_faults_collection() -> Collection:
+    return get_db()[SYSTEM_FAULTS]

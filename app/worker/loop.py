@@ -11,10 +11,24 @@ from app.core.log import get_logger
 from app.core.telemetry import gauge, init_metrics
 from app.db.repositories import metrics as metrics_repo
 from app.domain.ponds import pond_ids
+from app.domain.system_faults import SLOW_WORKER_DELAY_SEC, FaultType
 from app.services import incidents as incident_service
+from app.services import system_faults as fault_service
 from app.worker.pond_check import check_pond, load_do_windows, load_sensor_health
 
 logger = get_logger("worker")
+
+
+def _injected_delay() -> None:
+    """The "slow worker" demo fault: stall the cycle, inside its measured time, as a slow database would."""
+    try:
+        slow = FaultType.SLOW_WORKER in fault_service.active()
+    except Exception as e:
+        logger.error("system faults unreadable", extra={"err": str(e)})
+        return
+    if slow:
+        with tracer.trace("worker.injected_delay"):
+            time.sleep(SLOW_WORKER_DELAY_SEC)
 
 
 def run_worker() -> None:
@@ -26,6 +40,7 @@ def run_worker() -> None:
     last_rollup = float("-inf")  # roll up on the first cycle
     while True:
         t0 = time.monotonic()  # not wall clock: an NTP jump must not look like a slow cycle
+        _injected_delay()
         if t0 - last_rollup >= settings.ROLLUP_INTERVAL_SEC:
             try:
                 with tracer.trace("worker.rollup_hourly"):
