@@ -472,14 +472,16 @@ def test_migrate_root_causes_renames_old_incidents_and_events():
         [
             {"_id": "inc-legacy-1", "pond_id": "pond-88", "root_cause": "do_low"},
             {"_id": "inc-legacy-2", "pond_id": "pond-88", "root_cause": "salinity_low"},
-        ]
+        ],
+        bypass_document_validation=True,  # partial documents written before the validators existed
     )
     events_collection().insert_one(
         {
             "event": "incident_escalated",
             "pond_id": "pond-88",
             "details": {"from_root_cause": "do_anomaly_drop", "to_root_cause": "pump_failure"},
-        }
+        },
+        bypass_document_validation=True,
     )
 
     assert migrate_root_causes(get_db()) == 3
@@ -498,7 +500,8 @@ def test_remove_similar_incident_search_unsets_old_fields():
         [
             {"_id": "inc-vec-1", "pond_id": "pond-87", "fingerprint": [0.5] * 6, "similar_incidents": [{"x": 1}]},
             {"_id": "inc-vec-2", "pond_id": "pond-87", "root_cause": "pump_failure"},
-        ]
+        ],
+        bypass_document_validation=True,  # partial documents written before the validators existed
     )
 
     assert remove_similar_incident_search(get_db()) == 1

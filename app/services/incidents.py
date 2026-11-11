@@ -1,4 +1,8 @@
-"""Incident lifecycle. Every incident change (worker or API) goes through here: writes incident + event + metric in one place."""
+"""Incident lifecycle. Every incident change (worker or API) goes through here: writes incident + event + metric in one place.
+
+The incident and its `events` entry are written in one MongoDB transaction (`run_in_transaction`), so the timeline
+never misses a change and never shows one that did not happen. Datadog metrics and events are sent after the commit.
+"""
 
 from __future__ import annotations
 
@@ -6,11 +10,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from pymongo.errors import DuplicateKeyError
+
 from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.datadog_links import incident_links
 from app.core.log import get_logger
 from app.core.telemetry import distribution, event, gauge, increment, set_span_tags, tag_value
+from app.db.mongo import run_in_transaction
 from app.db.repositories import events as events_repo
 from app.db.repositories import incidents as incidents_repo
 from app.db.repositories import metrics as metrics_repo
@@ -92,17 +99,18 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
             "description": finding.description,
             "root_cause": finding.root_cause,
         }
-        events_repo.record(
-            "incident_escalated",
-            existing["pond_id"],
-            incident_id=incident_id,
-            details={
-                "from_severity": current,
-                "to_severity": finding.severity.value,
-                "from_root_cause": existing.get("root_cause"),
-                "to_root_cause": finding.root_cause,
-            },
-        )
+        details = {
+            "from_severity": current,
+            "to_severity": finding.severity.value,
+            "from_root_cause": existing.get("root_cause"),
+            "to_root_cause": finding.root_cause,
+        }
+
+        def escalate() -> None:
+            events_repo.record("incident_escalated", existing["pond_id"], incident_id=incident_id, details=details)
+            incidents_repo.update_fields(incident_id, fields)
+
+        run_in_transaction(escalate)
         increment(
             "incident.escalated",
             tags={"pond": existing["pond_id"], "severity": finding.severity.value, "root_cause": finding.root_cause},
@@ -112,7 +120,8 @@ def _update_active(existing: dict, finding: Finding, evidence: IncidentEvidence)
             "incident_escalated",
             _alert_text(existing["pond_id"], finding, escalated_from=current),
         )
-    elif finding.root_cause == existing.get("root_cause"):
+        return incident_id
+    if finding.root_cause == existing.get("root_cause"):
         # Same cause: refresh the description with the latest data
         fields["description"] = finding.description
     incidents_repo.update_fields(incident_id, fields)
@@ -172,14 +181,20 @@ def _open(pond_id: str, finding: Finding, evidence: IncidentEvidence) -> str | N
         detection_delay_sec=_seconds(fault_started_at, now) if fault_started_at else None,
     )
     doc = incident.model_dump(by_alias=True)
-    if not incidents_repo.insert(doc):
+
+    def insert() -> None:
+        incidents_repo.insert(doc)
+        events_repo.record(
+            "incident_open",
+            pond_id,
+            incident_id=incident_id,
+            details={"severity": finding.severity.value, "title": finding.title},
+        )
+
+    try:
+        run_in_transaction(insert)
+    except DuplicateKeyError:
         return None
-    events_repo.record(
-        "incident_open",
-        pond_id,
-        incident_id=incident_id,
-        details={"severity": finding.severity.value, "title": finding.title},
-    )
     increment(
         "incident.open", tags={"pond": pond_id, "severity": finding.severity.value, "root_cause": finding.root_cause}
     )
@@ -216,35 +231,49 @@ def _report_detection(doc: dict) -> None:
     increment("incident.detected", tags={**tags, "within_slo": str(delay <= settings.DETECTION_SLO_SEC).lower()})
 
 
-def _close(incident: dict, action: str | None, extra_fields: dict | None = None) -> None:
-    """Move to Recovered with the recovery time; shared by the worker and the operator."""
-    now = utcnow()
-    fields = {"recovered_at": now, **(extra_fields or {})}
-    incidents_repo.set_state(incident["_id"], IncidentState.RECOVERED, action=action, fields=fields)
-    seconds = _seconds(incident["created_at"], now)
+def _report_recovered(incident: dict, recovered_at: datetime) -> None:
+    """Recovery time and the Datadog Event of a closed incident; shared by the worker and the operator."""
+    seconds = _seconds(incident["created_at"], recovered_at)
     distribution("incident.time_to_recover", seconds, tags=_timing_tags(incident))
     _datadog_event(incident, "incident_recovered", f"Recovered after {seconds:.0f} s.", alert_type="success")
 
 
 def auto_recover(pond_id: str) -> str | None:
     """The worker closes the active incident automatically once the pond is stable. Returns the incident id if any."""
-    existing = incidents_repo.find_active(pond_id)
-    if not existing:
+
+    def close() -> tuple[dict, datetime] | None:
+        existing = incidents_repo.find_active(pond_id)
+        if not existing:
+            return None
+        now = utcnow()
+        incidents_repo.set_state(
+            existing["_id"], IncidentState.RECOVERED, action="worker_auto_recovered", fields={"recovered_at": now}
+        )
+        events_repo.record("incident_recovered", pond_id, incident_id=existing["_id"])
+        return existing, now
+
+    closed = run_in_transaction(close)
+    if closed is None:
         return None
-    _close(existing, action="worker_auto_recovered")
-    events_repo.record("incident_recovered", pond_id, incident_id=existing["_id"])
+    incident, recovered_at = closed
+    _report_recovered(incident, recovered_at)
     increment("incident.recovered", tags={"pond": pond_id})
-    logger.info("incident auto-recovered", extra={"pond": pond_id, "incident_id": existing["_id"]})
-    return existing["_id"]
+    logger.info("incident auto-recovered", extra={"pond": pond_id, "incident_id": incident["_id"]})
+    return incident["_id"]
 
 
-def transition(incident_id: str, state: IncidentState, action: str | None = None, remedy: Remedy | None = None) -> None:
-    """A technician moves the incident to the next step (Investigating/Resolving/Recovered), with an action note."""
+def _write_transition(
+    incident_id: str, state: IncidentState, action: str | None, remedy: Remedy | None
+) -> tuple[dict, dict]:
+    """Validate and write a state change and its `incident_action` event. Returns (incident before, fields set).
+
+    Run inside a transaction: the state is read from the same snapshot it is written over, so two operators racing
+    on one incident cannot both pass the check (the loser is retried, re-reads the new state and gets a 409).
+    """
     incident = incidents_repo.get(incident_id)
     if not incident:
         raise IncidentNotFound(incident_id)
     pond_id = incident.get("pond_id")
-    set_span_tags(pond_id=pond_id)
     from_state = incident.get("state")
     ensure_transition(from_state, state)
     # Every transition writes to events (even without a note) so the timeline has no gaps
@@ -255,23 +284,39 @@ def transition(incident_id: str, state: IncidentState, action: str | None = None
         details["remedy"] = remedy.value
     events_repo.record("incident_action", pond_id, incident_id=incident_id, details=details)
 
+    now = utcnow()
     fields = {}
     if state == IncidentState.INVESTIGATING and from_state != IncidentState.INVESTIGATING.value:
         # Investigating again: the operator picks the remedies afresh
         fields |= {"remedies": [], "remedy_check": None}
     if from_state == IncidentState.OPEN.value and state != IncidentState.OPEN and not incident.get("acknowledged_at"):
-        fields["acknowledged_at"] = utcnow()
+        fields["acknowledged_at"] = now
+    if state == IncidentState.RECOVERED and from_state != IncidentState.RECOVERED.value:
+        fields["recovered_at"] = now
+    incidents_repo.set_state(incident_id, state, action=action, fields=fields)
+    return incident, fields
+
+
+def _report_transition(incident: dict, state: IncidentState, action: str | None, fields: dict) -> None:
+    """Datadog side of a committed transition: time to acknowledge, recovery time, the incident Event."""
+    set_span_tags(pond_id=incident.get("pond_id"))
+    if "acknowledged_at" in fields:
         distribution(
             "incident.time_to_acknowledge",
             _seconds(incident["created_at"], fields["acknowledged_at"]),
             tags=_timing_tags(incident),
         )
-    if state == IncidentState.RECOVERED and from_state != IncidentState.RECOVERED.value:
-        _close(incident, action, fields)
-        return
-    incidents_repo.set_state(incident_id, state, action=action, fields=fields)
-    if state.value != from_state:
+    from_state = incident.get("state")
+    if "recovered_at" in fields:
+        _report_recovered(incident, fields["recovered_at"])
+    elif state.value != from_state:
         _datadog_event(incident, f"incident_{state.value}", action or f"{from_state} -> {state.value}")
+
+
+def transition(incident_id: str, state: IncidentState, action: str | None = None, remedy: Remedy | None = None) -> None:
+    """A technician moves the incident to the next step (Investigating/Resolving/Recovered), with an action note."""
+    incident, fields = run_in_transaction(lambda: _write_transition(incident_id, state, action, remedy))
+    _report_transition(incident, state, action, fields)
 
 
 def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> dict:
@@ -289,15 +334,23 @@ def apply_remedy(incident_id: str, remedy: Remedy, note: str | None = None) -> d
     now = utcnow()
     metric = watched_metric(incident.get("root_cause"))
     baseline = _current_value(pond_id, metric, now) if metric else None
-    # Record on the incident first: if it was closed meanwhile this raises (409) before the farm is changed
-    transition(incident_id, IncidentState.RESOLVING, f"{label}: {note}" if note else label, remedy=remedy)
+    action = f"{label}: {note}" if note else label
     check = {
         "metric": metric.value if metric else None,
         "baseline": baseline,
         "applied_at": now,
         "outcome": RemedyOutcome.PENDING.value,
     }
-    incidents_repo.add_remedy(incident_id, remedy.value, check)
+
+    def record() -> tuple[dict, dict]:
+        written = _write_transition(incident_id, IncidentState.RESOLVING, action, remedy)
+        incidents_repo.add_remedy(incident_id, remedy.value, check)
+        return written
+
+    # Record on the incident first: if it was closed meanwhile this raises (409) before the farm is changed.
+    # The farm change itself is the physical world (here: the simulator), so it is not part of the transaction.
+    before, fields = run_in_transaction(record)
+    _report_transition(before, IncidentState.RESOLVING, action, fields)
     cleared = pond_service.apply_remedy(pond_id, remedy)
     return {
         "incident_id": incident_id,
@@ -346,8 +399,6 @@ def check_remedy(pond_id: str, now: datetime | None = None, still_abnormal: bool
     if outcome == RemedyOutcome.PENDING:
         return outcome
     fields = {"outcome": outcome.value, "value": current, "checked_at": now, "normal": not still_abnormal}
-    if not incidents_repo.set_remedy_outcome(incident["_id"], check["applied_at"], fields):
-        return None  # another remedy or "investigate again" came first
     details = {
         "metric": metric.value if metric else None,
         "baseline": baseline,
@@ -355,7 +406,15 @@ def check_remedy(pond_id: str, now: datetime | None = None, still_abnormal: bool
         "remedies": incident.get("remedies", []),
     }
     what = "remedy_normal" if not still_abnormal else f"remedy_{outcome.value}"
-    events_repo.record(what, pond_id, incident_id=incident["_id"], details=details)
+
+    def record() -> bool:
+        if not incidents_repo.set_remedy_outcome(incident["_id"], check["applied_at"], fields):
+            return False  # another remedy or "investigate again" came first
+        events_repo.record(what, pond_id, incident_id=incident["_id"], details=details)
+        return True
+
+    if not run_in_transaction(record):
+        return None
     if outcome == RemedyOutcome.FAILED and metric:
         name = _METRIC_VI.get(metric.value, metric.value)
         _datadog_event(
