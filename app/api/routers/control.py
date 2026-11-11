@@ -12,7 +12,7 @@ router = APIRouter(tags=["control"])
 
 _PAGE = Path(__file__).resolve().parents[1] / "static" / "control.html"
 
-# Browser SDK CDN path per Datadog site
+# Browser SDK CDN path per Datadog site. v6: the CDN has no v5 build for ap2 (it answers 403)
 _RUM_CDN_REGION = {
     "datadoghq.com": "us1",
     "us3.datadoghq.com": "us3",
@@ -49,7 +49,7 @@ def rum_snippet(application_id: str, client_token: str, site: str, env: str) -> 
     }
     config_js = json.dumps(config).replace("</", "<\\/")  # no "</script>" inside the inline script
     return (
-        f'<script src="https://www.datadoghq-browser-agent.com/{region}/v5/datadog-rum.js"></script>\n'
+        f'<script src="https://www.datadoghq-browser-agent.com/{region}/v6/datadog-rum.js"></script>\n'
         f"<script>window.DD_RUM && window.DD_RUM.init(Object.assign({config_js}, "
         "{allowedTracingUrls: [window.location.origin]}));</script>\n"
     )

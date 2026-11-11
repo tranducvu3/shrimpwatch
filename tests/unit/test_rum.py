@@ -13,6 +13,6 @@ def test_rum_is_off_unless_both_ids_are_set_and_well_formed():
 
 def test_rum_loads_the_regional_sdk_and_traces_the_panels_api_calls():
     snippet = rum_snippet(APP_ID, TOKEN, "ap2.datadoghq.com", "development")
-    assert "https://www.datadoghq-browser-agent.com/ap2/v5/datadog-rum.js" in snippet
+    assert "https://www.datadoghq-browser-agent.com/ap2/v6/datadog-rum.js" in snippet
     assert f'"applicationId": "{APP_ID}"' in snippet and '"site": "ap2.datadoghq.com"' in snippet
     assert "allowedTracingUrls: [window.location.origin]" in snippet
