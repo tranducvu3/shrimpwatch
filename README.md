@@ -504,7 +504,7 @@ sequenceDiagram
     participant W as Worker
     API->>API: aerator off twice → pump_failure incident (MongoDB transaction: incident + event)
     API->>DD: Datadog Event incident_open, root_cause:pump_failure
-    DD->>WF: event monitor "Auto-remediation: aerator stopped" mentions @workflow-shrimpwatch-auto-remediate(pond_id=…)
+    DD->>WF: event monitor "Auto-remediation: aerator stopped" mentions @workflow-shrimpwatch-auto-remediate(pond_id="…")
     WF->>API: POST /automation/remediate {pond_id, run_id} + X-Automation-Token
     API->>API: backup aerator on, incident → resolving, action by datadog_workflow
     W->>W: new readings: DO back above 4.5 mg/L → recovered
