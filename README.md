@@ -21,8 +21,8 @@
 | Team | Trần Đức Vũ ([tranducvu3](https://github.com/tranducvu3)) · Hồ Ngọc Dũng ([HoNgocDung1503](https://github.com/HoNgocDung1503)) · Quang Anh |
 | Contact | Trần Đức Vũ — vu.tran@techcoop.vn |
 | Repository | https://github.com/tranducvu3/shrimpwatch (public) |
-| Demo video | Pending: _link to be added before 23:59 31/10/2026_ |
-| Presentation slides | Pending: _link to be added before 23:59 31/10/2026_ |
+| Demo video | https://youtu.be/_Oug2B-jZic |
+| Presentation slides | https://docs.google.com/presentation/d/1MfH-SyYHznrgjQy6uKjYE9oANiLmH-QW/edit?usp=sharing |
 | Demonstrated incident | Pond 1 aerator fails → DO drops → a **CRITICAL `pump_failure`** incident opens → Investigate → Resolve → the worker closes the incident by itself once readings are stable. Secondary scenario: heavy rain pushes pond 3 salinity below 10 ppt. Details: [Demo scenario](#incident-demo-scenario-incident-lifecycle), [31/10 verification](#0-end-to-end-verification-on-31102026) |
 | Reuse & AI declaration | [Section 11](#declaration-of-reused-components-datasets--ai-tools) |
 
@@ -676,13 +676,15 @@ The integration tests cover: health check, collection seeding, Time Series + TTL
 
 As required by the contest rules, the team declares the parts that existed before the build period, the libraries, the data and the AI tools used.
 
-### Code Written Before the Build Period (17/10 – 31/10/2026)
+### Code Written Before the Build Period (from 17/10/2026)
 
 | When | What already existed | Notes |
 |---|---|---|
 | 07/10 – 09/10/2026 | Prototype v1.0 (the first commits of the repo): FastAPI ingest API, 6-pond simulator, worker computing the DO drop rate with `$setWindowFields`, Time Series Collection + TTL, metrics/logs/traces pushed to Datadog, a basic 4-state incident lifecycle, 9 tests | Written as one file per part (`app/db.py`, `app/worker.py`, `app/simulator.py`, …). Full history in `git log` |
 
 Done during the build period (20/10 – 31/10/2026): moved to MongoDB Atlas; split the architecture into layers (`core`/`domain`/`db`/`services`/`api`/`worker`); new metrics (salinity, ORP, TAN, nitrite, NH₃, 24h pH swing) and the hourly `$merge` rollup; incident state transition validation (409) and incident escalation without opening duplicates; **Atlas Vector Search** suggesting similar incidents (removed on 08/11, replaced by suggested remedies per condition); the **simulator control panel** and scenario API; 6 environment monitors + a dashboard pushed as upserts; CI (lint, MongoDB 7 tests, Docker Compose smoke test); the test suite grew from 9 to 106.
+
+Done during the extended build period (01/11 – 15/11/2026): control panel conditions with severity, ramp-up and suggested remedies; aerator failure detected at ingest within 60 seconds; incident timings, a detection SLO and Datadog Events; the DO forecast (minutes until DO < 3 mg/L); the incident modal with remedy picker and history; **Change Streams** pushing incident changes to the panel; system-health monitors, derived-metric monitors and the farmer alert email; incident tables on the dashboard; **multi-document transactions** and `$jsonSchema` validators for incidents and events; **`$densify` + `$fill`** to detect a silent or flaky probe; self-healing through **Datadog Workflow Automation**; **Database Monitoring** for MongoDB, **RUM** on the control panel and **anomaly / forecast** monitors.
 
 ### Open-Source Libraries & Components
 
