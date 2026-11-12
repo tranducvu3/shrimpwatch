@@ -1103,6 +1103,7 @@
               "title": "Thời gian một vòng kiểm tra của worker (giây) - cảnh báo trên 25, chạy mỗi 30",
               "title_size": "16",
               "title_align": "left",
+              "events": [{"q": "tags:service:shrimpwatch system_fault:*", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
@@ -1131,6 +1132,7 @@
               "title": "Tỉ lệ lỗi API (%) - cảnh báo trên 5",
               "title_size": "16",
               "title_align": "left",
+              "events": [{"q": "tags:service:shrimpwatch system_fault:*", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {
@@ -1164,6 +1166,7 @@
               "title": "Đầu dò: % số đo nhận được trong 5 phút (MongoDB $densify) - cảnh báo dưới 50%",
               "title_size": "16",
               "title_align": "left",
+              "events": [{"q": "tags:service:shrimpwatch system_fault:*", "tags_execution": "and"}],
               "legend_layout": "auto",
               "requests": [
                 {

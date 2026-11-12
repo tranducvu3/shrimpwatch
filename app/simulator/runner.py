@@ -12,6 +12,7 @@ from app.domain.conditions import ConditionType, active_conditions, combined_eff
 from app.domain.models import DeviceType, MetricRecord, MetricType
 from app.domain.ponds import pond_ids
 from app.domain.scenarios import active_offsets
+from app.domain.system_faults import FaultType
 from app.simulator.api_client import ShrimpWatchClient
 from app.simulator.pond_model import PondSimulator
 
@@ -131,6 +132,10 @@ def tick(
         if pid in states:
             manual_offsets[pid] = effects.manual_offsets
             running[pid] = frozenset(c.type for c in conditions)
+    if FaultType.FEED_STOPPED.value in client.active_system_faults():
+        # The "sensor data lost" demo fault: the ponds go on, nothing reaches the API
+        logger.warning("sensor feed stopped by a system fault", extra={"records": len(batch)})
+        return manual_offsets, running
     try:
         resp = client.ingest_batch(batch)
         if resp.status_code >= 400:

@@ -25,18 +25,23 @@ def _ms(ts: datetime) -> int:
     return int(to_naive_utc(ts).replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
+def dashboard_url(params: dict | None = None) -> str:
+    """The ShrimpWatch dashboard (DD_DASHBOARD_ID), or the dashboard list filtered to ShrimpWatch when it is unset."""
+    base = app_base_url()
+    if settings.DD_DASHBOARD_ID:
+        query = f"?{urlencode(params)}" if params else ""
+        return f"{base}/dashboard/{settings.DD_DASHBOARD_ID}{query}"
+    return f"{base}/dashboard/lists?" + urlencode({"q": "ShrimpWatch"})
+
+
 def incident_links(incident_id: str, pond_id: str, start: datetime, end: datetime) -> dict[str, str]:
     """Dashboard (pond template variable), logs, traces and events of the pond around the incident."""
     base = app_base_url()
     from_ms, to_ms = _ms(start - LEAD), _ms(end + TRAIL)
     query = f"service:{settings.DD_SERVICE} @pond:{pond_id}"
     window = {"from_ts": from_ms, "to_ts": to_ms, "live": "false"}
-    if settings.DD_DASHBOARD_ID:
-        dashboard = f"{base}/dashboard/{settings.DD_DASHBOARD_ID}?" + urlencode({"tpl_var_ao": pond_id, **window})
-    else:
-        dashboard = f"{base}/dashboard/lists?" + urlencode({"q": "ShrimpWatch"})
     return {
-        "dashboard": dashboard,
+        "dashboard": dashboard_url({"tpl_var_ao": pond_id, **window}),
         "logs": f"{base}/logs?" + urlencode({"query": query, **window}),
         "traces": f"{base}/apm/traces?" + urlencode({"query": query, "start": from_ms, "end": to_ms}),
         "events": f"{base}/event/explorer?" + urlencode({"query": f"incident_id:{incident_id}", **window}),

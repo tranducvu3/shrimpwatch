@@ -125,12 +125,16 @@ def test_warm_up_sends_only_gap_but_warms_model_state():
 
 
 class _FakeClient:
-    def __init__(self, states):
+    def __init__(self, states, faults=()):
         self.states = states
+        self.faults = set(faults)
         self.sent = []
 
     def pond_states(self):
         return self.states
+
+    def active_system_faults(self):
+        return self.faults
 
     def ingest_batch(self, batch):
         self.sent.extend(batch)
@@ -149,3 +153,12 @@ def test_offline_probe_sends_only_aerator_readings():
     by_pond = {p: {r["device_type"] for r in client.sent if r["pond_id"] == p} for p in states}
     assert by_pond["pond-01"] == {DeviceType.PUMP.value}
     assert by_pond["pond-02"] == {DeviceType.PUMP.value, DeviceType.WATER_NODE.value}
+
+
+def test_feed_stopped_fault_sends_nothing_but_keeps_the_ponds_going():
+    now = utcnow()
+    client = _FakeClient({"pond-01": {}}, faults={"feed_stopped"})
+    sim = PondSimulator("pond-01")
+    tick(client, {"pond-01": sim}, now)
+    assert client.sent == []
+    assert sim._do_last_ts == now  # the model still stepped, so DO continues when the feed is back

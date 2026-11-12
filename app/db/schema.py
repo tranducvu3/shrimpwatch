@@ -11,7 +11,7 @@ from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.log import get_logger
 from app.db.mongo import get_db
-from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS
+from app.db.mongo import ALL, EVENTS, INCIDENTS, METRICS, METRICS_HOURLY, PONDS, SYSTEM_FAULTS
 from app.domain.incident_lifecycle import ACTIVE_STATES
 from app.domain.models import IncidentState, Severity
 from app.domain.ponds import pond_ids
@@ -282,6 +282,8 @@ def init_collections(force: bool = False) -> dict[str, Any]:
     result["ponds"] = _init_ponds(db, force)
     _init_events(db, force)
     result["events"] = "ready"
+    # One small document per demo fault switched on from the control panel (see domain.system_faults)
+    _ensure_collection(db, SYSTEM_FAULTS, force)
     result["root_causes_migrated"] = migrate_root_causes(db)
     result["collection_infos"] = describe_collections(db)
     logger.info("Collections initialized", extra={"ctx": result})

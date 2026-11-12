@@ -381,6 +381,15 @@ Open [http://localhost:8000/control](http://localhost:8000/control) to create ab
   - **Handle**: the remedies suggested for the root cause (one click: recorded, incident → *Đang xử lý*), a note field, and the allowed next states. The worker closes the incident when the data shows the pond is safe.
   - **Investigate in Datadog**: the dashboard filtered to the pond (set `DD_DASHBOARD_ID`), its logs, traces and incident events, for the incident's time window.
   - **Timeline**: what broke (aerator, condition, scenario), what the operator did and when the data confirmed recovery.
+- **System faults** (*Sự cố hệ thống*, above the ponds): break ShrimpWatch itself to show Datadog catching it in the **Sức khoẻ hệ thống** dashboard group. Each fault switches itself off after 10 minutes (or press *Tắt*); starting and stopping one is written to `events` and sent as a Datadog Event, drawn on the system health charts.
+
+  | Fault | What breaks | What Datadog shows |
+  |---|---|---|
+  | *Worker chạy chậm* | every worker cycle stalls 30 s more (span `worker.injected_delay`): incidents open and close late | worker cycle time above 25 s, *Worker slow or stopped* monitor |
+  | *API lỗi 50%* | half the API requests answer 503, sensor batches included; the panel page, `/system-faults`, `/healthz` and the live stream are spared so the fault can be switched off | API error rate above 5 %, *API error rate* monitor, error traces in APM |
+  | *Mất dữ liệu cảm biến* | the simulator stops sending readings for every pond | every pond's probe share falls to 0 %, *No sensor data received* monitor; no per-pond probe incidents, since all ponds are silent at once |
+
+  API: `GET /system-faults`, `POST /system-faults/{slow_worker|api_errors|feed_stopped}`, `DELETE /system-faults[/{fault}]`.
 - **Pond filter** (header): show only the ponds you pick; each button carries the pond's status dot (green normal, amber warning, red incident). The selection is kept in the URL (`/control?ao=pond-01,pond-03`), so it survives a reload and can be shared. **Restore all ponds** still applies to every pond.
 - The page refreshes every 5 seconds: latest sensor and derived metrics from the last 10 minutes, the latest test-kit readings (alkalinity, TAN, nitrite) from the last 24 hours (hover for when they were entered), highlighted when over a threshold, plus running conditions and open incidents.
 
@@ -429,7 +438,7 @@ The worker also opens a warning incident, with no Datadog monitor, when the test
 | Worker slow or stopped | `shrimpwatch.worker.cycle_seconds` (sent every cycle) > 25 s, or no data for 5 minutes | Incidents would open and close late, or not at all |
 | SLO: critical incidents detected within 2 minutes | `shrimpwatch.incident.detected{severity:critical,within_slo:true}` / all critical, 99% over 7 days ([datadog/slos/](datadog/slos/)) | The promise behind fast aerator detection |
 
-The **Sức khoẻ hệ thống** dashboard group shows the SLO ratio, the worker cycle time and the API error rate. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
+The **Sức khoẻ hệ thống** dashboard group shows the SLO ratio, the worker cycle time, the API error rate and the share of expected probe readings per pond, with the control panel's system faults drawn on the charts as events. The panel's *Sự cố hệ thống* section breaks each of them on purpose (see [5.2](#52-simulator-control-panel)). The SLO only counts critical incidents with a known fault start, so it shows *No data* until an aerator failure is triggered from the panel. Every metric has one cause named `<metric>_out_of_range`; the severity says how bad it is.
 
 Monitors evaluate a **full 5-minute** average and Datadog receives data a few tens of seconds late, so when demoing an aerator failure keep the aerator off for **at least 8 minutes** before the `pump_power < 50 W` monitor switches to Alert (the worker opens the incident earlier, based on the MongoDB data).
 

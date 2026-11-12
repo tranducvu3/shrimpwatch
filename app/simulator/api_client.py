@@ -29,6 +29,16 @@ class ShrimpWatchClient:
             logger.warning("fetch ponds failed", extra={"err": str(e)})
             return {}
 
+    def active_system_faults(self) -> set[str]:
+        """Demo faults switched on from the control panel; a network error returns none."""
+        try:
+            r = httpx.get(self._url("/system-faults"), timeout=5.0)
+            r.raise_for_status()
+            return {f["type"] for f in r.json()["faults"] if f["active"]}
+        except Exception as e:
+            logger.warning("fetch system faults failed", extra={"err": str(e)})
+            return set()
+
     def latest_reading_time(self, window_min: int) -> datetime | None:
         """Time of the latest sensor record (any pond, any metric) within `window_min` minutes; None if there is none."""
         r = httpx.get(self._url("/ponds/readings"), params={"window_min": window_min}, timeout=30.0)
