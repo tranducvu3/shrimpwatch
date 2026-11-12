@@ -131,7 +131,7 @@ def test_workflow_gets_the_url_and_token_and_is_upserted_by_name(monkeypatch):
 def test_monitor_starts_the_workflow_by_its_handle():
     handle = json.loads(_workflow_file().read_text(encoding="utf-8"))["data"]["attributes"]["spec"]["handle"]
     monitor = json.loads((datadog_push.ROOT / "datadog" / "monitors" / "auto_remediate_pump.json").read_text("utf-8"))
-    assert f"@workflow-{handle}(pond_id={{{{pond.name}}}})" in monitor["message"]
+    assert f'{{{{#is_alert}}}}@workflow-{handle}(pond_id="{{{{pond.name}}}}"){{{{/is_alert}}}}' in monitor["message"]
 
 
 def test_farmer_alert_emails_are_split_trimmed_and_validated(monkeypatch):
