@@ -13,11 +13,16 @@ set_env() {
   printf '%s=%s\n' "$key" "$value" >> .env.tmp
   mv .env.tmp .env
 }
-set_env MONGODB_URI "${MONGODB_URI:-}"
-set_env DD_API_KEY "${DD_API_KEY:-}"
-set_env DD_APP_KEY "${DD_APP_KEY:-}"
-set_env DD_SITE "${DD_SITE:-}"
+for key in MONGODB_URI DD_API_KEY DD_APP_KEY DD_SITE DD_DASHBOARD_ID FARMER_ALERT_EMAILS AUTOMATION_TOKEN \
+  DD_RUM_APPLICATION_ID DD_RUM_CLIENT_TOKEN; do
+  set_env "$key" "${!key:-}"
+done
 set_env DD_ENV codespaces
+# The forwarded address of port 8000: alert links and the Datadog workflow call the API there.
+# Datadog's cloud and the farmer's phone only reach it once the port is Public.
+if [ -n "${CODESPACE_NAME:-}" ] && [ -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]; then
+  set_env PUBLIC_BASE_URL "https://${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
+fi
 
 # Docker-in-docker may not be ready right after the codespace starts
 for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
