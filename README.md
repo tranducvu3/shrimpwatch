@@ -21,8 +21,11 @@
 | Team | Trần Đức Vũ ([tranducvu3](https://github.com/tranducvu3)) · Hồ Ngọc Dũng ([HoNgocDung1503](https://github.com/HoNgocDung1503)) · Quang Anh |
 | Contact | Trần Đức Vũ — vu.tran@techcoop.vn |
 | Repository | https://github.com/tranducvu3/shrimpwatch (public) |
-| Demo video | https://youtu.be/_Oug2B-jZic |
-| Presentation slides | https://docs.google.com/presentation/d/1MfH-SyYHznrgjQy6uKjYE9oANiLmH-QW/edit?usp=sharing |
+| Demo video | https://www.youtube.com/watch?v=xC8kLP1UV-k |
+| Presentation slides | https://docs.google.com/presentation/d/1lcJRpduLPZgq1mnCmV33ZwZ47QtHYzXw/edit |
+| Architecture & data flow | https://claude.ai/artifact/GkSyo6njdS6adH3TvyYGRp (Vietnamese) |
+| Measured results | https://claude.ai/artifact/HjggDSB9qfRTuZKcRNBKC4 (every figure with its Datadog, MongoDB or control panel screenshot) · summary in [Verification Results](#verification-results-real-data) |
+| Public Datadog dashboard | https://p.ap2.datadoghq.com/sb/df43cbfe-db6e-11f1-90ed-d665c76b3b64-d9c772d74be7246440cc33d4020a6238 |
 | Demonstrated incident | Pond 1 aerator fails → DO drops → a **CRITICAL `pump_failure`** incident opens → Investigate → Resolve → the worker closes the incident by itself once readings are stable. Secondary scenario: heavy rain pushes pond 3 salinity below 10 ppt. Details: [Demo scenario](#incident-demo-scenario-incident-lifecycle), [31/10 verification](#0-end-to-end-verification-on-31102026) |
 | Reuse & AI declaration | [Section 11](#declaration-of-reused-components-datasets--ai-tools) |
 
@@ -541,6 +544,25 @@ The action notes above are the Vietnamese strings that `demo_incident` sends: "C
 
 ## Verification Results (Real Data)
 
+### Measured Results on 14–15/11/2026
+
+The aerator failure on pond 1 was run twice on the live system (MongoDB Atlas + Datadog): first handled by the farmer from the control panel, then handled by Datadog on its own (farmer alert email, then [self-healing](#self-healing-datadog-switches-on-the-backup-aerator)). The timings, latencies and request counts are measured; the sensors and the aerators are simulated. Times are Vietnam time. Screenshots for every row: [measured results page](https://claude.ai/artifact/HjggDSB9qfRTuZKcRNBKC4).
+
+| Result | Value | Target | Source | When |
+|---|---|---|---|---|
+| Aerator failure detected, run 1 (fault → incident opened) | **59.8 s** | ≤ 120 s (SLO) | Datadog log `detection_delay_sec` | 14/11 22:28:50 |
+| Aerator failure detected, run 2 | **43.7 s** | ≤ 120 s (SLO) | Control panel, `incidents` | 15/11 00:51:46 |
+| Farmer acknowledged the incident, run 1 | 9 min 15 s | — | Control panel | 14/11 22:38:05 |
+| Recovery, farmer handles it (opened → recovered) | 11.4 min | — | Dashboard, recovered incidents table | 14/11 22:28 → 22:40 |
+| Recovery, Datadog handles it | **2.4 min** (4.8× faster) | — | Dashboard, recovered incidents table | 15/11 00:51 → 00:54 |
+| Datadog Workflow switches on the backup aerator | 949 ms | — | Workflow Automation run | 15/11 00:53 |
+| Server writes one batch of 42 readings | 294 ms | — | APM trace, `POST /ingest/batch` | 14/11 22:28:50 |
+| Server requests / errors in 1 hour | 1,370 / **0** | — | APM, service `shrimpwatch` | 14/11 21:30 → 22:30 |
+| Worker cycle time | 8–15 s | ≤ 25 s | Dashboard, *Sức khoẻ hệ thống* | 15/11 00:00 → 01:00 |
+| Expected probe readings received | 100% | ≥ 50% | Dashboard, `$densify` | 15/11 00:00 → 01:00 |
+| Readings sent | 81 per minute | — | Dashboard, *Tổng quan* | 14/11 22:35 |
+| Records in `metrics` | 645,014 | — | MongoDB Atlas | 15/11 23:26 |
+
 ### 0. End-to-End Verification on 31/10/2026
 
 > The full flow was re-checked on the live system (MongoDB Atlas + Datadog) at **11:59–12:12 UTC** (18:59–19:12 Vietnam time): the [control panel](#52-simulator-control-panel) was driven with Playwright, and Datadog was checked through its API.
@@ -709,7 +731,8 @@ Used as-is under each project's license, with no changes to their source code: F
 
 | Tool | Used for |
 |---|---|
-| **Claude Code** (Anthropic, Claude Opus model) | Help writing and refactoring code, writing tests, review and end-to-end testing (Playwright), updating documentation. Commits with AI assistance carry `Co-Authored-By: Claude` |
+| **Claude Code** (Anthropic, Claude Opus model) | Help writing and refactoring code, writing tests, review and end-to-end testing (Playwright), updating documentation; drafting the demo video script, the slides, the architecture diagram and the measured results page, and capturing their screenshots. Commits with AI assistance carry `Co-Authored-By: Claude` |
+| **VieNeu-TTS** (run locally) | Vietnamese voice-over of the demo video |
 | **GitHub Copilot code review** | Pull request review following [.github/copilot-instructions.md](.github/copilot-instructions.md) |
 | **DeepSeek** (GitHub Action) | Automated review on pull requests |
 
