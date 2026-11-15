@@ -21,8 +21,8 @@
 | Team | Trần Đức Vũ ([tranducvu3](https://github.com/tranducvu3)) · Hồ Ngọc Dũng ([HoNgocDung1503](https://github.com/HoNgocDung1503)) · Quang Anh |
 | Contact | Trần Đức Vũ — vu.tran@techcoop.vn |
 | Repository | https://github.com/tranducvu3/shrimpwatch (public) |
-| Demo video | https://youtu.be/_Oug2B-jZic |
-| Presentation slides | https://docs.google.com/presentation/d/1MfH-SyYHznrgjQy6uKjYE9oANiLmH-QW/edit?usp=sharing |
+| Demo video | https://www.youtube.com/watch?v=xC8kLP1UV-k |
+| Presentation slides | https://docs.google.com/presentation/d/1lcJRpduLPZgq1mnCmV33ZwZ47QtHYzXw/edit |
 | Architecture & data flow | https://claude.ai/artifact/GkSyo6njdS6adH3TvyYGRp (Vietnamese) |
 | Measured results | https://claude.ai/artifact/HjggDSB9qfRTuZKcRNBKC4 (every figure with its Datadog, MongoDB or control panel screenshot) · summary in [Verification Results](#verification-results-real-data) |
 | Public Datadog dashboard | https://p.ap2.datadoghq.com/sb/df43cbfe-db6e-11f1-90ed-d665c76b3b64-d9c772d74be7246440cc33d4020a6238 |
