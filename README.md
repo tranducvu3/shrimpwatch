@@ -314,9 +314,10 @@ docker compose up -d --build
 
 Nothing to install locally: the repo ships a [.devcontainer/](.devcontainer/), and the Codespace builds and runs the whole stack by itself.
 
-1. *(Optional)* In the repo's **Settings → Secrets and variables → Codespaces**: add `MONGODB_URI` (Atlas), `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE`. Without them → MongoDB runs in a container and the Datadog Agent does not run.
+1. *(Optional)* In the repo's **Settings → Secrets and variables → Codespaces**: add `MONGODB_URI` (Atlas), `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE`, and for the alert email, self-healing and RUM also `FARMER_ALERT_EMAILS`, `AUTOMATION_TOKEN`, `DD_DASHBOARD_ID`, `DD_RUM_APPLICATION_ID`, `DD_RUM_CLIENT_TOKEN`. Without them → MongoDB runs in a container and the Datadog Agent does not run. `PUBLIC_BASE_URL` is set for you to the Codespace's port 8000 address.
 2. **Code → Codespaces → Create codespace on main**. The first start takes a few minutes (image build).
-3. **Ports** tab → port `8000` → open `/docs` or `/control`. To share the link: right-click → *Port Visibility → Public* (the API has no authentication yet, so only make it Public during the demo).
+3. **Ports** tab → port `8000` → open `/docs` or `/control`. To share the link: right-click → *Port Visibility → Public* (the API has no authentication yet, so only make it Public during the demo). The alert email link and the Datadog self-healing workflow reach the API only while the port is Public.
+4. *(With the Datadog secrets)* In the Codespace terminal run `python -m app.cli.datadog_push` once, so the monitors and the workflow point at this Codespace's address.
 
 > Datadog monitors filter by `pond`, not by `env`: if you set `DD_API_KEY`, do not run the local stack and the Codespace at the same time, otherwise data from the two simulators gets mixed on the dashboard and monitors.
 

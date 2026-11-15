@@ -1,13 +1,13 @@
 {
-  // Codespaces: chay ca stack (MongoDB, API, simulator, worker, Datadog Agent neu co key) bang Docker Compose.
-  // Secret (Codespaces secrets cua repo): MONGODB_URI, DD_API_KEY, DD_APP_KEY, DD_SITE. Khong co -> Mongo local, khong Datadog.
+  // Codespaces: runs the whole stack (MongoDB, API, simulator, worker, Datadog Agent if a key is set) with Docker Compose.
+  // Codespaces secrets of the repo (all optional, see "secrets" below). Without them -> local MongoDB, no Datadog.
   "name": "ShrimpWatch",
   "build": {
     "dockerfile": "Dockerfile"
   },
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    // Cho `gh codespace ssh/logs/cp` tu terminal
+    // For `gh codespace ssh/logs/cp` from a terminal
     "ghcr.io/devcontainers/features/sshd:1": {}
   },
   "hostRequirements": {
@@ -26,6 +26,21 @@
     },
     "DD_SITE": {
       "description": "Optional. Datadog site, e.g. datadoghq.com or us5.datadoghq.com."
+    },
+    "DD_DASHBOARD_ID": {
+      "description": "Optional. Dashboard id printed by app.cli.datadog_push, for the control panel's dashboard link."
+    },
+    "FARMER_ALERT_EMAILS": {
+      "description": "Optional. Comma-separated addresses that receive the Datadog alert email."
+    },
+    "AUTOMATION_TOKEN": {
+      "description": "Optional. Shared secret for the Datadog self-healing workflow (POST /automation/remediate)."
+    },
+    "DD_RUM_APPLICATION_ID": {
+      "description": "Optional. Datadog RUM application id for the control panel."
+    },
+    "DD_RUM_CLIENT_TOKEN": {
+      "description": "Optional. Datadog RUM client token for the control panel."
     }
   },
   "postCreateCommand": "pip install --user -r requirements-dev.txt",
